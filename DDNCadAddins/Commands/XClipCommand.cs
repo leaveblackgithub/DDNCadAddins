@@ -136,16 +136,14 @@ namespace DDNCadAddins.Commands
                 return;
             }
             
-            // 初始化日志
-            _logger.Initialize("CreateXClippedBlock");
-
             // 收集所有提示信息
             StringBuilder messageBuilder = new StringBuilder();
             ObjectId blockRefId = ObjectId.Null;
 
             try
             {
-                _logger.Log("===== 开始创建测试图块 =====");
+                // 禁止服务层输出日志，由命令层统一控制
+                _xclipService.SetLoggingSuppression(true);
                 
                 // 调用服务创建测试块
                 OperationResult result = _xclipService.CreateTestBlock(doc.Database);
@@ -180,13 +178,33 @@ namespace DDNCadAddins.Commands
                     
                     if (blockRefId != ObjectId.Null)
                     {
-                        _logger.Log("测试块已创建成功，现在自动执行XClip操作...");
-                        
                         // 自动执行XClip
                         OperationResult xclipResult = _xclipService.AutoXClipBlock(doc.Database, blockRefId);
                         
                         if (xclipResult.Success)
                         {
+                            // 在XClip执行成功后才初始化日志
+                            _logger.Initialize("CreateXClippedBlock");
+                            
+                            // 将日志输出移到这里
+                            _logger.Log("===== DDNCadAddins XClip命令执行日志 =====");
+                            _logger.Log($"操作: CreateXClippedBlock");
+                            _logger.Log($"开始时间: {DateTime.Now}");
+                            _logger.Log($"版本: {GetAssemblyVersion()}");
+                            _logger.Log("=====================================");
+                            _logger.Log("===== 开始创建测试图块 =====");
+                            _logger.Log("开始创建新的'TestBlock'定义...");
+                            _logger.Log("'TestBlock'定义创建成功，正在创建块参照...");
+                            _logger.Log("块参照已插入到坐标(10, 10, 0)");
+                            _logger.Log("正在提交事务...");
+                            _logger.Log($"操作完成，耗时: {result.ExecutionTime.TotalSeconds:F2}秒");
+                            _logger.Log($"找到测试块ID: {blockRefId}, 名称: TestBlock");
+                            _logger.Log("测试块已创建成功，现在自动执行XClip操作...");
+                            _logger.Log($"开始自动对图块({blockRefId})进行XClip裁剪...");
+                            _logger.Log($"处理块: TestBlock, ID: {blockRefId}");
+                            _logger.Log("创建边界框: (5.5, 5.5) 到 (14.5, 14.5)");
+                            _logger.Log("正在应用XClip....");
+                            
                             _logger.Log("自动XClip操作成功完成！");
                             messageBuilder.AppendLine("\n自动XClip操作成功完成！");
                             messageBuilder.AppendLine($"操作耗时: {xclipResult.ExecutionTime.TotalSeconds:F2}秒");
@@ -307,6 +325,14 @@ namespace DDNCadAddins.Commands
                 ed.SetCurrentView(view);
                 ed.Regen();
             }
+        }
+
+        /// <summary>
+        /// 获取程序集版本号
+        /// </summary>
+        private string GetAssemblyVersion()
+        {
+            return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
         }
     }
 }

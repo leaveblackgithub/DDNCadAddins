@@ -30,5 +30,11 @@ namespace DDNCadAddins.Services
         /// <param name="blockRefId">图块参照ID</param>
         /// <returns>操作结果</returns>
         OperationResult AutoXClipBlock(Database database, ObjectId blockRefId);
+        
+        /// <summary>
+        /// 设置是否抑制日志输出
+        /// </summary>
+        /// <param name="suppress">是否抑制</param>
+        void SetLoggingSuppression(bool suppress);
     }
 } 

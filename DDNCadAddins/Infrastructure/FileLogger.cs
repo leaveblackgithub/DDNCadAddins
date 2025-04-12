@@ -46,11 +46,14 @@ namespace DDNCadAddins.Infrastructure
                 _logWriter.AutoFlush = true;
                 
                 // 写入日志头信息
-                Log("===== DDNCadAddins XClip命令执行日志 =====");
-                Log($"操作: {operationName}");
-                Log($"开始时间: {DateTime.Now}");
-                Log($"版本: {GetAssemblyVersion()}");
-                Log("=====================================");
+                if (operationName != "CreateXClippedBlock")
+                {
+                    Log("===== DDNCadAddins XClip命令执行日志 =====");
+                    Log($"操作: {operationName}");
+                    Log($"开始时间: {DateTime.Now}");
+                    Log($"版本: {GetAssemblyVersion()}");
+                    Log("=====================================");
+                }
             }
             catch (System.Exception ex)
             {

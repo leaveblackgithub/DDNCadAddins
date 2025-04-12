@@ -17,6 +17,7 @@ namespace DDNCadAddins.Services
     public class XClipBlockService : IXClipBlockService
     {
         private readonly ILogger _logger;
+        private bool _suppressLogging = false;
         
         /// <summary>
         /// 构造函数
@@ -25,6 +26,28 @@ namespace DDNCadAddins.Services
         public XClipBlockService(ILogger logger)
         {
             _logger = logger;
+        }
+        
+        /// <summary>
+        /// 设置是否抑制日志输出
+        /// </summary>
+        /// <param name="suppress">是否抑制</param>
+        public void SetLoggingSuppression(bool suppress)
+        {
+            _suppressLogging = suppress;
+        }
+        
+        /// <summary>
+        /// 输出日志（如果未被抑制）
+        /// </summary>
+        /// <param name="message">日志消息</param>
+        /// <param name="writeToCommand">是否输出到命令行</param>
+        private void LogIfNotSuppressed(string message, bool writeToCommand = true)
+        {
+            if (!_suppressLogging)
+            {
+                _logger.Log(message, writeToCommand);
+            }
         }
         
         /// <summary>
@@ -42,7 +65,7 @@ namespace DDNCadAddins.Services
             
             try
             {
-                _logger.Log("开始查找被XClip的块，初始化...");
+                LogIfNotSuppressed("开始查找被XClip的块，初始化...");
                 
                 // 开始事务
                 using (Transaction tr = database.TransactionManager.StartTransaction())
@@ -54,7 +77,7 @@ namespace DDNCadAddins.Services
                         if (bt == null)
                             return OperationResult<List<XClippedBlockInfo>>.ErrorResult("无法获取块表", DateTime.Now - startTime);
                             
-                        _logger.Log("正在扫描图形中的所有图块...");
+                        LogIfNotSuppressed("正在扫描图形中的所有图块...");
                         
                         // 使用改进的方法检查图块
                         FindAllXClippedBlocks(tr, database, xclippedBlocks);
@@ -62,27 +85,27 @@ namespace DDNCadAddins.Services
                         // 提交事务
                         tr.Commit();
                         
-                        _logger.Log("事务已提交，扫描完成");
+                        LogIfNotSuppressed("事务已提交，扫描完成");
                     }
                     catch (System.Exception ex)
                     {
-                        _logger.Log($"事务执行时出错: {ex.Message}");
+                        LogIfNotSuppressed($"事务执行时出错: {ex.Message}");
                         tr.Abort(); // 确保事务被中止
                         throw; // 重新抛出以便外层捕获
                     }
                 }
                 
                 TimeSpan duration = DateTime.Now - startTime;
-                _logger.Log($"搜索完成，共找到 {xclippedBlocks.Count} 个被XClip的图块");
+                LogIfNotSuppressed($"搜索完成，共找到 {xclippedBlocks.Count} 个被XClip的图块");
                 return OperationResult<List<XClippedBlockInfo>>.SuccessResult(xclippedBlocks, duration);
             }
             catch (System.Exception ex)
             {
                 TimeSpan duration = DateTime.Now - startTime;
-                _logger.Log($"查找XClip图块时出错: {ex.Message}");
+                LogIfNotSuppressed($"查找XClip图块时出错: {ex.Message}");
                 if (ex.InnerException != null)
                 {
-                    _logger.Log($"内部异常: {ex.InnerException.Message}");
+                    LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
                 }
                 return OperationResult<List<XClippedBlockInfo>>.ErrorResult(ex.Message, duration);
             }
@@ -123,11 +146,11 @@ namespace DDNCadAddins.Services
                         if (bt.Has(blockName))
                         {
                             uniqueBlockName = $"{blockName}_{DateTime.Now.ToString("yyyyMMddHHmmss")}";
-                            _logger.Log($"块'{blockName}'已存在，将使用唯一名称'{uniqueBlockName}'");
+                            LogIfNotSuppressed($"块'{blockName}'已存在，将使用唯一名称'{uniqueBlockName}'");
                         }
                         
                         // 创建新的块定义
-                        _logger.Log($"开始创建新的'{uniqueBlockName}'定义...");
+                        LogIfNotSuppressed($"开始创建新的'{uniqueBlockName}'定义...");
                         
                         // 打开块表为写
                         bt.UpgradeOpen();
@@ -161,7 +184,7 @@ namespace DDNCadAddins.Services
                         btr.AppendEntity(text);
                         tr.AddNewlyCreatedDBObject(text, true);
                         
-                        _logger.Log($"'{uniqueBlockName}'定义创建成功，正在创建块参照...");
+                        LogIfNotSuppressed($"'{uniqueBlockName}'定义创建成功，正在创建块参照...");
                         
                         // 创建块参照 - 使用安全的方法
                         Point3d insertionPoint = new Point3d(10, 10, 0);
@@ -171,21 +194,21 @@ namespace DDNCadAddins.Services
                         modelSpace.AppendEntity(blockRef);
                         tr.AddNewlyCreatedDBObject(blockRef, true);
                         
-                        _logger.Log($"块参照已插入到坐标({insertionPoint.X}, {insertionPoint.Y}, {insertionPoint.Z})");
-                        _logger.Log("正在提交事务...");
+                        LogIfNotSuppressed($"块参照已插入到坐标({insertionPoint.X}, {insertionPoint.Y}, {insertionPoint.Z})");
+                        LogIfNotSuppressed("正在提交事务...");
                         
                         tr.Commit();
                         
                         TimeSpan duration = DateTime.Now - startTime;
-                        _logger.Log($"操作完成，耗时: {duration.TotalSeconds:F2}秒");
+                        LogIfNotSuppressed($"操作完成，耗时: {duration.TotalSeconds:F2}秒");
                         return OperationResult.SuccessResult(duration);
                     }
                     catch (System.Exception ex)
                     {
-                        _logger.Log($"事务内出现异常: {ex.Message}");
+                        LogIfNotSuppressed($"事务内出现异常: {ex.Message}");
                         if (ex.InnerException != null)
                         {
-                            _logger.Log($"内部异常: {ex.InnerException.Message}");
+                            LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
                         }
                         tr.Abort(); // 确保事务被中止
                         throw; // 重新抛出以便外层捕获
@@ -195,10 +218,10 @@ namespace DDNCadAddins.Services
             catch (System.Exception ex)
             {
                 TimeSpan duration = DateTime.Now - startTime;
-                _logger.Log($"创建测试块失败: {ex.Message}");
+                LogIfNotSuppressed($"创建测试块失败: {ex.Message}");
                 if (ex.InnerException != null)
                 {
-                    _logger.Log($"内部异常: {ex.InnerException.Message}");
+                    LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
                 }
                 return OperationResult.ErrorResult(ex.Message, duration);
             }
@@ -218,7 +241,7 @@ namespace DDNCadAddins.Services
             try
             {
                 // 选择所有图块参照
-                _logger.Log("开始选择所有图块...");
+                LogIfNotSuppressed("开始选择所有图块...");
                 
                 // 使用选择集过滤器 - 选择所有图块参照
                 TypedValue[] tvs = new TypedValue[] { 
@@ -234,7 +257,7 @@ namespace DDNCadAddins.Services
                     ObjectId[] ids = ss.GetObjectIds();
                     
                     int totalBlocks = ids.Length;
-                    _logger.Log($"找到 {totalBlocks} 个块参照进行检查");
+                    LogIfNotSuppressed($"找到 {totalBlocks} 个块参照进行检查");
                     
                     int processed = 0;
                     int skipped = 0;
@@ -246,25 +269,25 @@ namespace DDNCadAddins.Services
                         ProcessBlockReference(tr, id, xclippedBlocks, 0, ref processed, ref skipped);
                     }
                     
-                    _logger.Log($"扫描完成: 处理了 {processed} 个图块, 跳过了 {skipped} 个图块, 找到 {xclippedBlocks.Count} 个被XClip的图块");
+                    LogIfNotSuppressed($"扫描完成: 处理了 {processed} 个图块, 跳过了 {skipped} 个图块, 找到 {xclippedBlocks.Count} 个被XClip的图块");
                     
                     if (xclippedBlocks.Count == 0)
                     {
-                        _logger.Log("检测提示: 请确保您已经使用AutoCAD的XCLIP命令对块进行了裁剪");
-                        _logger.Log("操作步骤: 输入XCLIP命令 -> 选择块 -> 输入N(新建) -> 输入R(矩形) -> 选择裁剪边界");
+                        LogIfNotSuppressed("检测提示: 请确保您已经使用AutoCAD的XCLIP命令对块进行了裁剪");
+                        LogIfNotSuppressed("操作步骤: 输入XCLIP命令 -> 选择块 -> 输入N(新建) -> 输入R(矩形) -> 选择裁剪边界");
                     }
                 }
                 else
                 {
-                    _logger.Log($"选择图块失败，状态: {selRes.Status}");
+                    LogIfNotSuppressed($"选择图块失败，状态: {selRes.Status}");
                 }
             }
             catch (System.Exception ex)
             {
-                _logger.Log($"查找XClip图块过程中发生异常: {ex.Message}");
+                LogIfNotSuppressed($"查找XClip图块过程中发生异常: {ex.Message}");
                 if (ex.InnerException != null)
                 {
-                    _logger.Log($"内部异常: {ex.InnerException.Message}");
+                    LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
                 }
             }
         }
@@ -284,7 +307,7 @@ namespace DDNCadAddins.Services
             // 防止递归过深
             if (nestLevel > 5)
             {
-                _logger.Log($"嵌套层级过深(>5)，跳过: {blockRefId}", false);
+                LogIfNotSuppressed($"嵌套层级过深(>5)，跳过: {blockRefId}", false);
                 skipped++;
                 return;
             }
@@ -302,7 +325,7 @@ namespace DDNCadAddins.Services
                 // 获取块定义名
                 if (blockRef.BlockTableRecord == ObjectId.Null)
                 {
-                    _logger.Log($"无效的块表记录ID: {blockRef.BlockTableRecord}", false);
+                    LogIfNotSuppressed($"无效的块表记录ID: {blockRef.BlockTableRecord}", false);
                     skipped++;
                     return;
                 }
@@ -310,7 +333,7 @@ namespace DDNCadAddins.Services
                 BlockTableRecord blockDef = tr.GetObject(blockRef.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord;
                 if (blockDef == null)
                 {
-                    _logger.Log($"无法获取块定义: {blockRef.BlockTableRecord}", false);
+                    LogIfNotSuppressed($"无法获取块定义: {blockRef.BlockTableRecord}", false);
                     skipped++;
                     return;
                 }
@@ -322,7 +345,7 @@ namespace DDNCadAddins.Services
                 if (IsBlockXClipped(tr, blockRef, out detectionMethod))
                 {
                     string nestInfo = nestLevel > 0 ? $"[嵌套级别:{nestLevel}] " : "";
-                    _logger.Log($"找到被XClip的图块! {nestInfo}名称: {blockName}, ID: {blockRef.ObjectId}, 方法: {detectionMethod}");
+                    LogIfNotSuppressed($"找到被XClip的图块! {nestInfo}名称: {blockName}, ID: {blockRef.ObjectId}, 方法: {detectionMethod}");
                     xclippedBlocks.Add(new XClippedBlockInfo
                     {
                         BlockReferenceId = blockRef.ObjectId,
@@ -343,7 +366,7 @@ namespace DDNCadAddins.Services
                         processed++;
                         if (processed % 20 == 0)
                         {
-                            _logger.Log($"已处理 {processed} 个图块...");
+                            LogIfNotSuppressed($"已处理 {processed} 个图块...");
                         }
                         
                         ProcessBlockReference(tr, entId, xclippedBlocks, nestLevel + 1, ref processed, ref skipped);
@@ -352,7 +375,7 @@ namespace DDNCadAddins.Services
             }
             catch (System.Exception ex)
             {
-                _logger.Log($"处理块时出错: {ex.Message}", false);
+                LogIfNotSuppressed($"处理块时出错: {ex.Message}", false);
                 skipped++;
             }
         }
@@ -433,7 +456,7 @@ namespace DDNCadAddins.Services
                 }
                 catch (System.Exception ex)
                 {
-                    _logger.Log($"读取XData时出错: {ex.Message}", false);
+                    LogIfNotSuppressed($"读取XData时出错: {ex.Message}", false);
                     // 忽略XData异常
                 }
 
@@ -463,7 +486,7 @@ namespace DDNCadAddins.Services
             }
             catch (System.Exception ex)
             {
-                _logger.Log($"检测XClip过程中出错: {ex.Message}", false);
+                LogIfNotSuppressed($"检测XClip过程中出错: {ex.Message}", false);
                 return false;
             }
         }
@@ -486,7 +509,7 @@ namespace DDNCadAddins.Services
             
             try
             {
-                _logger.Log($"开始自动对图块({blockRefId})进行XClip裁剪...");
+                LogIfNotSuppressed($"开始自动对图块({blockRefId})进行XClip裁剪...");
                 
                 // 开始事务
                 using (Transaction tr = database.TransactionManager.StartTransaction())
@@ -507,13 +530,13 @@ namespace DDNCadAddins.Services
                             return OperationResult.ErrorResult("无法获取块定义", DateTime.Now - startTime);
                             
                         string blockName = blockDef.Name;
-                        _logger.Log($"处理块: {blockName}, ID: {blockRefId}");
+                        LogIfNotSuppressed($"处理块: {blockName}, ID: {blockRefId}");
                         
                         // 检查块是否已被XClip
                         string detectionMethod;
                         if (IsBlockXClipped(tr, blockRef, out detectionMethod))
                         {
-                            _logger.Log($"块已被XClip，方法: {detectionMethod}，跳过处理");
+                            LogIfNotSuppressed($"块已被XClip，方法: {detectionMethod}，跳过处理");
                             return OperationResult.SuccessResult(DateTime.Now - startTime);
                         }
                         
@@ -527,7 +550,7 @@ namespace DDNCadAddins.Services
                         }
                         catch (System.Exception ex)
                         {
-                            _logger.Log($"获取几何边界出错: {ex.Message}");
+                            LogIfNotSuppressed($"获取几何边界出错: {ex.Message}");
                             return OperationResult.ErrorResult($"无法获取几何边界: {ex.Message}", DateTime.Now - startTime);
                         }
                         
@@ -542,7 +565,7 @@ namespace DDNCadAddins.Services
                         min = new Point3d(min.X + marginX, min.Y + marginY, min.Z);
                         max = new Point3d(max.X - marginX, max.Y - marginY, max.Z);
                         
-                        _logger.Log($"创建边界框: ({min.X}, {min.Y}) 到 ({max.X}, {max.Y})");
+                        LogIfNotSuppressed($"创建边界框: ({min.X}, {min.Y}) 到 ({max.X}, {max.Y})");
                         
                         // 创建裁剪用的多段线
                         using (Autodesk.AutoCAD.DatabaseServices.Polyline clipBoundary = new Autodesk.AutoCAD.DatabaseServices.Polyline())
@@ -554,7 +577,7 @@ namespace DDNCadAddins.Services
                             clipBoundary.Closed = true;
                             
                             // 通过Xclip功能对图块进行裁剪
-                            _logger.Log("正在应用XClip...");
+                            LogIfNotSuppressed("正在应用XClip...");
                             
                             // 对于CAD的XClip操作，我们需要应用空间裁剪对象到块参照
                             // 使用DBDictionary来存储ACAD_FILTER信息
@@ -670,23 +693,23 @@ namespace DDNCadAddins.Services
                                             string maxPointStr = $"{max.X},{max.Y}";
                                             ed.Command("._XCLIP", "S", blockRefId, "", "_N", "_R", minPointStr, maxPointStr, "");
                                             
-                                            _logger.Log("XCLIP命令已执行");
+                                            LogIfNotSuppressed("XCLIP命令已执行");
                                         }
                                         
                                         TimeSpan duration = DateTime.Now - startTime;
-                                        _logger.Log($"操作成功，耗时: {duration.TotalSeconds:F2}秒");
+                                        LogIfNotSuppressed($"操作成功，耗时: {duration.TotalSeconds:F2}秒");
                                         return OperationResult.SuccessResult(duration);
                                     }
                                     else
                                     {
-                                        _logger.Log("无法获取块引用以进行XClip操作");
+                                        LogIfNotSuppressed("无法获取块引用以进行XClip操作");
                                         xclipTr.Abort();
                                         return OperationResult.ErrorResult("无法获取块引用以进行XClip操作", DateTime.Now - startTime);
                                     }
                                 }
                                 catch (System.Exception ex)
                                 {
-                                    _logger.Log($"XClip过程中发生异常: {ex.Message}");
+                                    LogIfNotSuppressed($"XClip过程中发生异常: {ex.Message}");
                                     xclipTr.Abort();
                                     throw;
                                 }
@@ -695,10 +718,10 @@ namespace DDNCadAddins.Services
                     }
                     catch (System.Exception ex)
                     {
-                        _logger.Log($"事务内出现异常: {ex.Message}");
+                        LogIfNotSuppressed($"事务内出现异常: {ex.Message}");
                         if (ex.InnerException != null)
                         {
-                            _logger.Log($"内部异常: {ex.InnerException.Message}");
+                            LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
                         }
                         tr.Abort(); // 确保事务被中止
                         throw; // 重新抛出以便外层捕获
@@ -708,10 +731,10 @@ namespace DDNCadAddins.Services
             catch (System.Exception ex)
             {
                 TimeSpan duration = DateTime.Now - startTime;
-                _logger.Log($"自动XClip操作失败: {ex.Message}");
+                LogIfNotSuppressed($"自动XClip操作失败: {ex.Message}");
                 if (ex.InnerException != null)
                 {
-                    _logger.Log($"内部异常: {ex.InnerException.Message}");
+                    LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
                 }
                 return OperationResult.ErrorResult(ex.Message, duration);
             }
