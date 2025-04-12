@@ -134,49 +134,103 @@ namespace DDNCadAddins.Commands
             // 初始化日志
             _logger.Initialize("CreateXClippedBlock");
 
+            // 收集所有提示信息
+            StringBuilder messageBuilder = new StringBuilder();
+            ObjectId blockRefId = ObjectId.Null;
+
             try
             {
                 _logger.Log("===== 开始创建测试图块 =====");
-                doc.Editor.WriteMessage("\n正在创建测试图块，请稍等...");
                 
                 // 调用服务创建测试块
                 OperationResult result = _xclipService.CreateTestBlock(doc.Database);
                 
                 if (result.Success)
                 {
-                    _logger.Log("已创建测试块，请手动执行XCLIP命令对其进行裁剪。");
-                    _logger.Log("步骤: 输入XCLIP命令 -> 选择块 -> 输入N(新建) -> 输入R(矩形) -> 选择裁剪边界");
-                    _logger.Log("完成后，请运行FindXClippedBlocks命令进行测试");
+                    messageBuilder.AppendLine("\n测试块已创建成功! 位置在坐标(10,10)处");
                     
-                    doc.Editor.WriteMessage("\n测试块已创建成功! 位置在坐标(10,10)处");
-                    doc.Editor.WriteMessage("\n请按以下步骤对块进行裁剪:");
-                    doc.Editor.WriteMessage("\n1. 输入XCLIP命令并按回车");
-                    doc.Editor.WriteMessage("\n2. 选择刚创建的测试块并按回车");
-                    doc.Editor.WriteMessage("\n3. 输入N并按回车(表示新建裁剪边界)");
-                    doc.Editor.WriteMessage("\n4. 输入R并按回车(表示使用矩形边界)");
-                    doc.Editor.WriteMessage("\n5. 绘制矩形裁剪边界(不要覆盖整个块)");
-                    doc.Editor.WriteMessage("\n6. 完成后输入FindXClippedBlocks命令检测效果");
+                    using (Transaction tr = doc.Database.TransactionManager.StartTransaction())
+                    {
+                        // 获取刚创建的测试块的ID
+                        BlockTable bt = tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead) as BlockTable;
+                        BlockTableRecord ms = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead) as BlockTableRecord;
+                        
+                        // 遍历模型空间中的对象查找测试块
+                        foreach (ObjectId id in ms)
+                        {
+                            BlockReference br = tr.GetObject(id, OpenMode.ForRead) as BlockReference;
+                            if (br != null)
+                            {
+                                BlockTableRecord btr = tr.GetObject(br.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord;
+                                if (btr.Name.StartsWith("TestBlock"))
+                                {
+                                    blockRefId = id;
+                                    _logger.Log($"找到测试块ID: {id}, 名称: {btr.Name}");
+                                    break;
+                                }
+                            }
+                        }
+                        tr.Commit();
+                    }
                     
-                    // 缩放到测试块位置
-                    doc.Editor.WriteMessage("\n正在缩放到测试块位置...");
-                    ZoomToPoint(doc, new Point3d(10, 10, 0), 10);
+                    if (blockRefId != ObjectId.Null)
+                    {
+                        _logger.Log("测试块已创建成功，现在自动执行XClip操作...");
+                        
+                        // 自动执行XClip
+                        OperationResult xclipResult = _xclipService.AutoXClipBlock(doc.Database, blockRefId);
+                        
+                        if (xclipResult.Success)
+                        {
+                            _logger.Log("自动XClip操作成功完成！");
+                            messageBuilder.AppendLine("\n自动XClip操作成功完成！");
+                            messageBuilder.AppendLine($"操作耗时: {xclipResult.ExecutionTime.TotalSeconds:F2}秒");
+                            
+                            // 缩放到测试块位置
+                            _logger.Log("正在缩放到测试块位置...");
+                            ZoomToPoint(doc, new Point3d(10, 10, 0), 10);
+                            
+                            // 添加验证信息
+                            messageBuilder.AppendLine("\n可使用FindXClippedBlocks命令验证XClip效果");
+                        }
+                        else
+                        {
+                            _logger.Log($"自动XClip操作失败: {xclipResult.ErrorMessage}");
+                            messageBuilder.AppendLine($"\n尝试自动执行XClip操作失败: {xclipResult.ErrorMessage}");
+                            messageBuilder.AppendLine("\n失败后可尝试手动执行XClip操作:");
+                            messageBuilder.AppendLine("1. 输入XCLIP命令并按回车");
+                            messageBuilder.AppendLine("2. 选择创建的测试块并按回车");
+                            messageBuilder.AppendLine("3. 输入N并按回车(表示新建裁剪边界)");
+                            messageBuilder.AppendLine("4. 输入R并按回车(表示使用矩形边界)");
+                            messageBuilder.AppendLine("5. 绘制矩形裁剪边界");
+                        }
+                    }
+                    else
+                    {
+                        _logger.Log("无法找到刚创建的测试块，无法执行自动XClip");
+                        messageBuilder.AppendLine("\n无法找到刚创建的测试块，无法执行自动XClip");
+                    }
                 }
                 else
                 {
                     _logger.Log($"创建测试块失败: {result.ErrorMessage}");
-                    doc.Editor.WriteMessage($"\n创建测试块失败: {result.ErrorMessage}");
-                    doc.Editor.WriteMessage("\n可能原因：");
-                    doc.Editor.WriteMessage("\n1. 图形中已存在名为'TestBlock'的块");
-                    doc.Editor.WriteMessage("\n2. 无法访问模型空间或块表");
-                    doc.Editor.WriteMessage("\n详细错误信息已记录到日志文件");
+                    messageBuilder.AppendLine($"\n创建测试块失败: {result.ErrorMessage}");
+                    messageBuilder.AppendLine("\n可能原因：");
+                    messageBuilder.AppendLine("1. 文件或目录权限问题");
+                    messageBuilder.AppendLine("2. 块名冲突");
+                    messageBuilder.AppendLine("3. CAD内部错误");
                 }
+                
+                // 在所有操作完成后，统一输出消息
+                doc.Editor.WriteMessage(messageBuilder.ToString());
+                _logger.Log("===== CreateXClippedBlock命令执行结束 =====");
             }
             catch (System.Exception ex)
             {
                 // 只记录异常，不在CAD插件中抛出
                 _logger.LogError($"未处理的异常: {ex.Message}", ex);
-                doc.Editor.WriteMessage($"\n执行过程中出错: {ex.Message}");
-                doc.Editor.WriteMessage("\n更多详细信息已记录到日志文件，使用OpenXClipLog命令查看");
+                messageBuilder.AppendLine($"\n执行过程中出错: {ex.Message}");
+                messageBuilder.AppendLine("\n更多详细信息已记录到日志文件，使用OpenXClipLog命令查看");
             }
             finally
             {

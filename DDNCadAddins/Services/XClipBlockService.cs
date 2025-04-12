@@ -6,6 +6,8 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using DDNCadAddins.Infrastructure;
 using DDNCadAddins.Models;
+using Autodesk.AutoCAD.GraphicsInterface;
+using Autodesk.AutoCAD.DatabaseServices.Filters;
 
 namespace DDNCadAddins.Services
 {
@@ -463,6 +465,255 @@ namespace DDNCadAddins.Services
             {
                 _logger.Log($"检测XClip过程中出错: {ex.Message}", false);
                 return false;
+            }
+        }
+        
+        /// <summary>
+        /// 自动对图块进行XClip裁剪
+        /// </summary>
+        /// <param name="database">当前CAD数据库</param>
+        /// <param name="blockRefId">图块参照ID</param>
+        /// <returns>操作结果</returns>
+        public OperationResult AutoXClipBlock(Database database, ObjectId blockRefId)
+        {
+            if (database == null)
+                return OperationResult.ErrorResult("数据库为空", TimeSpan.Zero);
+                
+            if (blockRefId == ObjectId.Null)
+                return OperationResult.ErrorResult("无效的块参照ID", TimeSpan.Zero);
+                
+            DateTime startTime = DateTime.Now;
+            
+            try
+            {
+                _logger.Log($"开始自动对图块({blockRefId})进行XClip裁剪...");
+                
+                // 开始事务
+                using (Transaction tr = database.TransactionManager.StartTransaction())
+                {
+                    try
+                    {
+                        // 获取块参照对象
+                        BlockReference blockRef = tr.GetObject(blockRefId, OpenMode.ForWrite) as BlockReference;
+                        if (blockRef == null)
+                            return OperationResult.ErrorResult("无法获取块参照", DateTime.Now - startTime);
+                            
+                        // 获取块定义名
+                        if (blockRef.BlockTableRecord == ObjectId.Null)
+                            return OperationResult.ErrorResult("无效的块表记录ID", DateTime.Now - startTime);
+                            
+                        BlockTableRecord blockDef = tr.GetObject(blockRef.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord;
+                        if (blockDef == null)
+                            return OperationResult.ErrorResult("无法获取块定义", DateTime.Now - startTime);
+                            
+                        string blockName = blockDef.Name;
+                        _logger.Log($"处理块: {blockName}, ID: {blockRefId}");
+                        
+                        // 检查块是否已被XClip
+                        string detectionMethod;
+                        if (IsBlockXClipped(tr, blockRef, out detectionMethod))
+                        {
+                            _logger.Log($"块已被XClip，方法: {detectionMethod}，跳过处理");
+                            return OperationResult.SuccessResult(DateTime.Now - startTime);
+                        }
+                        
+                        // 创建块的边界框
+                        Extents3d? extents = null;
+                        try
+                        {
+                            extents = blockRef.GeometricExtents;
+                            if (!extents.HasValue)
+                                return OperationResult.ErrorResult("无法获取块的几何边界", DateTime.Now - startTime);
+                        }
+                        catch (System.Exception ex)
+                        {
+                            _logger.Log($"获取几何边界出错: {ex.Message}");
+                            return OperationResult.ErrorResult($"无法获取几何边界: {ex.Message}", DateTime.Now - startTime);
+                        }
+                        
+                        // 设置裁剪点
+                        Point3d min = extents.Value.MinPoint;
+                        Point3d max = extents.Value.MaxPoint;
+                        
+                        // 稍微缩小边界以创建可见的裁剪效果 (原边界的90%)
+                        double marginX = (max.X - min.X) * 0.05;
+                        double marginY = (max.Y - min.Y) * 0.05;
+                        
+                        min = new Point3d(min.X + marginX, min.Y + marginY, min.Z);
+                        max = new Point3d(max.X - marginX, max.Y - marginY, max.Z);
+                        
+                        _logger.Log($"创建边界框: ({min.X}, {min.Y}) 到 ({max.X}, {max.Y})");
+                        
+                        // 创建裁剪用的多段线
+                        using (Autodesk.AutoCAD.DatabaseServices.Polyline clipBoundary = new Autodesk.AutoCAD.DatabaseServices.Polyline())
+                        {
+                            clipBoundary.AddVertexAt(0, new Point2d(min.X, min.Y), 0, 0, 0);
+                            clipBoundary.AddVertexAt(1, new Point2d(max.X, min.Y), 0, 0, 0);
+                            clipBoundary.AddVertexAt(2, new Point2d(max.X, max.Y), 0, 0, 0);
+                            clipBoundary.AddVertexAt(3, new Point2d(min.X, max.Y), 0, 0, 0);
+                            clipBoundary.Closed = true;
+                            
+                            // 通过Xclip功能对图块进行裁剪
+                            _logger.Log("正在应用XClip...");
+                            
+                            // 对于CAD的XClip操作，我们需要应用空间裁剪对象到块参照
+                            // 使用DBDictionary来存储ACAD_FILTER信息
+                            if (blockRef.ExtensionDictionary == ObjectId.Null)
+                            {
+                                blockRef.CreateExtensionDictionary();
+                            }
+                            
+                            DBDictionary extDict = tr.GetObject(blockRef.ExtensionDictionary, OpenMode.ForWrite) as DBDictionary;
+                            if (extDict == null)
+                                return OperationResult.ErrorResult("无法获取或创建扩展字典", DateTime.Now - startTime);
+                                
+                            // 创建或获取ACAD_FILTER字典
+                            ObjectId filterId;
+                            DBDictionary filterDict;
+                            
+                            if (!extDict.Contains("ACAD_FILTER"))
+                            {
+                                filterDict = new DBDictionary();
+                                filterId = extDict.SetAt("ACAD_FILTER", filterDict);
+                                tr.AddNewlyCreatedDBObject(filterDict, true);
+                            }
+                            else
+                            {
+                                filterId = extDict.GetAt("ACAD_FILTER");
+                                filterDict = tr.GetObject(filterId, OpenMode.ForWrite) as DBDictionary;
+                            }
+                            
+                            if (filterDict == null)
+                                return OperationResult.ErrorResult("无法创建或获取ACAD_FILTER字典", DateTime.Now - startTime);
+                                
+                            // 使用更简单直接的命令方式应用XClip 
+                            // 使用AutoCAD命令方式进行XClip
+                            Document doc = Application.DocumentManager.MdiActiveDocument;
+                            if (doc == null)
+                                return OperationResult.ErrorResult("无法获取当前文档", DateTime.Now - startTime);
+                            
+                            // 由于我们已经创建了扩展字典和过滤器字典，现在我们可以用其他方式完成XClip
+                            // 将裁剪边界添加到文档中以便使用
+                            BlockTable bt = tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead) as BlockTable;
+                            BlockTableRecord modelSpace = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite) as BlockTableRecord;
+                            if (modelSpace == null)
+                                return OperationResult.ErrorResult("无法获取模型空间", DateTime.Now - startTime);
+                            
+                            ObjectId clipId = modelSpace.AppendEntity(clipBoundary);
+                            tr.AddNewlyCreatedDBObject(clipBoundary, true);
+                            
+                            // 保存当前事务的更改但不结束它
+                            tr.Commit();
+                            
+                            // 启动新事务，执行XCLIP命令
+                            using (Transaction xclipTr = database.TransactionManager.StartTransaction())
+                            {
+                                try {
+                                    // 选择块参照
+                                    ObjectIdCollection blockIds = new ObjectIdCollection();
+                                    blockIds.Add(blockRefId);
+                                    
+                                    // 使用裁剪边界创建裁剪
+                                    Autodesk.AutoCAD.DatabaseServices.BlockReference br = 
+                                        xclipTr.GetObject(blockRefId, OpenMode.ForWrite) as Autodesk.AutoCAD.DatabaseServices.BlockReference;
+                                    
+                                    if (br != null)
+                                    {
+                                        // 创建XClip过滤器并应用到块引用
+                                        if (br.ExtensionDictionary == ObjectId.Null)
+                                        {
+                                            br.CreateExtensionDictionary();
+                                        }
+                                        
+                                        DBDictionary brExtDict = xclipTr.GetObject(br.ExtensionDictionary, OpenMode.ForWrite) as DBDictionary;
+                                        if (brExtDict == null)
+                                        {
+                                            xclipTr.Abort();
+                                            return OperationResult.ErrorResult("无法获取或创建扩展字典", DateTime.Now - startTime);
+                                        }
+                                        
+                                        // 创建或获取ACAD_FILTER字典
+                                        ObjectId brFilterId;
+                                        DBDictionary brFilterDict;
+                                        
+                                        if (!brExtDict.Contains("ACAD_FILTER"))
+                                        {
+                                            brFilterDict = new DBDictionary();
+                                            brFilterId = brExtDict.SetAt("ACAD_FILTER", brFilterDict);
+                                            xclipTr.AddNewlyCreatedDBObject(brFilterDict, true);
+                                        }
+                                        else
+                                        {
+                                            brFilterId = brExtDict.GetAt("ACAD_FILTER");
+                                            brFilterDict = xclipTr.GetObject(brFilterId, OpenMode.ForWrite) as DBDictionary;
+                                        }
+                                        
+                                        if (brFilterDict == null)
+                                        {
+                                            xclipTr.Abort();
+                                            return OperationResult.ErrorResult("无法创建或获取ACAD_FILTER字典", DateTime.Now - startTime);
+                                        }
+                                        
+                                        // 使用命令行方式来执行XClip
+                                        Document activeDoc = Application.DocumentManager.MdiActiveDocument;
+                                        Editor ed = activeDoc.Editor;
+                                        
+                                        // 先提交当前事务以保证所有实体都被保存
+                                        xclipTr.Commit();
+                                        
+                                        // 使用命令行执行XClip
+                                        using (activeDoc.LockDocument())
+                                        {
+                                            // 执行XCLIP命令
+                                            // 格式: 命令 选择对象 新建 矩形 指定第一点 指定第二点
+                                            string minPointStr = $"{min.X},{min.Y}";
+                                            string maxPointStr = $"{max.X},{max.Y}";
+                                            ed.Command("._XCLIP", "S", blockRefId, "", "_N", "_R", minPointStr, maxPointStr, "");
+                                            
+                                            _logger.Log("XCLIP命令已执行");
+                                        }
+                                        
+                                        TimeSpan duration = DateTime.Now - startTime;
+                                        _logger.Log($"操作成功，耗时: {duration.TotalSeconds:F2}秒");
+                                        return OperationResult.SuccessResult(duration);
+                                    }
+                                    else
+                                    {
+                                        _logger.Log("无法获取块引用以进行XClip操作");
+                                        xclipTr.Abort();
+                                        return OperationResult.ErrorResult("无法获取块引用以进行XClip操作", DateTime.Now - startTime);
+                                    }
+                                }
+                                catch (System.Exception ex)
+                                {
+                                    _logger.Log($"XClip过程中发生异常: {ex.Message}");
+                                    xclipTr.Abort();
+                                    throw;
+                                }
+                            }
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        _logger.Log($"事务内出现异常: {ex.Message}");
+                        if (ex.InnerException != null)
+                        {
+                            _logger.Log($"内部异常: {ex.InnerException.Message}");
+                        }
+                        tr.Abort(); // 确保事务被中止
+                        throw; // 重新抛出以便外层捕获
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                TimeSpan duration = DateTime.Now - startTime;
+                _logger.Log($"自动XClip操作失败: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    _logger.Log($"内部异常: {ex.InnerException.Message}");
+                }
+                return OperationResult.ErrorResult(ex.Message, duration);
             }
         }
     }
