@@ -121,7 +121,7 @@ namespace DDNCadAddins.Commands
         /// <summary>
         /// 创建测试图块命令
         /// </summary>
-        [CommandMethod("CreateXClippedBlock")]
+        [CommandMethod("DDN_XCLIP_CreateXClippedBlock")]
         public void CreateXClippedBlock()
         {
             Document doc = Application.DocumentManager.MdiActiveDocument;
@@ -144,29 +144,62 @@ namespace DDNCadAddins.Commands
                 
                 if (result.Success)
                 {
-                    _logger.Log("已创建测试块，请手动执行XCLIP命令对其进行裁剪。");
-                    _logger.Log("步骤: 输入XCLIP命令 -> 选择块 -> 输入N(新建) -> 输入R(矩形) -> 选择裁剪边界");
-                    _logger.Log("完成后，请运行FindXClippedBlocks命令进行测试");
+                    // 获取创建的块参照ID
+                    // 因为CreateTestBlock方法不返回创建的块参照ID，所以我们需要找到最近创建的块
+                    ObjectId blockRefId = FindLastCreatedBlock(doc.Database, "TestBlock");
                     
-                    doc.Editor.WriteMessage("\n测试块已创建成功! 位置在坐标(10,10)处");
-                    doc.Editor.WriteMessage("\n请按以下步骤对块进行裁剪:");
-                    doc.Editor.WriteMessage("\n1. 输入XCLIP命令并按回车");
-                    doc.Editor.WriteMessage("\n2. 选择刚创建的测试块并按回车");
-                    doc.Editor.WriteMessage("\n3. 输入N并按回车(表示新建裁剪边界)");
-                    doc.Editor.WriteMessage("\n4. 输入R并按回车(表示使用矩形边界)");
-                    doc.Editor.WriteMessage("\n5. 绘制矩形裁剪边界(不要覆盖整个块)");
-                    doc.Editor.WriteMessage("\n6. 完成后输入FindXClippedBlocks命令检测效果");
-                    
-                    // 缩放到测试块位置
-                    doc.Editor.WriteMessage("\n正在缩放到测试块位置...");
-                    ZoomToPoint(doc, new Point3d(10, 10, 0), 10);
+                    if (blockRefId != ObjectId.Null)
+                    {
+                        _logger.Log($"找到创建的测试块ID: {blockRefId}，正在执行自动XClip...");
+                        doc.Editor.WriteMessage("\n测试块已创建成功，正在自动执行XClip...");
+                        
+                        // 自动执行XClip
+                        OperationResult xclipResult = _xclipService.AutoXClipBlock(doc.Database, blockRefId);
+                        
+                        if (xclipResult.Success)
+                        {
+                            _logger.Log("自动XClip执行成功!");
+                            doc.Editor.WriteMessage("\nXClip自动裁剪成功! 块位置在坐标(10,10)处");
+                            doc.Editor.WriteMessage("\n您可以运行FindXClippedBlocks命令检测效果");
+                            
+                            // 缩放到测试块位置
+                            _logger.Log("正在缩放到测试块位置...");
+                            doc.Editor.WriteMessage("\n正在缩放到测试块位置...");
+                            ZoomToPoint(doc, new Point3d(10, 10, 0), 20);
+                        }
+                        else
+                        {
+                            _logger.Log($"自动XClip执行失败: {xclipResult.ErrorMessage}");
+                            doc.Editor.WriteMessage($"\n自动XClip执行失败: {xclipResult.ErrorMessage}");
+                            doc.Editor.WriteMessage("\n请手动执行XClip命令进行裁剪");
+                            
+                            // 提供手动裁剪的指示
+                            doc.Editor.WriteMessage("\n手动裁剪步骤:");
+                            doc.Editor.WriteMessage("\n1. 输入XCLIP命令并按回车");
+                            doc.Editor.WriteMessage("\n2. 选择刚创建的测试块并按回车");
+                            doc.Editor.WriteMessage("\n3. 输入N并按回车(表示新建裁剪边界)");
+                            doc.Editor.WriteMessage("\n4. 输入R并按回车(表示使用矩形边界)");
+                            doc.Editor.WriteMessage("\n5. 绘制矩形裁剪边界(不要覆盖整个块)");
+                        }
+                    }
+                    else
+                    {
+                        _logger.Log("找不到刚创建的测试块，无法执行自动XClip");
+                        doc.Editor.WriteMessage("\n测试块已创建成功，但无法找到块ID执行自动XClip");
+                        doc.Editor.WriteMessage("\n请手动执行XClip命令对其进行裁剪:");
+                        doc.Editor.WriteMessage("\n1. 输入XCLIP命令并按回车");
+                        doc.Editor.WriteMessage("\n2. 选择刚创建的测试块并按回车");
+                        doc.Editor.WriteMessage("\n3. 输入N并按回车(表示新建裁剪边界)");
+                        doc.Editor.WriteMessage("\n4. 输入R并按回车(表示使用矩形边界)");
+                        doc.Editor.WriteMessage("\n5. 绘制矩形裁剪边界(不要覆盖整个块)");
+                    }
                 }
                 else
                 {
                     _logger.Log($"创建测试块失败: {result.ErrorMessage}");
                     doc.Editor.WriteMessage($"\n创建测试块失败: {result.ErrorMessage}");
                     doc.Editor.WriteMessage("\n可能原因：");
-                    doc.Editor.WriteMessage("\n1. 图形中已存在名为'TestBlock'的块");
+                    doc.Editor.WriteMessage("\n1. 图形中已存在同名的测试块");
                     doc.Editor.WriteMessage("\n2. 无法访问模型空间或块表");
                     doc.Editor.WriteMessage("\n详细错误信息已记录到日志文件");
                 }
@@ -183,6 +216,65 @@ namespace DDNCadAddins.Commands
                 // 关闭日志文件
                 _logger.Close();
             }
+        }
+        
+        /// <summary>
+        /// 查找最近创建的指定名称的块
+        /// </summary>
+        /// <param name="database">当前CAD数据库</param>
+        /// <param name="blockNamePrefix">块名称前缀</param>
+        /// <returns>块参照ID</returns>
+        private ObjectId FindLastCreatedBlock(Database database, string blockNamePrefix)
+        {
+            ObjectId result = ObjectId.Null;
+            
+            try
+            {
+                using (Transaction tr = database.TransactionManager.StartTransaction())
+                {
+                    // 获取模型空间
+                    BlockTable bt = tr.GetObject(database.BlockTableId, OpenMode.ForRead) as BlockTable;
+                    BlockTableRecord modelSpace = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead) as BlockTableRecord;
+                    
+                    // 找到具有特定名称前缀的最新块
+                    DateTime latestTime = DateTime.MinValue;
+                    string latestName = string.Empty;
+                    
+                    foreach (ObjectId id in modelSpace)
+                    {
+                        BlockReference blockRef = tr.GetObject(id, OpenMode.ForRead) as BlockReference;
+                        if (blockRef != null)
+                        {
+                            // 获取块定义名称
+                            BlockTableRecord blockDef = tr.GetObject(blockRef.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord;
+                            if (blockDef != null && blockDef.Name.StartsWith(blockNamePrefix))
+                            {
+                                // 检查创建时间
+                                if (blockRef.Database.Tdcreate > latestTime)
+                                {
+                                    latestTime = blockRef.Database.Tdcreate;
+                                    result = id;
+                                    latestName = blockDef.Name;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (result != ObjectId.Null)
+                    {
+                        _logger.Log($"找到最近创建的块: {latestName}, ID: {result}");
+                    }
+                    
+                    tr.Commit();
+                }
+            }
+            catch (System.Exception ex)
+            {
+                _logger.Log($"查找最近创建的块时出错: {ex.Message}");
+                result = ObjectId.Null;
+            }
+            
+            return result;
         }
         
         /// <summary>
@@ -231,39 +323,35 @@ namespace DDNCadAddins.Commands
         }
         
         /// <summary>
-        /// 缩放到指定点位置
+        /// 缩放视图到指定点位置
         /// </summary>
         /// <param name="doc">当前文档</param>
         /// <param name="center">中心点</param>
-        /// <param name="size">显示范围大小</param>
-        private void ZoomToPoint(Document doc, Point3d center, double size)
+        /// <param name="height">视图高度</param>
+        private void ZoomToPoint(Document doc, Point3d center, double height)
         {
             try
             {
-                if (doc == null) return;
-                
-                Editor ed = doc.Editor;
-                Matrix3d ucs2wcs = ed.CurrentUserCoordinateSystem;
-                
-                // 转换到世界坐标系
-                center = center.TransformBy(ucs2wcs);
-                
-                // 计算视图范围
-                Point3d min = new Point3d(center.X - size, center.Y - size, 0);
-                Point3d max = new Point3d(center.X + size, center.Y + size, 0);
-                
-                // 设置视图范围
+                // 获取当前视图
+                Database db = doc.Database;
                 using (ViewTableRecord view = doc.Editor.GetCurrentView())
                 {
-                    view.Width = 2 * size;
-                    view.Height = 2 * size;
+                    // 计算新视图范围
+                    double width = height * view.Width / view.Height;
+                    
+                    // 设置新视图
                     view.CenterPoint = new Point2d(center.X, center.Y);
-                    ed.SetCurrentView(view);
+                    view.Height = height;
+                    view.Width = width;
+                    
+                    // 更新视图
+                    doc.Editor.SetCurrentView(view);
                 }
+                _logger.Log($"已缩放到点 ({center.X}, {center.Y}, {center.Z})");
             }
             catch (System.Exception ex)
             {
-                _logger.Log($"缩放视图时出错: {ex.Message}", false);
+                _logger.Log($"缩放视图失败: {ex.Message}");
             }
         }
     }

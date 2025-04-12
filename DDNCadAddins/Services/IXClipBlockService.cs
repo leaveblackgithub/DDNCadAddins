@@ -22,5 +22,13 @@ namespace DDNCadAddins.Services
         /// <param name="database">当前CAD数据库</param>
         /// <returns>操作结果</returns>
         OperationResult CreateTestBlock(Database database);
+        
+        /// <summary>
+        /// 自动对图块进行XClip裁剪
+        /// </summary>
+        /// <param name="database">当前CAD数据库</param>
+        /// <param name="blockRefId">块参照对象ID</param>
+        /// <returns>操作结果</returns>
+        OperationResult AutoXClipBlock(Database database, ObjectId blockRefId);
     }
 } 

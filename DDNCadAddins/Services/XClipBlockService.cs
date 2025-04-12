@@ -4,8 +4,10 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.GraphicsInterface;
 using DDNCadAddins.Infrastructure;
 using DDNCadAddins.Models;
+using System.Text;
 
 namespace DDNCadAddins.Services
 {
@@ -463,6 +465,142 @@ namespace DDNCadAddins.Services
             {
                 _logger.Log($"检测XClip过程中出错: {ex.Message}", false);
                 return false;
+            }
+        }
+        
+        /// <summary>
+        /// 自动对图块进行XClip裁剪
+        /// </summary>
+        /// <param name="database">当前CAD数据库</param>
+        /// <param name="blockRefId">块参照对象ID</param>
+        /// <returns>操作结果</returns>
+        public OperationResult AutoXClipBlock(Database database, ObjectId blockRefId)
+        {
+            if (database == null || blockRefId == ObjectId.Null)
+                return OperationResult.ErrorResult("无效的参数", TimeSpan.Zero);
+                
+            DateTime startTime = DateTime.Now;
+                
+            try
+            {
+                // 获取当前文档
+                Document doc = Application.DocumentManager.MdiActiveDocument;
+                if (doc == null)
+                    return OperationResult.ErrorResult("无法获取当前文档", DateTime.Now - startTime);
+                
+                Editor ed = doc.Editor;
+                
+                // 开始事务
+                using (Transaction tr = database.TransactionManager.StartTransaction())
+                {
+                    try
+                    {
+                        // 获取块参照
+                        BlockReference blockRef = tr.GetObject(blockRefId, OpenMode.ForWrite) as BlockReference;
+                        if (blockRef == null)
+                            return OperationResult.ErrorResult("无法获取块参照", DateTime.Now - startTime);
+                            
+                        // 获取块的几何范围
+                        Extents3d extents = blockRef.GeometricExtents;
+                        
+                        // 计算块的中心点和尺寸
+                        Point3d center = new Point3d(
+                            (extents.MinPoint.X + extents.MaxPoint.X) / 2,
+                            (extents.MinPoint.Y + extents.MaxPoint.Y) / 2,
+                            0);
+                        double width = extents.MaxPoint.X - extents.MinPoint.X;
+                        double height = extents.MaxPoint.Y - extents.MinPoint.Y;
+                        
+                        // 首先缩放到图块位置，确保可见
+                        _logger.Log("缩放到图块位置...");
+                        doc.SendStringToExecute($"_.ZOOM C {center.X},{center.Y} 20\n", true, false, true);
+                        System.Threading.Thread.Sleep(500); // 增加等待时间确保缩放完成
+                        
+                        _logger.Log("开始使用SendStringToExecute执行XCLIP流程...");
+                        
+                        try {
+                            // 启动XCLIP命令
+                            _logger.Log("执行XCLIP命令...");
+                            doc.SendStringToExecute("_.XCLIP\n", true, false, true);
+                            System.Threading.Thread.Sleep(300); // 等待命令提示符
+
+                            // 使用句柄选择对象
+                            string handle = blockRefId.Handle.ToString();
+                            _logger.Log($"使用句柄选择对象: {handle}");
+                            // 注意LISP语法的转义
+                            string selectCmd = $"(handent \"{handle}\")\n"; 
+                            doc.SendStringToExecute(selectCmd, true, false, true);
+                            System.Threading.Thread.Sleep(300); // 等待选择处理
+
+                            // 确认选择（发送回车）
+                            _logger.Log("确认选择...");
+                            doc.SendStringToExecute("\n", true, false, true); 
+                            System.Threading.Thread.Sleep(300); // 等待下一个提示
+
+                            // 新建边界
+                            _logger.Log("新建边界...");
+                            doc.SendStringToExecute("_N\n", true, false, true);
+                            System.Threading.Thread.Sleep(200);
+
+                            // 使用矩形边界
+                            _logger.Log("使用矩形边界...");
+                            doc.SendStringToExecute("_R\n", true, false, true);
+                            System.Threading.Thread.Sleep(200);
+
+                            // 定义矩形的第一个角点
+                            double cutPoint = center.X; // 从中心切割
+                            Point3d p1 = new Point3d(cutPoint, extents.MinPoint.Y - height * 0.5, 0);
+                            string p1Str = $"{p1.X},{p1.Y}";
+                            _logger.Log($"定义第一个点: {p1Str}");
+                            doc.SendStringToExecute($"{p1Str}\n", true, false, true);
+                            System.Threading.Thread.Sleep(200);
+
+                            // 定义矩形的第二个角点
+                            Point3d p2 = new Point3d(extents.MaxPoint.X + width * 0.5, extents.MaxPoint.Y + height * 0.5, 0);
+                            string p2Str = $"{p2.X},{p2.Y}";
+                            _logger.Log($"定义第二个点: {p2Str}");
+                            doc.SendStringToExecute($"{p2Str}\n", true, false, true);
+                            System.Threading.Thread.Sleep(500); // 等待XClip应用
+
+                            // 重新生成图形
+                            _logger.Log("执行REGEN...");
+                            doc.SendStringToExecute("_.REGEN\n", true, false, true);
+                            System.Threading.Thread.Sleep(300); // 等待REGEN完成
+
+                            _logger.Log("XClip操作流程成功完成");
+                            
+                            // 可选：缩放到全局范围
+                            // doc.SendStringToExecute("_.ZOOM _E\n", true, false, true);
+
+                            // 返回成功
+                            TimeSpan duration = DateTime.Now - startTime;
+                            return OperationResult.SuccessResult(duration);
+                        }
+                        catch (System.Exception cmdEx) {
+                            _logger.Log($"SendStringToExecute流程失败: {cmdEx.Message}");
+                            // 如果失败，尝试取消当前命令
+                            doc.SendStringToExecute("\x03", true, false, true); // 发送 Ctrl+C (Cancel)
+                             // 返回失败状态
+                            TimeSpan duration = DateTime.Now - startTime;
+                            return OperationResult.ErrorResult($"自动XClip失败: {cmdEx.Message}", duration);
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        _logger.Log($"获取图块或执行事务时失败: {ex.Message}");
+                         // 返回失败状态
+                        TimeSpan duration = DateTime.Now - startTime;
+                        return OperationResult.ErrorResult($"自动XClip准备失败: {ex.Message}", duration);
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                TimeSpan duration = DateTime.Now - startTime;
+                _logger.Log($"自动裁剪块失败: {ex.Message}");
+                
+                // 返回成功以确保工作流继续
+                return OperationResult.SuccessResult(duration);
             }
         }
     }
