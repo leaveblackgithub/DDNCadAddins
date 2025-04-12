@@ -86,7 +86,6 @@ namespace DDNCadAddins.Commands
                 _editor.WriteMessage($"\n\n测试完成! 总计: {_totalTests}, 通过: {_passedTests}, 失败: {_failedTests}, 通过率: {passRate:F2}%");
                 _editor.WriteMessage("\n详细结果已写入日志文件，可使用OpenXClipLog命令查看");
                 
-<<<<<<< HEAD
                 // 确保所有命令都已执行完毕，增加一个等待时间
                 System.Threading.Thread.Sleep(1000);
                 
@@ -96,9 +95,6 @@ namespace DDNCadAddins.Commands
                 
                 // 询问是否清理测试对象
                 _editor.WriteMessage("\n");
-=======
-                // 询问是否清理测试对象
->>>>>>> ca08728bf88372dd2cc5851c1f0e469fb4dfc75e
                 PromptKeywordOptions pko = new PromptKeywordOptions("\n是否清理测试创建的对象?");
                 pko.Keywords.Add("Yes");
                 pko.Keywords.Add("No");
@@ -350,7 +346,6 @@ namespace DDNCadAddins.Commands
                 
                 LogTestInfo($"创建的测试块ID: {blockRefId}");
                 _editor.WriteMessage($"\n已创建测试块 '{testBlockName}' 在坐标(40,40)处");
-<<<<<<< HEAD
                 
                 // 使用自动XClip功能而不是手动操作
                 _editor.WriteMessage("\n正在使用自动XClip功能对测试块进行裁剪...");
@@ -426,22 +421,6 @@ namespace DDNCadAddins.Commands
                 _editor.WriteMessage("\n正在缩放到测试块位置...");
                 _doc.SendStringToExecute($"_.ZOOM C 40,40 20\n", true, false, false);
                 System.Threading.Thread.Sleep(500);
-=======
-                _editor.WriteMessage("\n请手动执行以下步骤执行XClip测试:");
-                _editor.WriteMessage("\n1. 输入XCLIP命令");
-                _editor.WriteMessage("\n2. 选择刚创建的测试块");
-                _editor.WriteMessage("\n3. 输入N表示新建裁剪边界");
-                _editor.WriteMessage("\n4. 输入R表示矩形边界");
-                _editor.WriteMessage("\n5. 绘制一个裁剪矩形(比块小)");
-                _editor.WriteMessage("\n完成后继续...");
-                
-                // 等待用户手动XClip操作
-                PromptKeywordOptions pko = new PromptKeywordOptions("\n请在完成XClip操作后输入Continue继续测试");
-                pko.Keywords.Add("Continue");
-                pko.AllowNone = false;
-                
-                _editor.GetKeywords(pko);
->>>>>>> ca08728bf88372dd2cc5851c1f0e469fb4dfc75e
                 
                 // 现在测试XClip检测
                 using (Transaction tr = _db.TransactionManager.StartTransaction())
@@ -492,7 +471,6 @@ namespace DDNCadAddins.Commands
         /// </summary>
         private void TestNestedXClipDetection()
         {
-<<<<<<< HEAD
             LogTestStart("测试XClip过的图块嵌套检测");
             
             try
@@ -576,13 +554,6 @@ namespace DDNCadAddins.Commands
                 
                 // 执行嵌套XClip检测测试
                 _editor.WriteMessage("\n开始测试查找XClip图块功能...");
-=======
-            LogTestStart("测试嵌套图块的XClip检测");
-            
-            try
-            {
-                // 创建嵌套测试块
->>>>>>> ca08728bf88372dd2cc5851c1f0e469fb4dfc75e
                 OperationResult<List<XClippedBlockInfo>> result = _xclipService.FindXClippedBlocks(_db);
                 
                 if (!result.Success)
@@ -591,7 +562,6 @@ namespace DDNCadAddins.Commands
                     return;
                 }
                 
-<<<<<<< HEAD
                 // 验证返回的结果
                 var xclippedBlocks = result.Data;
                 
@@ -611,19 +581,6 @@ namespace DDNCadAddins.Commands
                 }
                 
                 Assert(foundOurBlock, "应该能找到我们创建并XClip的测试块");
-=======
-                // 验证返回的结果是否包含嵌套级别信息
-                var xclippedBlocks = result.Data;
-                
-                LogTestInfo($"找到的XClip图块数量: {xclippedBlocks.Count}");
-                foreach (var block in xclippedBlocks)
-                {
-                    LogTestInfo($"图块名称: {block.BlockName}, 嵌套级别: {block.NestLevel}, 检测方法: {block.DetectionMethod}");
-                }
-                
-                // 由于我们不确定当前图形中是否有嵌套的被XClip的图块
-                // 所以这里主要测试功能是否能正常运行，不检查具体结果
->>>>>>> ca08728bf88372dd2cc5851c1f0e469fb4dfc75e
                 Assert(result.Success, "嵌套图块XClip检测功能正常运行");
             }
             catch (System.Exception ex)
@@ -688,35 +645,8 @@ namespace DDNCadAddins.Commands
         /// </summary>
         private void LogTestEnd()
         {
-            _testResults.AppendLine("===============================\n");
-        }
-        
-        /// <summary>
-        /// 记录测试信息
-        /// </summary>
-        private void LogTestInfo(string info)
-        {
-            _testResults.AppendLine($"信息: {info}");
-            _logger.Log($"测试信息: {info}");
-        }
-        
-        /// <summary>
-        /// 断言测试条件
-        /// </summary>
-        private void Assert(bool condition, string message)
-        {
-            if (condition)
-            {
-                _passedTests++;
-                _testResults.AppendLine($"通过: {message}");
-                _logger.Log($"断言通过: {message}");
-            }
-            else
-            {
-                _failedTests++;
-                _testResults.AppendLine($"失败: {message}");
-                _logger.Log($"断言失败: {message}");
-            }
+            _logger.Log("===== 测试结束 =====");
+            _editor.WriteMessage("\n测试完成");
         }
         
         /// <summary>
@@ -724,18 +654,36 @@ namespace DDNCadAddins.Commands
         /// </summary>
         private void LogTestResult(bool success, string message)
         {
+            string status = success ? "通过" : "失败";
+            _testResults.AppendLine($"[{status}] - {message}");
+            _logger.Log($"[{status}] - {message}");
+            
             if (success)
             {
                 _passedTests++;
-                _testResults.AppendLine($"通过: {message}");
-                _logger.Log($"测试通过: {message}");
             }
             else
             {
                 _failedTests++;
-                _testResults.AppendLine($"失败: {message}");
-                _logger.Log($"测试失败: {message}");
             }
+            _editor.WriteMessage($"\n测试结果 [{status}]: {message}");
+        }
+        
+        /// <summary>
+        /// 记录测试信息
+        /// </summary>
+        private void LogTestInfo(string message)
+        {
+            _testResults.AppendLine($"[信息] - {message}");
+            _logger.Log($"[信息] - {message}");
+        }
+        
+        /// <summary>
+        /// 断言
+        /// </summary>
+        private void Assert(bool condition, string message)
+        {
+            LogTestResult(condition, message);
         }
         
         #endregion

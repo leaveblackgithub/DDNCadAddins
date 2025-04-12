@@ -27,11 +27,7 @@ namespace DDNCadAddins.Services
         /// 自动对图块进行XClip裁剪
         /// </summary>
         /// <param name="database">当前CAD数据库</param>
-<<<<<<< HEAD
         /// <param name="blockRefId">图块参照ID</param>
-=======
-        /// <param name="blockRefId">块参照对象ID</param>
->>>>>>> ca08728bf88372dd2cc5851c1f0e469fb4dfc75e
         /// <returns>操作结果</returns>
         OperationResult AutoXClipBlock(Database database, ObjectId blockRefId);
     }
