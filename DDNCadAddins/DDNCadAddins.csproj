@@ -95,7 +95,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Commands\XClipCommand.cs" />
-    <Compile Include="Commands\UnitTestsCommand.cs" />
     <Compile Include="Infrastructure\FileLogger.cs" />
     <Compile Include="Infrastructure\ILogger.cs" />
     <Compile Include="Models\OperationResult.cs" />
