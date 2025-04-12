@@ -1,0 +1,6 @@
+D:\leaveblackgithub\DDNCadAddins\src\DDNCadAddins\DDNCadAddins\bin\Debug\DDNCadAddins.dll
+D:\leaveblackgithub\DDNCadAddins\src\DDNCadAddins\DDNCadAddins\bin\Debug\DDNCadAddins.pdb
+D:\leaveblackgithub\DDNCadAddins\src\DDNCadAddins\DDNCadAddins\obj\Debug\DDNCadAddins.csproj.AssemblyReference.cache
+D:\leaveblackgithub\DDNCadAddins\src\DDNCadAddins\DDNCadAddins\obj\Debug\DDNCadAddins.csproj.CoreCompileInputs.cache
+D:\leaveblackgithub\DDNCadAddins\src\DDNCadAddins\DDNCadAddins\obj\Debug\DDNCadAddins.dll
+D:\leaveblackgithub\DDNCadAddins\src\DDNCadAddins\DDNCadAddins\obj\Debug\DDNCadAddins.pdb
