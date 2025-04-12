@@ -86,19 +86,7 @@ namespace DDNCadAddins.Commands
                 _editor.WriteMessage($"\n\n测试完成! 总计: {_totalTests}, 通过: {_passedTests}, 失败: {_failedTests}, 通过率: {passRate:F2}%");
                 _editor.WriteMessage("\n详细结果已写入日志文件，可使用OpenXClipLog命令查看");
                 
-<<<<<<< HEAD
-                // 确保所有命令都已执行完毕，增加一个等待时间
-                System.Threading.Thread.Sleep(1000);
-                
-                // 执行一次REGEN确保所有命令已完成
-                _doc.SendStringToExecute("_.REGEN\n", true, false, false);
-                System.Threading.Thread.Sleep(500);
-                
                 // 询问是否清理测试对象
-                _editor.WriteMessage("\n");
-=======
-                // 询问是否清理测试对象
->>>>>>> ca08728bf88372dd2cc5851c1f0e469fb4dfc75e
                 PromptKeywordOptions pko = new PromptKeywordOptions("\n是否清理测试创建的对象?");
                 pko.Keywords.Add("Yes");
                 pko.Keywords.Add("No");
@@ -350,83 +338,6 @@ namespace DDNCadAddins.Commands
                 
                 LogTestInfo($"创建的测试块ID: {blockRefId}");
                 _editor.WriteMessage($"\n已创建测试块 '{testBlockName}' 在坐标(40,40)处");
-<<<<<<< HEAD
-                
-                // 使用自动XClip功能而不是手动操作
-                _editor.WriteMessage("\n正在使用自动XClip功能对测试块进行裁剪...");
-                _logger.Log("===== 开始调用AutoXClipBlock =====");
-                
-                // 在裁剪前先获取块的几何范围
-                using (Transaction tr = _db.TransactionManager.StartTransaction())
-                {
-                    BlockReference blockRef = tr.GetObject(blockRefId, OpenMode.ForRead) as BlockReference;
-                    if (blockRef != null)
-                    {
-                        Extents3d extents = blockRef.GeometricExtents;
-                        _logger.Log($"XClip前块范围: Min=({extents.MinPoint.X}, {extents.MinPoint.Y}, {extents.MinPoint.Z}), Max=({extents.MaxPoint.X}, {extents.MaxPoint.Y}, {extents.MaxPoint.Z})");
-                    }
-                    tr.Commit();
-                }
-                
-                OperationResult xclipResult = _xclipService.AutoXClipBlock(_db, blockRefId);
-                
-                if (!xclipResult.Success)
-                {
-                    LogTestResult(false, $"自动XClip操作失败: {xclipResult.ErrorMessage}");
-                    return;
-                }
-                
-                LogTestInfo($"自动XClip操作成功，耗时: {xclipResult.ExecutionTime.TotalSeconds:F2}秒");
-                
-                // 在裁剪后再获取块的几何范围
-                using (Transaction tr = _db.TransactionManager.StartTransaction())
-                {
-                    BlockReference blockRef = tr.GetObject(blockRefId, OpenMode.ForRead) as BlockReference;
-                    if (blockRef != null)
-                    {
-                        Extents3d extents = blockRef.GeometricExtents;
-                        _logger.Log($"XClip后块范围: Min=({extents.MinPoint.X}, {extents.MinPoint.Y}, {extents.MinPoint.Z}), Max=({extents.MaxPoint.X}, {extents.MaxPoint.Y}, {extents.MaxPoint.Z})");
-                        
-                        // 检查块的其他信息
-                        _logger.Log($"块位置: {blockRef.Position.X}, {blockRef.Position.Y}, {blockRef.Position.Z}");
-                        _logger.Log($"块变换: {blockRef.BlockTransform}");
-                        
-                        // 检查扩展字典
-                        if (blockRef.ExtensionDictionary != ObjectId.Null)
-                        {
-                            DBDictionary extDict = tr.GetObject(blockRef.ExtensionDictionary, OpenMode.ForRead) as DBDictionary;
-                            _logger.Log($"扩展字典项数: {extDict.Count}");
-                            foreach (DBDictionaryEntry entry in extDict)
-                            {
-                                _logger.Log($"  字典项: {entry.Key}, ID: {entry.Value}");
-                            }
-                        }
-                        
-                        // 检查XData
-                        ResultBuffer rb = blockRef.GetXDataForApplication("ACAD");
-                        if (rb != null)
-                        {
-                            _logger.Log("块上的XData:");
-                            foreach (TypedValue tv in rb)
-                            {
-                                _logger.Log($"  类型: {tv.TypeCode}, 值: {tv.Value}");
-                            }
-                            rb.Dispose();
-                        }
-                    }
-                    tr.Commit();
-                }
-                
-                // 刷新显示
-                _editor.WriteMessage("\n正在更新显示...");
-                _editor.Regen();
-                System.Threading.Thread.Sleep(500);
-                
-                // 缩放到块的位置
-                _editor.WriteMessage("\n正在缩放到测试块位置...");
-                _doc.SendStringToExecute($"_.ZOOM C 40,40 20\n", true, false, false);
-                System.Threading.Thread.Sleep(500);
-=======
                 _editor.WriteMessage("\n请手动执行以下步骤执行XClip测试:");
                 _editor.WriteMessage("\n1. 输入XCLIP命令");
                 _editor.WriteMessage("\n2. 选择刚创建的测试块");
@@ -441,7 +352,6 @@ namespace DDNCadAddins.Commands
                 pko.AllowNone = false;
                 
                 _editor.GetKeywords(pko);
->>>>>>> ca08728bf88372dd2cc5851c1f0e469fb4dfc75e
                 
                 // 现在测试XClip检测
                 using (Transaction tr = _db.TransactionManager.StartTransaction())
@@ -492,97 +402,11 @@ namespace DDNCadAddins.Commands
         /// </summary>
         private void TestNestedXClipDetection()
         {
-<<<<<<< HEAD
-            LogTestStart("测试XClip过的图块嵌套检测");
-            
-            try
-            {
-                // 先创建内部块
-                string innerBlockName = $"InnerBlock_{DateTime.Now.ToString("yyyyMMddHHmmss")}";
-                ObjectId innerBlockRefId = ObjectId.Null;
-                
-                // 创建外部块
-                string outerBlockName = $"OuterBlock_{DateTime.Now.ToString("yyyyMMddHHmmss")}";
-                ObjectId outerBlockRefId = ObjectId.Null;
-                
-                using (Transaction tr = _db.TransactionManager.StartTransaction())
-                {
-                    // 获取块表
-                    BlockTable bt = tr.GetObject(_db.BlockTableId, OpenMode.ForRead) as BlockTable;
-                    BlockTableRecord modelSpace = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite) as BlockTableRecord;
-                    
-                    // 1. 创建内部块定义
-                    bt.UpgradeOpen();
-                    BlockTableRecord innerBtr = new BlockTableRecord();
-                    innerBtr.Name = innerBlockName;
-                    
-                    ObjectId innerBlockDefId = bt.Add(innerBtr);
-                    tr.AddNewlyCreatedDBObject(innerBtr, true);
-                    
-                    // 添加图形到内部块中
-                    Circle innerCircle = new Circle();
-                    innerCircle.Center = new Point3d(0, 0, 0);
-                    innerCircle.Radius = 3;
-                    innerBtr.AppendEntity(innerCircle);
-                    tr.AddNewlyCreatedDBObject(innerCircle, true);
-                    
-                    // 2. 创建外部块定义
-                    BlockTableRecord outerBtr = new BlockTableRecord();
-                    outerBtr.Name = outerBlockName;
-                    
-                    ObjectId outerBlockDefId = bt.Add(outerBtr);
-                    tr.AddNewlyCreatedDBObject(outerBtr, true);
-                    
-                    // 在外部块中放置内部块参照
-                    BlockReference innerBlockRef = new BlockReference(new Point3d(0, 0, 0), innerBlockDefId);
-                    outerBtr.AppendEntity(innerBlockRef);
-                    tr.AddNewlyCreatedDBObject(innerBlockRef, true);
-                    
-                    // 添加外框
-                    Polyline outerShape = new Polyline();
-                    outerShape.AddVertexAt(0, new Point2d(-5, -5), 0, 0, 0);
-                    outerShape.AddVertexAt(1, new Point2d(5, -5), 0, 0, 0);
-                    outerShape.AddVertexAt(2, new Point2d(5, 5), 0, 0, 0);
-                    outerShape.AddVertexAt(3, new Point2d(-5, 5), 0, 0, 0);
-                    outerShape.Closed = true;
-                    outerBtr.AppendEntity(outerShape);
-                    tr.AddNewlyCreatedDBObject(outerShape, true);
-                    
-                    // 3. 放置外部块到模型空间
-                    BlockReference outerBlockRef = new BlockReference(new Point3d(50, 50, 0), outerBlockDefId);
-                    modelSpace.AppendEntity(outerBlockRef);
-                    tr.AddNewlyCreatedDBObject(outerBlockRef, true);
-                    outerBlockRefId = outerBlockRef.ObjectId;
-                    
-                    // 记录创建的对象
-                    _createdObjectIds.Add(outerBlockRefId);
-                    
-                    tr.Commit();
-                }
-                
-                LogTestInfo($"创建嵌套块结构成功: 外部块'{outerBlockName}'包含内部块'{innerBlockName}'");
-                
-                // 对外部块使用自动XClip
-                _editor.WriteMessage($"\n正在对外部块'{outerBlockName}'应用自动XClip...");
-                OperationResult xclipResult = _xclipService.AutoXClipBlock(_db, outerBlockRefId);
-                
-                if (!xclipResult.Success)
-                {
-                    LogTestResult(false, $"对外部块应用XClip失败: {xclipResult.ErrorMessage}");
-                    return;
-                }
-                
-                LogTestInfo($"对外部块应用XClip成功，耗时: {xclipResult.ExecutionTime.TotalSeconds:F2}秒");
-                
-                // 执行嵌套XClip检测测试
-                _editor.WriteMessage("\n开始测试查找XClip图块功能...");
-=======
             LogTestStart("测试嵌套图块的XClip检测");
             
             try
             {
                 // 创建嵌套测试块
->>>>>>> ca08728bf88372dd2cc5851c1f0e469fb4dfc75e
                 OperationResult<List<XClippedBlockInfo>> result = _xclipService.FindXClippedBlocks(_db);
                 
                 if (!result.Success)
@@ -591,27 +415,6 @@ namespace DDNCadAddins.Commands
                     return;
                 }
                 
-<<<<<<< HEAD
-                // 验证返回的结果
-                var xclippedBlocks = result.Data;
-                
-                LogTestInfo($"找到的XClip图块数量: {xclippedBlocks.Count}");
-                
-                // 验证我们的测试块被正确识别
-                bool foundOurBlock = false;
-                foreach (var block in xclippedBlocks)
-                {
-                    LogTestInfo($"图块名称: {block.BlockName}, 嵌套级别: {block.NestLevel}, 检测方法: {block.DetectionMethod}");
-                    
-                    if (block.BlockName == outerBlockName || block.BlockReferenceId == outerBlockRefId)
-                    {
-                        foundOurBlock = true;
-                        Assert(true, $"成功找到被XClip的测试块: {block.BlockName}, 嵌套级别: {block.NestLevel}");
-                    }
-                }
-                
-                Assert(foundOurBlock, "应该能找到我们创建并XClip的测试块");
-=======
                 // 验证返回的结果是否包含嵌套级别信息
                 var xclippedBlocks = result.Data;
                 
@@ -623,7 +426,6 @@ namespace DDNCadAddins.Commands
                 
                 // 由于我们不确定当前图形中是否有嵌套的被XClip的图块
                 // 所以这里主要测试功能是否能正常运行，不检查具体结果
->>>>>>> ca08728bf88372dd2cc5851c1f0e469fb4dfc75e
                 Assert(result.Success, "嵌套图块XClip检测功能正常运行");
             }
             catch (System.Exception ex)
