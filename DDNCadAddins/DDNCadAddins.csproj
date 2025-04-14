@@ -94,6 +94,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Commands\Blk2CsvCommand.cs" />
     <Compile Include="Commands\XClipCommand.cs" />
     <Compile Include="Infrastructure\FileLogger.cs" />
     <Compile Include="Infrastructure\ILogger.cs" />
