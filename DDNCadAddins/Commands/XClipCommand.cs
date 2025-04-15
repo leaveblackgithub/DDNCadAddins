@@ -29,7 +29,9 @@ namespace DDNCadAddins.Commands
             _logger = new FileLogger();
             _msgService = new AcadUserMessageService(_logger);
             _uiService = new AcadUserInterfaceService(_logger, _msgService);
-            _xclipService = new XClipBlockService();
+            // 创建IAcadService实现并传递给XClipBlockService
+            IAcadService acadService = new AcadService(_logger);
+            _xclipService = new XClipBlockService(acadService);
             _viewService = new AcadViewService(_msgService, _logger);
         }
 

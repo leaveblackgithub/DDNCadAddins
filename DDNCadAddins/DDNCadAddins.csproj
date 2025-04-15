@@ -106,6 +106,8 @@
     <Compile Include="Services\AcadViewService.cs" />
     <Compile Include="Services\BlockDataService.cs" />
     <Compile Include="Services\CsvExportService.cs" />
+    <Compile Include="Services\IAcadService.cs" />
+    <Compile Include="Services\AcadService.cs" />
     <Compile Include="Services\IBlockDataService.cs" />
     <Compile Include="Services\ICsvExportService.cs" />
     <Compile Include="Services\IUserInterfaceService.cs" />

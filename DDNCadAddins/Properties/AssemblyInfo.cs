@@ -31,8 +31,14 @@ using System.Runtime.InteropServices;
 // 可以指定所有值，也可以使�?生成�?�?修订�?的默认值，
 // 通过使用 "*", 如下所�?
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("1.0.0.73")]
-[assembly: AssemblyFileVersion("1.0.0.73")]
+[assembly: AssemblyVersion("1.0.0.79")]
+[assembly: AssemblyFileVersion("1.0.0.79")]
+
+
+
+
+
+
 
 
 
