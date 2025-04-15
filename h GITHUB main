@@ -1,0 +1,7 @@
+[33mff34341[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m 调整项目结构，将代码移动到src/DDNCadAddins目录，保持仓库根目录在D:\leaveblackgithub\DDNCadAddins
+[33m389f65c[m 调整仓库根目录到上一级
+[33m5b973da[m 更新IAcadService和AcadService实现，重构XClipBlockService以使用新服务接口，增强代码可维护性和异常处理，更新AssemblyInfo版本号至1.0.0.79。
+[33m8add02c[m 更新多个命令类以改进异常处理和日志记录，重构服务接口以返回操作结果，增强项目的可维护性和用户体验，更新AssemblyInfo版本号至1.0.0.73。
+[33m765edc9[m 更新多个命令类以集成用户消息服务，增强异常处理和用户交互，更新AssemblyInfo版本号至1.0.0.66，提升项目的可维护性和用户体验。
+[33mcb634ce[m 添加多个服务接口和实现，重构Blk2CsvCommand类以使用新服务，更新AssemblyInfo版本号至1.0.0.62，增强项目功能和可维护性。
+[33m7ce05f2[m 添加Blk2CsvCommand类，更新AssemblyInfo版本号至1.0.0.59，增强项目功能。
