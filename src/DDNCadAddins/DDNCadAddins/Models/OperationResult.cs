@@ -8,6 +8,32 @@ namespace DDNCadAddins.Models
     public class OperationResult
     {
         /// <summary>
+        /// 结果类型枚举
+        /// </summary>
+        public enum ResultType
+        {
+            /// <summary>
+            /// 成功
+            /// </summary>
+            Success,
+            
+            /// <summary>
+            /// 错误
+            /// </summary>
+            Error,
+            
+            /// <summary>
+            /// 警告
+            /// </summary>
+            Warning,
+            
+            /// <summary>
+            /// 信息
+            /// </summary>
+            Info
+        }
+        
+        /// <summary>
         /// 操作是否成功
         /// </summary>
         public bool Success { get; set; }
@@ -28,6 +54,36 @@ namespace DDNCadAddins.Models
         public TimeSpan ExecutionTime { get; set; }
         
         /// <summary>
+        /// 结果类型
+        /// </summary>
+        public ResultType Type { get; set; } = ResultType.Success;
+        
+        /// <summary>
+        /// 默认构造函数
+        /// </summary>
+        public OperationResult()
+        {
+        }
+        
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="success">是否成功</param>
+        /// <param name="message">消息</param>
+        /// <param name="executionTime">执行时间</param>
+        /// <param name="type">结果类型</param>
+        public OperationResult(bool success, string message, TimeSpan executionTime, ResultType type = ResultType.Success)
+        {
+            Success = success;
+            if (success)
+                Message = message;
+            else
+                ErrorMessage = message;
+            ExecutionTime = executionTime;
+            Type = type;
+        }
+        
+        /// <summary>
         /// 创建成功结果
         /// </summary>
         /// <param name="executionTime">执行时间</param>
@@ -37,7 +93,8 @@ namespace DDNCadAddins.Models
             return new OperationResult 
             { 
                 Success = true,
-                ExecutionTime = executionTime
+                ExecutionTime = executionTime,
+                Type = ResultType.Success
             };
         }
         
@@ -53,7 +110,8 @@ namespace DDNCadAddins.Models
             { 
                 Success = true,
                 Message = message,
-                ExecutionTime = executionTime
+                ExecutionTime = executionTime,
+                Type = ResultType.Success
             };
         }
         
@@ -69,7 +127,25 @@ namespace DDNCadAddins.Models
             { 
                 Success = false,
                 ErrorMessage = errorMessage,
-                ExecutionTime = executionTime
+                ExecutionTime = executionTime,
+                Type = ResultType.Error
+            };
+        }
+        
+        /// <summary>
+        /// 创建警告结果
+        /// </summary>
+        /// <param name="warningMessage">警告信息</param>
+        /// <param name="executionTime">执行时间</param>
+        /// <returns>操作结果</returns>
+        public static OperationResult WarningResult(string warningMessage, TimeSpan executionTime)
+        {
+            return new OperationResult 
+            { 
+                Success = false,
+                Message = warningMessage,
+                ExecutionTime = executionTime,
+                Type = ResultType.Warning
             };
         }
     }
@@ -97,7 +173,8 @@ namespace DDNCadAddins.Models
             { 
                 Success = true,
                 Data = data,
-                ExecutionTime = executionTime
+                ExecutionTime = executionTime,
+                Type = ResultType.Success
             };
         }
         
@@ -115,7 +192,8 @@ namespace DDNCadAddins.Models
                 Success = true,
                 Data = data,
                 Message = message,
-                ExecutionTime = executionTime
+                ExecutionTime = executionTime,
+                Type = ResultType.Success
             };
         }
         
@@ -131,7 +209,25 @@ namespace DDNCadAddins.Models
             { 
                 Success = false,
                 ErrorMessage = errorMessage,
-                ExecutionTime = executionTime
+                ExecutionTime = executionTime,
+                Type = ResultType.Error
+            };
+        }
+        
+        /// <summary>
+        /// 创建警告结果
+        /// </summary>
+        /// <param name="warningMessage">警告信息</param>
+        /// <param name="executionTime">执行时间</param>
+        /// <returns>操作结果</returns>
+        public static new OperationResult<T> WarningResult(string warningMessage, TimeSpan executionTime)
+        {
+            return new OperationResult<T> 
+            { 
+                Success = false,
+                Message = warningMessage,
+                ExecutionTime = executionTime,
+                Type = ResultType.Warning
             };
         }
     }

@@ -21,10 +21,6 @@
     {
       "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\leaveblackgithub\\DDNCadAddins\\src\\DDNCadAddins\\DDNCadAddins\\Services\\CancellationService.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DDNCadAddins\\Services\\CancellationService.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\leaveblackgithub\\DDNCadAddins\\src\\DDNCadAddins\\DDNCadAddins\\Utilities\\BlockNaming.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:DDNCadAddins\\Utilities\\BlockNaming.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -34,7 +30,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 16,
+          "SelectedChildIndex": 15,
           "Children": [
             {
               "$type": "Bookmark",
@@ -90,7 +86,8 @@
               "RelativeToolTip": "DDNCadAddins\\Models\\OperationResult.cs",
               "ViewState": "AgIAAAMAAAAAAAAAAAAiwCAAAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-04-11T13:11:18.567Z"
+              "WhenOpened": "2025-04-11T13:11:18.567Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
@@ -100,7 +97,6 @@
               "RelativeDocumentMoniker": "DDNCadAddins\\Services\\BlockService.cs",
               "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\DDNCadAddins\\DDNCadAddins\\Services\\BlockService.cs",
               "RelativeToolTip": "DDNCadAddins\\Services\\BlockService.cs",
-              "ViewState": "AgIAABMAAAAAAAAAAAAiwDAAAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-04-11T13:10:08.887Z"
             },
@@ -112,7 +108,6 @@
               "RelativeDocumentMoniker": "DDNCadAddins\\Services\\GeometryService.cs",
               "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\DDNCadAddins\\DDNCadAddins\\Services\\GeometryService.cs",
               "RelativeToolTip": "DDNCadAddins\\Services\\GeometryService.cs",
-              "ViewState": "AgIAAFQAAAAAAAAAAAAiwHEAAAAJAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-04-11T13:09:25.781Z"
             },
@@ -124,21 +119,8 @@
               "RelativeDocumentMoniker": "DDNCadAddins\\Services\\CancellationService.cs",
               "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\DDNCadAddins\\DDNCadAddins\\Services\\CancellationService.cs",
               "RelativeToolTip": "DDNCadAddins\\Services\\CancellationService.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABoAAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-04-11T13:08:40.892Z"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 5,
-              "Title": "BlockNaming.cs",
-              "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\DDNCadAddins\\DDNCadAddins\\Utilities\\BlockNaming.cs",
-              "RelativeDocumentMoniker": "DDNCadAddins\\Utilities\\BlockNaming.cs",
-              "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\DDNCadAddins\\DDNCadAddins\\Utilities\\BlockNaming.cs",
-              "RelativeToolTip": "DDNCadAddins\\Utilities\\BlockNaming.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABEAAAABAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-04-11T13:07:40.029Z"
             },
             {
               "$type": "Document",
@@ -148,7 +130,7 @@
               "RelativeDocumentMoniker": "DDNCadAddins\\Commands\\XClipCommand.cs",
               "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\DDNCadAddins\\DDNCadAddins\\Commands\\XClipCommand.cs",
               "RelativeToolTip": "DDNCadAddins\\Commands\\XClipCommand.cs",
-              "ViewState": "AgIAACUAAACAAAAAAGA/wOAAAAABAAAAAAAAAA==",
+              "ViewState": "AgIAACYAAAAAAQAAAMAswOAAAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-04-11T13:06:43.899Z",
               "EditorCaption": ""

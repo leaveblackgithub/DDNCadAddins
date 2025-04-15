@@ -54,5 +54,13 @@ namespace DDNCadAddins.Services
         /// </summary>
         /// <param name="suppress">是否抑制</param>
         void SetLoggingSuppression(bool suppress);
+
+        /// <summary>
+        /// 将找到的XCLIP图块移到顶层并隔离显示
+        /// </summary>
+        /// <param name="database">当前CAD数据库</param>
+        /// <param name="xclippedBlocks">XClip图块列表</param>
+        /// <returns>操作结果</returns>
+        OperationResult IsolateXClippedBlocks(Database database, List<XClippedBlockInfo> xclippedBlocks);
     }
 } 

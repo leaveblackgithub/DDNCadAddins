@@ -4,11 +4,33 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.GraphicsInterface;
+using Autodesk.AutoCAD.Runtime;
 using DDNCadAddins.Infrastructure;
 using DDNCadAddins.Models;
+// 使用别名解决命名冲突
+using AcadApp = Autodesk.AutoCAD.ApplicationServices.Application;
+using SystemException = System.Exception;
 
 namespace DDNCadAddins.Services
 {
+    /// <summary>
+    /// 扩展方法类
+    /// </summary>
+    public static class AcadExtensions
+    {
+        /// <summary>
+        /// 扩展方法：处理Windows消息队列并检查用户是否按下了ESC键
+        /// </summary>
+        /// <param name="hostapp">HostApplicationServices实例</param>
+        /// <returns>用户是否按下了ESC键</returns>
+        public static bool UserBreakWithMessagePump(this HostApplicationServices hostapp)
+        {
+            System.Windows.Forms.Application.DoEvents();
+            return hostapp.UserBreak();
+        }
+    }
+
     /// <summary>
     /// AutoCAD API服务实现类 - 所有与CAD API的交互都通过此类实现
     /// </summary>
@@ -26,6 +48,39 @@ namespace DDNCadAddins.Services
         }
         
         /// <summary>
+        /// 获取当前活动文档对象
+        /// </summary>
+        /// <returns>当前活动文档对象，如果没有打开的文档则返回null</returns>
+        public Document GetMdiActiveDocument()
+        {
+            try
+            {
+                return AcadApp.DocumentManager.MdiActiveDocument;
+            }
+            catch (SystemException ex)
+            {
+                _logger.LogError($"获取当前文档失败: {ex.Message}", ex);
+                return null;
+            }
+        }
+        
+        /// <summary>
+        /// 显示警告对话框
+        /// </summary>
+        /// <param name="message">显示的消息</param>
+        public void ShowAlertDialog(string message)
+        {
+            try
+            {
+                AcadApp.ShowAlertDialog(message);
+            }
+            catch (SystemException ex)
+            {
+                _logger.LogError($"显示警告对话框失败: {ex.Message}", ex);
+            }
+        }
+        
+        /// <summary>
         /// 获取当前活动文档
         /// </summary>
         /// <returns>当前文档是否可用</returns>
@@ -34,7 +89,7 @@ namespace DDNCadAddins.Services
             database = null;
             editor = null;
             
-            Document doc = Application.DocumentManager.MdiActiveDocument;
+            Document doc = AcadApp.DocumentManager.MdiActiveDocument;
             if (doc == null)
                 return false;
                 
@@ -70,14 +125,14 @@ namespace DDNCadAddins.Services
                         TimeSpan duration = DateTime.Now - startTime;
                         return OperationResult<T>.SuccessResult(result, duration);
                     }
-                    catch (Exception ex)
+                    catch (SystemException ex)
                     {
                         tr.Abort();
-                        throw new Exception($"{errorMessagePrefix}: {ex.Message}", ex);
+                        throw new SystemException($"{errorMessagePrefix}: {ex.Message}", ex);
                     }
                 }
             }
-            catch (Exception ex)
+            catch (SystemException ex)
             {
                 TimeSpan duration = DateTime.Now - startTime;
                 string errorMessage = $"{errorMessagePrefix}: {ex.Message}";
@@ -117,14 +172,14 @@ namespace DDNCadAddins.Services
                         TimeSpan duration = DateTime.Now - startTime;
                         return OperationResult.SuccessResult(duration);
                     }
-                    catch (Exception ex)
+                    catch (SystemException ex)
                     {
                         tr.Abort();
-                        throw new Exception($"{errorMessagePrefix}: {ex.Message}", ex);
+                        throw new SystemException($"{errorMessagePrefix}: {ex.Message}", ex);
                     }
                 }
             }
-            catch (Exception ex)
+            catch (SystemException ex)
             {
                 TimeSpan duration = DateTime.Now - startTime;
                 string errorMessage = $"{errorMessagePrefix}: {ex.Message}";
@@ -154,7 +209,7 @@ namespace DDNCadAddins.Services
             {
                 return tr.GetObject(blockRefId, openMode) as BlockReference;
             }
-            catch (Exception ex)
+            catch (SystemException ex)
             {
                 _logger.LogError($"获取块参照对象失败: {ex.Message}", ex);
                 return null;
@@ -175,7 +230,7 @@ namespace DDNCadAddins.Services
             {
                 return blockRef.GeometricExtents;
             }
-            catch (Exception ex)
+            catch (SystemException ex)
             {
                 _logger.LogError($"获取块几何边界失败: {ex.Message}", ex);
                 return null;
@@ -201,7 +256,7 @@ namespace DDNCadAddins.Services
                     
                 return (blockDef.Name, blockDef);
             }
-            catch (Exception ex)
+            catch (SystemException ex)
             {
                 _logger.LogError($"获取块信息失败: {ex.Message}", ex);
                 return null;
@@ -235,7 +290,7 @@ namespace DDNCadAddins.Services
                 // 如果上面的方法失败，尝试使用事务获取当前文档数据库
                 if (db == null)
                 {
-                    Document doc = Application.DocumentManager.MdiActiveDocument;
+                    Document doc = AcadApp.DocumentManager.MdiActiveDocument;
                     if (doc != null)
                     {
                         db = doc.Database;
@@ -302,7 +357,7 @@ namespace DDNCadAddins.Services
                 
                 return blockRef.ObjectId;
             }
-            catch (Exception ex)
+            catch (SystemException ex)
             {
                 _logger.LogError($"创建测试块失败: {ex.Message}", ex);
                 return ObjectId.Null;
@@ -337,7 +392,7 @@ namespace DDNCadAddins.Services
                 
                 return new ObjectId[0];
             }
-            catch (Exception ex)
+            catch (SystemException ex)
             {
                 _logger.LogError($"查找所有块参照失败: {ex.Message}", ex);
                 return new ObjectId[0];
@@ -395,7 +450,7 @@ namespace DDNCadAddins.Services
                 
                 return false;
             }
-            catch (Exception ex)
+            catch (SystemException ex)
             {
                 _logger.LogError($"检查块是否被XClip失败: {ex.Message}", ex);
                 return false;
@@ -403,7 +458,7 @@ namespace DDNCadAddins.Services
         }
         
         /// <summary>
-        /// 执行XClip命令
+        /// 执行XClip命令 - 必须使用命令行方式执行
         /// </summary>
         /// <param name="blockRefId">块参照ID</param>
         /// <param name="minPoint">裁剪边界最小点</param>
@@ -419,45 +474,354 @@ namespace DDNCadAddins.Services
             try
             {
                 // 获取当前文档和编辑器
-                Document doc = Application.DocumentManager.MdiActiveDocument;
+                Document doc = AcadApp.DocumentManager.MdiActiveDocument;
                 if (doc == null)
                     return OperationResult.ErrorResult("无法获取当前文档", TimeSpan.Zero);
                     
                 Editor ed = doc.Editor;
                 
-                // 准备坐标点字符串
-                string minPointStr = $"{minPoint.X},{minPoint.Y}";
-                string maxPointStr = $"{maxPoint.X},{maxPoint.Y}";
+                // 验证块引用是否有效
+                using (Transaction tr = doc.Database.TransactionManager.StartTransaction())
+                {
+                    try
+                    {
+                        // 确保块引用存在并且类型正确
+                        BlockReference blockRef = tr.GetObject(blockRefId, OpenMode.ForRead) as BlockReference;
+                        if (blockRef == null)
+                            return OperationResult.ErrorResult("无效的块引用或已被删除", TimeSpan.Zero);
+                        
+                        // 检查块是否已被XClip
+                        string checkMethod;
+                        if (IsBlockXClipped(tr, blockRef, out checkMethod))
+                        {
+                            _logger.Log($"块已被XClip (检测方法: {checkMethod})，将先执行取消XClip");
+                            // 注意：此处不返回，而是继续执行，将覆盖现有的XClip
+                        }
+                        
+                        tr.Commit();
+                    }
+                    catch (SystemException ex)
+                    {
+                        _logger.LogError($"验证块引用失败: {ex.Message}", ex);
+                        return OperationResult.ErrorResult($"验证块引用失败: {ex.Message}", DateTime.Now - startTime);
+                    }
+                }
                 
-                // 使用命令行执行XCLIP（这是AutoCAD推荐的方式）
+                // 准备坐标点字符串，使用固定格式化以避免科学计数法和确保正确解析
+                // 注意：使用不变区域性以确保小数点格式一致
+                string minPointStr = $"{minPoint.X.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)},{minPoint.Y.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}";
+                string maxPointStr = $"{maxPoint.X.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)},{maxPoint.Y.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}";
+                
+                // 使用命令行执行XCLIP（注意：必须使用命令行方式）
                 using (doc.LockDocument())
                 {
                     try
                     {
-                        // 执行XCLIP命令
-                        ed.Command(
-                            "_XCLIP", // 命令名称
-                            blockRefId, // 块参照ID
-                            "", // 确认选择
-                            "_N", // 新建裁剪边界
-                            "_R", // 矩形
-                            minPointStr, // 第一个点
-                            maxPointStr, // 第二个点
-                            "" // 完成命令
-                        );
+                        _logger.Log("=== 开始命令行执行XCLIP ===");
+                        
+                        // 添加命令取消监听
+                        bool commandCancelled = false;
+                        bool commandRunning = false;
+                        CommandEventHandler commandCancelHandler = null;
+                        CommandEventHandler commandEndHandler = null;
+                        CommandEventHandler commandStartHandler = null;
+                        
+                        try
+                        {
+                            // 注册命令取消事件处理
+                            commandCancelHandler = (sender, args) => 
+                            {
+                                _logger.Log($"检测到命令取消: {args.GlobalCommandName}");
+                                commandCancelled = true;
+                                commandRunning = false;
+                                
+                                // 确保后续处理能正确识别取消状态
+                                try 
+                                {
+                                    ed.WriteMessage("\n取消检测: 命令已被取消");
+                                    // 尝试进一步清理环境
+                                    doc.SendStringToExecute("_CANCEL ", true, false, true);
+                                } 
+                                catch { }
+                            };
+                            
+                            // 注册命令结束事件处理
+                            commandEndHandler = (sender, args) => 
+                            {
+                                _logger.Log($"检测到命令结束: {args.GlobalCommandName}");
+                                commandRunning = false;
+                            };
+                            
+                            // 注册命令开始事件处理
+                            commandStartHandler = (sender, args) => 
+                            {
+                                _logger.Log($"检测到命令开始: {args.GlobalCommandName}");
+                                if (args.GlobalCommandName.ToUpper().Contains("XCLIP"))
+                                {
+                                    commandRunning = true;
+                                }
+                            };
+                            
+                            // 注册事件
+                            doc.CommandCancelled += commandCancelHandler;
+                            doc.CommandEnded += commandEndHandler;
+                            doc.CommandWillStart += commandStartHandler;
+                            
+                            // 步骤1: 强化清理环境 - 确保任何可能正在执行的命令都被彻底取消
+                            try 
+                            {
+                                _logger.Log("步骤1: 清理环境，取消可能活动的命令");
+                                // 清理环境但不显示在命令行上
+                                ed.WriteMessage("\n正在准备环境...");
+                                
+                                // 使用静默方式发送取消命令
+                                doc.SendStringToExecute("\x1B\x1B", false, false, false);
+                                System.Threading.Thread.Sleep(100);
+                                doc.SendStringToExecute("_CANCEL ", false, false, false);
+                                System.Threading.Thread.Sleep(100);
+                                
+                                // 尝试使用LISP方式取消命令（但不显示在命令行）
+                                try {
+                                    doc.SendStringToExecute("(progn (command \"\\U0003\\U0003\") (command \"CANCEL\"))", false, false, false);
+                                    System.Threading.Thread.Sleep(100);
+                                } catch {}
+                            }
+                            catch (SystemException ex)
+                            {
+                                _logger.LogError($"清理环境出错 (非致命): {ex.Message}", ex);
+                                // 这是非致命错误，可以继续执行
+                            }
+                            
+                            // 步骤2: 准备选择集
+                            _logger.Log("步骤2: 准备选择集");
+                            // 清除当前选择集
+                            ed.SetImpliedSelection(new ObjectId[0]);
+                            
+                            // 创建一个只包含目标块的选择集
+                            ObjectId[] blockSelectionIds = new ObjectId[] { blockRefId };
+                            
+                            // 将目标块设置为当前选择
+                            ed.SetImpliedSelection(blockSelectionIds);
+                            
+                            // 确保块被正确选择
+                            PromptSelectionResult selRes = ed.SelectImplied();
+                            if (selRes.Status != PromptStatus.OK || selRes.Value.Count != 1)
+                            {
+                                _logger.LogError("选择块失败: 无法选择目标块", null);
+                                ed.SetImpliedSelection(new ObjectId[0]);
+                                return OperationResult.ErrorResult("无法选择目标块", DateTime.Now - startTime);
+                            }
+                            
+                            _logger.Log($"已选择块 (ID:{blockRefId})");
+                            
+                            // 步骤3: 执行XCLIP命令
+                            _logger.Log("步骤3: 执行XCLIP命令序列");
+                            
+                            // 为用户提供更好的视觉反馈
+                            ed.WriteMessage("\n执行XCLIP命令中，如需取消请按ESC键...");
+                            
+                            // 方法一：使用单一命令行形式，利用AutoCAD的命令缓冲机制
+                            _logger.Log("尝试执行单一命令行形式");
+                            
+                            // 执行XCLIP命令，然后分别发送每个选项，避免_NEW被误解
+                            _logger.Log("执行完整XCLIP命令");
+                            commandRunning = false; // 重置命令状态
+                            commandCancelled = false;
+                            
+                            // 使用更加安全的方式执行XCLIP命令序列
+                            try
+                            {
+                                // 第一步：确保选择对象可用
+                                PromptSelectionResult checkSelection = ed.SelectImplied();
+                                if (checkSelection.Status != PromptStatus.OK || checkSelection.Value.Count != 1)
+                                {
+                                    // 重新尝试设置选择集
+                                    _logger.Log("重新尝试设置选择集");
+                                    ed.SetImpliedSelection(blockSelectionIds);
+                                    checkSelection = ed.SelectImplied();
+                                }
+                                
+                                if (checkSelection.Status != PromptStatus.OK || checkSelection.Value.Count != 1)
+                                {
+                                    _logger.LogError("执行XCLIP前选择集验证失败", null);
+                                    return OperationResult.ErrorResult("选择对象失败，无法执行XCLIP命令", DateTime.Now - startTime);
+                                }
+                                
+                                // 第二步：在同一个命令操作中执行完整的XCLIP序列
+                                // 使用空格分隔而不是换行符，确保命令上下文正确
+                                string fullXclipCommand = $"_XCLIP _NEW _RECTANGULAR {minPointStr} {maxPointStr} ";
+                                
+                                _logger.Log($"发送命令: {fullXclipCommand}");
+                                doc.SendStringToExecute(fullXclipCommand, true, false, false);
+                                
+                                // 初始化命令监控时间
+                                DateTime commandStartTime = DateTime.Now;
+                                TimeSpan commandTimeout = TimeSpan.FromSeconds(10);
+                                int feedbackInterval = 2000; // 2秒反馈一次
+                                DateTime lastFeedbackTime = DateTime.Now;
+                                
+                                // 等待命令完成或超时
+                                while (commandRunning && !commandCancelled && (DateTime.Now - commandStartTime < commandTimeout))
+                                {
+                                    // 短暂等待，减少CPU使用
+                                    System.Threading.Thread.Sleep(100);
+                                    
+                                    // 使用UserBreakWithMessagePump检测ESC键
+                                    if (HostApplicationServices.Current.UserBreakWithMessagePump())
+                                    {
+                                        _logger.Log("检测到用户按下ESC键 (UserBreakWithMessagePump)");
+                                        commandCancelled = true;
+                                        break;
+                                    }
+                                    
+                                    // 定期给用户反馈
+                                    if ((DateTime.Now - lastFeedbackTime).TotalMilliseconds >= feedbackInterval)
+                                    {
+                                        ed.WriteMessage($"\nXCLIP命令执行中...已等待{(DateTime.Now - commandStartTime).TotalSeconds:F1}秒 (按ESC取消)");
+                                        lastFeedbackTime = DateTime.Now;
+                                    }
+                                }
+                                
+                                // 检查命令状态
+                                if (commandCancelled)
+                                {
+                                    _logger.Log("XCLIP命令已被用户取消");
+                                    ed.WriteMessage("\nXCLIP命令已取消");
+                                    
+                                    // 静默清理环境
+                                    doc.SendStringToExecute("\x1B\x1B", false, false, false);
+                                    System.Threading.Thread.Sleep(50);
+                                    doc.SendStringToExecute("_CANCEL ", false, false, false);
+                                    
+                                    return OperationResult.WarningResult("XCLIP命令已被用户取消", DateTime.Now - startTime);
+                                }
+                                else if (commandRunning && DateTime.Now - commandStartTime >= commandTimeout)
+                                {
+                                    _logger.Log("XCLIP命令执行超时");
+                                    ed.WriteMessage("\nXCLIP命令执行时间过长，尝试取消...");
+                                    
+                                    // 静默取消命令
+                                    doc.SendStringToExecute("\x1B\x1B", false, false, false);
+                                    System.Threading.Thread.Sleep(100);
+                                    doc.SendStringToExecute("_CANCEL ", false, false, false);
+                                    
+                                    commandRunning = false;
+                                    return OperationResult.WarningResult("XCLIP命令执行超时，已自动取消", DateTime.Now - startTime);
+                                }
+                                else
+                                {
+                                    _logger.Log("XCLIP命令已完成");
+                                }
+                            }
+                            catch (SystemException ex)
+                            {
+                                _logger.LogError($"执行XCLIP命令时发生异常: {ex.Message}", ex);
+                                
+                                // 清理环境
+                                doc.SendStringToExecute("\x1B\x1B", false, false, false);
+                                System.Threading.Thread.Sleep(100);
+                                doc.SendStringToExecute("_CANCEL ", false, false, false);
+                                
+                                return OperationResult.ErrorResult($"执行XCLIP命令时发生异常: {ex.Message}", DateTime.Now - startTime);
+                            }
+                        }
+                        finally
+                        {
+                            // 清理事件订阅
+                            if (commandCancelHandler != null)
+                            {
+                                try
+                                {
+                                    doc.CommandCancelled -= commandCancelHandler;
+                                    doc.CommandEnded -= commandEndHandler;
+                                    doc.CommandWillStart -= commandStartHandler;
+                                }
+                                catch (SystemException ex)
+                                {
+                                    _logger.LogError($"清理命令事件失败 (非致命): {ex.Message}", ex);
+                                }
+                            }
+                        }
+                        
+                        // 步骤4: 清理选择集并确保命令结束
+                        _logger.Log("步骤4: 清理选择集并确保命令结束");
+                        ed.SetImpliedSelection(new ObjectId[0]);
+                        
+                        // 添加额外的取消命令确保无命令在活动 - 静默方式
+                        doc.SendStringToExecute("\x1B", false, false, false);
+                        System.Threading.Thread.Sleep(50);
+                        doc.SendStringToExecute("_CANCEL ", false, false, false);
+                        
+                        // 给用户明确提示命令已完成
+                        ed.WriteMessage("\nXCLIP命令执行完毕");
+                        
+                        // 步骤5: 验证操作结果
+                        _logger.Log("步骤5: 验证XClip操作结果");
+                        bool xclipSucceeded = false;
+                        string detectionMethod = "未检测到";
+                        int retryCount = 0;
+                        const int MAX_RETRIES = 5; // 增加验证尝试次数
+                        
+                        // 多次尝试检验结果，有时命令可能需要时间生效
+                        while (!xclipSucceeded && retryCount < MAX_RETRIES)
+                        {
+                            using (Transaction trVerify = doc.Database.TransactionManager.StartTransaction())
+                            {
+                                BlockReference blockRef = trVerify.GetObject(blockRefId, OpenMode.ForRead) as BlockReference;
+                                xclipSucceeded = IsBlockXClipped(trVerify, blockRef, out detectionMethod);
+                                _logger.Log($"XCLIP验证结果 (尝试 {retryCount+1}/{MAX_RETRIES}): {(xclipSucceeded ? "成功" : "失败")}，检测方法: {detectionMethod}");
+                                trVerify.Commit();
+                            }
+                            
+                            if (!xclipSucceeded && retryCount < MAX_RETRIES - 1)
+                            {
+                                _logger.Log($"等待验证XClip效果...");
+                                // 逐渐增加等待时间, 使用退避策略
+                                int waitTime = 500 * (retryCount + 1); 
+                                System.Threading.Thread.Sleep(waitTime); 
+                            }
+                            
+                            retryCount++;
+                        }
+                        
+                        if (!xclipSucceeded)
+                        {
+                            _logger.LogError($"XCLIP命令执行后未检测到XClip效果 (检测方法: {detectionMethod})", null);
+                            // 返回警告而非错误，因为命令可能已执行但检测失败
+                            return OperationResult.WarningResult(
+                                $"XCLIP命令似乎已执行，但未能检测到块被XClip (检测方法: {detectionMethod})", 
+                                DateTime.Now - startTime);
+                        }
+                        
+                        _logger.Log("=== XCLIP命令成功执行 ===");
                         
                         TimeSpan duration = DateTime.Now - startTime;
                         return OperationResult.SuccessResult(
                             duration, 
                             $"成功应用XClip裁剪，范围: ({minPoint.X:F2}, {minPoint.Y:F2}) 到 ({maxPoint.X:F2}, {maxPoint.Y:F2})");
                     }
-                    catch (Exception ex)
+                    catch (SystemException ex)
                     {
+                        // 确保清理选择集
+                        try { ed.SetImpliedSelection(new ObjectId[0]); } catch { }
+                        
+                        // 尝试取消可能还在活动的命令（增强版）
+                        try { 
+                            ed.WriteMessage("\n*取消命令*");
+                            // 多次发送ESC以确保命令被取消
+                            for (int i = 0; i < 3; i++) {
+                                doc.SendStringToExecute("\x1B", true, false, true);
+                                System.Threading.Thread.Sleep(50);
+                            }
+                            doc.SendStringToExecute("_CANCEL ", true, false, true);
+                        } catch { }
+                        
+                        _logger.LogError($"XCLIP命令执行失败: {ex.Message}", ex);
                         return OperationResult.ErrorResult($"XCLIP命令执行失败: {ex.Message}", DateTime.Now - startTime);
                     }
                 }
             }
-            catch (Exception ex)
+            catch (SystemException ex)
             {
                 TimeSpan duration = DateTime.Now - startTime;
                 string errorMessage = $"执行XClip命令失败: {ex.Message}";
@@ -465,7 +829,28 @@ namespace DDNCadAddins.Services
                 {
                     errorMessage += $" 内部异常: {ex.InnerException.Message}";
                 }
+                _logger.LogError(errorMessage, ex);
                 return OperationResult.ErrorResult(errorMessage, duration);
+            }
+        }
+        
+        /// <summary>
+        /// 写入消息到命令行
+        /// </summary>
+        /// <param name="message">消息内容</param>
+        public void WriteMessage(string message)
+        {
+            try
+            {
+                Document doc = AcadApp.DocumentManager.MdiActiveDocument;
+                if (doc != null)
+                {
+                    doc.Editor.WriteMessage($"\n{message}");
+                }
+            }
+            catch (SystemException ex)
+            {
+                _logger.LogError($"写入命令行消息失败: {ex.Message}", ex);
             }
         }
     }

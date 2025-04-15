@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
@@ -17,6 +18,18 @@ namespace DDNCadAddins.Services
         /// </summary>
         /// <returns>当前文档是否可用</returns>
         bool GetActiveDocument(out Database database, out Editor editor);
+        
+        /// <summary>
+        /// 获取当前活动文档对象
+        /// </summary>
+        /// <returns>当前活动文档对象，如果没有打开的文档则返回null</returns>
+        Document GetMdiActiveDocument();
+        
+        /// <summary>
+        /// 显示警告对话框
+        /// </summary>
+        /// <param name="message">显示的消息</param>
+        void ShowAlertDialog(string message);
         
         /// <summary>
         /// 执行事务操作
@@ -94,5 +107,11 @@ namespace DDNCadAddins.Services
         /// <param name="maxPoint">裁剪边界最大点</param>
         /// <returns>操作结果</returns>
         OperationResult ExecuteXClipCommand(ObjectId blockRefId, Point3d minPoint, Point3d maxPoint);
+        
+        /// <summary>
+        /// 写入消息到命令行
+        /// </summary>
+        /// <param name="message">消息内容</param>
+        void WriteMessage(string message);
     }
 } 
