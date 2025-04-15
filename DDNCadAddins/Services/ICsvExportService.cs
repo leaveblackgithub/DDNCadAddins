@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
+using DDNCadAddins.Models;
 
 namespace DDNCadAddins.Services
 {
@@ -14,8 +15,8 @@ namespace DDNCadAddins.Services
         /// <param name="blockData">图块数据字典</param>
         /// <param name="allAttributeTags">所有属性标签集合</param>
         /// <param name="csvFilePath">CSV文件保存路径</param>
-        /// <returns>导出的记录数</returns>
-        int ExportToCsv(
+        /// <returns>操作结果，包含导出的记录数</returns>
+        OperationResult<int> ExportToCsv(
             Dictionary<ObjectId, Dictionary<string, string>> blockData,
             HashSet<string> allAttributeTags,
             string csvFilePath);

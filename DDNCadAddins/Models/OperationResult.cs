@@ -18,6 +18,11 @@ namespace DDNCadAddins.Models
         public string ErrorMessage { get; set; }
         
         /// <summary>
+        /// 成功消息（如果操作成功）
+        /// </summary>
+        public string Message { get; set; }
+        
+        /// <summary>
         /// 操作执行时间
         /// </summary>
         public TimeSpan ExecutionTime { get; set; }
@@ -32,6 +37,22 @@ namespace DDNCadAddins.Models
             return new OperationResult 
             { 
                 Success = true,
+                ExecutionTime = executionTime
+            };
+        }
+        
+        /// <summary>
+        /// 创建带消息的成功结果
+        /// </summary>
+        /// <param name="executionTime">执行时间</param>
+        /// <param name="message">成功消息</param>
+        /// <returns>操作结果</returns>
+        public static OperationResult SuccessResult(TimeSpan executionTime, string message)
+        {
+            return new OperationResult 
+            { 
+                Success = true,
+                Message = message,
                 ExecutionTime = executionTime
             };
         }
@@ -76,6 +97,24 @@ namespace DDNCadAddins.Models
             { 
                 Success = true,
                 Data = data,
+                ExecutionTime = executionTime
+            };
+        }
+        
+        /// <summary>
+        /// 创建成功结果并包含数据和消息
+        /// </summary>
+        /// <param name="data">返回的数据</param>
+        /// <param name="executionTime">执行时间</param>
+        /// <param name="message">成功消息</param>
+        /// <returns>操作结果</returns>
+        public static OperationResult<T> SuccessResult(T data, TimeSpan executionTime, string message)
+        {
+            return new OperationResult<T> 
+            { 
+                Success = true,
+                Data = data,
+                Message = message,
                 ExecutionTime = executionTime
             };
         }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.EditorInput;
 using DDNCadAddins.Models;
 
 namespace DDNCadAddins.Services
@@ -13,8 +14,9 @@ namespace DDNCadAddins.Services
         /// 查找所有被XClip的图块
         /// </summary>
         /// <param name="database">当前CAD数据库</param>
+        /// <param name="editor">编辑器</param>
         /// <returns>操作结果，包含XClip图块列表</returns>
-        OperationResult<List<XClippedBlockInfo>> FindXClippedBlocks(Database database);
+        OperationResult<List<XClippedBlockInfo>> FindXClippedBlocks(Database database, Editor editor);
         
         /// <summary>
         /// 创建测试块
@@ -22,6 +24,13 @@ namespace DDNCadAddins.Services
         /// <param name="database">当前CAD数据库</param>
         /// <returns>操作结果</returns>
         OperationResult CreateTestBlock(Database database);
+        
+        /// <summary>
+        /// 创建测试块并返回块ID
+        /// </summary>
+        /// <param name="database">当前CAD数据库</param>
+        /// <returns>操作结果，包含创建的块ID</returns>
+        OperationResult<ObjectId> CreateTestBlockWithId(Database database);
         
         /// <summary>
         /// 自动对图块进行XClip裁剪

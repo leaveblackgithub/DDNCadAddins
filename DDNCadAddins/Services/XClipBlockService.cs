@@ -16,57 +16,26 @@ namespace DDNCadAddins.Services
     /// </summary>
     public class XClipBlockService : IXClipBlockService
     {
-        private readonly ILogger _logger;
-        private bool _suppressLogging = false;
-        
-        /// <summary>
-        /// 构造函数
-        /// </summary>
-        /// <param name="logger">日志记录器</param>
-        public XClipBlockService(ILogger logger)
-        {
-            _logger = logger;
-        }
-        
-        /// <summary>
-        /// 设置是否抑制日志输出
-        /// </summary>
-        /// <param name="suppress">是否抑制</param>
-        public void SetLoggingSuppression(bool suppress)
-        {
-            _suppressLogging = suppress;
-        }
-        
-        /// <summary>
-        /// 输出日志（如果未被抑制）
-        /// </summary>
-        /// <param name="message">日志消息</param>
-        /// <param name="writeToCommand">是否输出到命令行</param>
-        private void LogIfNotSuppressed(string message, bool writeToCommand = true)
-        {
-            if (!_suppressLogging)
-            {
-                _logger.Log(message, writeToCommand);
-            }
-        }
-        
         /// <summary>
         /// 查找所有被XClip的图块
         /// </summary>
         /// <param name="database">当前CAD数据库</param>
+        /// <param name="editor">编辑器</param>
         /// <returns>操作结果，包含XClip图块列表</returns>
-        public OperationResult<List<XClippedBlockInfo>> FindXClippedBlocks(Database database)
+        public OperationResult<List<XClippedBlockInfo>> FindXClippedBlocks(Database database, Editor editor)
         {
             if (database == null)
                 return OperationResult<List<XClippedBlockInfo>>.ErrorResult("数据库为空", TimeSpan.Zero);
                 
+            if (editor == null)
+                return OperationResult<List<XClippedBlockInfo>>.ErrorResult("编辑器为空", TimeSpan.Zero);
+                
             var xclippedBlocks = new List<XClippedBlockInfo>();
             DateTime startTime = DateTime.Now;
+            string statusMessage = string.Empty;
             
             try
             {
-                LogIfNotSuppressed("开始查找被XClip的块，初始化...");
-                
                 // 开始事务
                 using (Transaction tr = database.TransactionManager.StartTransaction())
                 {
@@ -77,53 +46,57 @@ namespace DDNCadAddins.Services
                         if (bt == null)
                             return OperationResult<List<XClippedBlockInfo>>.ErrorResult("无法获取块表", DateTime.Now - startTime);
                             
-                        LogIfNotSuppressed("正在扫描图形中的所有图块...");
-                        
                         // 使用改进的方法检查图块
-                        FindAllXClippedBlocks(tr, database, xclippedBlocks);
+                        var findResult = FindAllXClippedBlocks(tr, database, editor);
+                        
+                        if(!findResult.Success)
+                            return OperationResult<List<XClippedBlockInfo>>.ErrorResult(findResult.ErrorMessage, DateTime.Now - startTime);
+                            
+                        xclippedBlocks = findResult.Data;
+                        statusMessage = findResult.Message;
     
                         // 提交事务
                         tr.Commit();
-                        
-                        LogIfNotSuppressed("事务已提交，扫描完成");
                     }
                     catch (System.Exception ex)
                     {
-                        LogIfNotSuppressed($"事务执行时出错: {ex.Message}");
                         tr.Abort(); // 确保事务被中止
                         throw; // 重新抛出以便外层捕获
                     }
                 }
                 
                 TimeSpan duration = DateTime.Now - startTime;
-                LogIfNotSuppressed($"搜索完成，共找到 {xclippedBlocks.Count} 个被XClip的图块");
-                return OperationResult<List<XClippedBlockInfo>>.SuccessResult(xclippedBlocks, duration);
+                return OperationResult<List<XClippedBlockInfo>>.SuccessResult(
+                    xclippedBlocks, 
+                    duration, 
+                    $"搜索完成，共找到 {xclippedBlocks.Count} 个被XClip的图块。{statusMessage}");
             }
             catch (System.Exception ex)
             {
                 TimeSpan duration = DateTime.Now - startTime;
-                LogIfNotSuppressed($"查找XClip图块时出错: {ex.Message}");
+                string errorMessage = ex.Message;
                 if (ex.InnerException != null)
                 {
-                    LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
+                    errorMessage += $" 内部异常: {ex.InnerException.Message}";
                 }
-                return OperationResult<List<XClippedBlockInfo>>.ErrorResult(ex.Message, duration);
+                return OperationResult<List<XClippedBlockInfo>>.ErrorResult(errorMessage, duration);
             }
         }
         
         /// <summary>
-        /// 创建测试块
+        /// 创建测试块并返回块ID
         /// </summary>
         /// <param name="database">当前CAD数据库</param>
-        /// <returns>操作结果</returns>
-        public OperationResult CreateTestBlock(Database database)
+        /// <returns>操作结果，包含创建的块ID</returns>
+        public OperationResult<ObjectId> CreateTestBlockWithId(Database database)
         {
             if (database == null)
-                return OperationResult.ErrorResult("数据库为空", TimeSpan.Zero);
+                return OperationResult<ObjectId>.ErrorResult("数据库为空", TimeSpan.Zero);
                 
             DateTime startTime = DateTime.Now;
             string blockName = "DDNTest";
             string uniqueBlockName = blockName;
+            ObjectId blockRefId = ObjectId.Null;
                 
             try
             {
@@ -135,22 +108,18 @@ namespace DDNCadAddins.Services
                         // 获取块表
                         BlockTable bt = tr.GetObject(database.BlockTableId, OpenMode.ForRead) as BlockTable;
                         if (bt == null)
-                            return OperationResult.ErrorResult("无法获取块表", DateTime.Now - startTime);
+                            return OperationResult<ObjectId>.ErrorResult("无法获取块表", DateTime.Now - startTime);
                             
                         // 获取模型空间
                         BlockTableRecord modelSpace = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite) as BlockTableRecord;
                         if (modelSpace == null)
-                            return OperationResult.ErrorResult("无法获取模型空间", DateTime.Now - startTime);
+                            return OperationResult<ObjectId>.ErrorResult("无法获取模型空间", DateTime.Now - startTime);
 
                         // 检查块是否已存在，如果存在则生成唯一名称
                         if (bt.Has(blockName))
                         {
                             uniqueBlockName = $"{blockName}_{DateTime.Now.ToString("yyyyMMddHHmmss")}";
-                            LogIfNotSuppressed($"块'{blockName}'已存在，将使用唯一名称'{uniqueBlockName}'");
                         }
-                        
-                        // 创建新的块定义
-                        LogIfNotSuppressed($"开始创建新的'{uniqueBlockName}'定义...");
                         
                         // 打开块表为写
                         bt.UpgradeOpen();
@@ -184,8 +153,6 @@ namespace DDNCadAddins.Services
                         btr.AppendEntity(text);
                         tr.AddNewlyCreatedDBObject(text, true);
                         
-                        LogIfNotSuppressed($"'{uniqueBlockName}'定义创建成功，正在创建块参照...");
-                        
                         // 创建块参照 - 使用安全的方法
                         Point3d insertionPoint = new Point3d(10, 10, 0);
                         BlockReference blockRef = new BlockReference(insertionPoint, blockDefId);
@@ -194,22 +161,18 @@ namespace DDNCadAddins.Services
                         modelSpace.AppendEntity(blockRef);
                         tr.AddNewlyCreatedDBObject(blockRef, true);
                         
-                        LogIfNotSuppressed($"块参照已插入到坐标({insertionPoint.X}, {insertionPoint.Y}, {insertionPoint.Z})");
-                        LogIfNotSuppressed("正在提交事务...");
+                        blockRefId = blockRef.ObjectId;
                         
                         tr.Commit();
                         
                         TimeSpan duration = DateTime.Now - startTime;
-                        LogIfNotSuppressed($"操作完成，耗时: {duration.TotalSeconds:F2}秒");
-                        return OperationResult.SuccessResult(duration);
+                        return OperationResult<ObjectId>.SuccessResult(
+                            blockRefId, 
+                            duration, 
+                            $"成功创建测试块 '{uniqueBlockName}'，插入点: ({insertionPoint.X}, {insertionPoint.Y}, {insertionPoint.Z})");
                     }
                     catch (System.Exception ex)
                     {
-                        LogIfNotSuppressed($"事务内出现异常: {ex.Message}");
-                        if (ex.InnerException != null)
-                        {
-                            LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
-                        }
                         tr.Abort(); // 确保事务被中止
                         throw; // 重新抛出以便外层捕获
                     }
@@ -218,31 +181,46 @@ namespace DDNCadAddins.Services
             catch (System.Exception ex)
             {
                 TimeSpan duration = DateTime.Now - startTime;
-                LogIfNotSuppressed($"创建测试块失败: {ex.Message}");
+                string errorMessage = $"创建测试块失败: {ex.Message}";
                 if (ex.InnerException != null)
                 {
-                    LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
+                    errorMessage += $" 内部异常: {ex.InnerException.Message}";
                 }
-                return OperationResult.ErrorResult(ex.Message, duration);
+                return OperationResult<ObjectId>.ErrorResult(errorMessage, duration);
             }
+        }
+
+        /// <summary>
+        /// 创建测试块
+        /// </summary>
+        /// <param name="database">当前CAD数据库</param>
+        /// <returns>操作结果</returns>
+        public OperationResult CreateTestBlock(Database database)
+        {
+            // 调用返回ObjectId版本并转换结果
+            var result = CreateTestBlockWithId(database);
+            
+            if (result.Success)
+                return OperationResult.SuccessResult(result.ExecutionTime, result.Message);
+            else
+                return OperationResult.ErrorResult(result.ErrorMessage, result.ExecutionTime);
         }
         
         /// <summary>
-        /// 查找所有被XClip的图块
+        /// 实现查找所有被XClip的图块 - 此方法接收Editor作为参数，而不是直接获取
         /// </summary>
         /// <param name="tr">事务</param>
         /// <param name="db">数据库</param>
-        /// <param name="xclippedBlocks">结果列表</param>
-        private void FindAllXClippedBlocks(Transaction tr, Database db, List<XClippedBlockInfo> xclippedBlocks)
+        /// <param name="ed">编辑器</param>
+        /// <returns>操作结果</returns>
+        private OperationResult<List<XClippedBlockInfo>> FindAllXClippedBlocks(Transaction tr, Database db, Editor ed)
         {
-            Document doc = Application.DocumentManager.MdiActiveDocument;
-            Editor ed = doc.Editor;
+            DateTime startTime = DateTime.Now;
+            var xclippedBlocks = new List<XClippedBlockInfo>();
+            string statusMessage = string.Empty;
             
             try
             {
-                // 选择所有图块参照
-                LogIfNotSuppressed("开始选择所有图块...");
-                
                 // 使用选择集过滤器 - 选择所有图块参照
                 TypedValue[] tvs = new TypedValue[] { 
                     new TypedValue((int)DxfCode.Start, "INSERT") 
@@ -257,7 +235,6 @@ namespace DDNCadAddins.Services
                     ObjectId[] ids = ss.GetObjectIds();
                     
                     int totalBlocks = ids.Length;
-                    LogIfNotSuppressed($"找到 {totalBlocks} 个块参照进行检查");
                     
                     int processed = 0;
                     int skipped = 0;
@@ -266,48 +243,47 @@ namespace DDNCadAddins.Services
                     foreach (ObjectId id in ids)
                     {
                         processed++;
+                        // 使用修改后的方法，不需要日志记录
                         ProcessBlockReference(tr, id, xclippedBlocks, 0, ref processed, ref skipped);
                     }
                     
-                    LogIfNotSuppressed($"扫描完成: 处理了 {processed} 个图块, 跳过了 {skipped} 个图块, 找到 {xclippedBlocks.Count} 个被XClip的图块");
+                    statusMessage = $"扫描完成: 处理了 {processed} 个图块, 跳过了 {skipped} 个图块";
                     
                     if (xclippedBlocks.Count == 0)
                     {
-                        LogIfNotSuppressed("检测提示: 请确保您已经使用AutoCAD的XCLIP命令对块进行了裁剪");
-                        LogIfNotSuppressed("操作步骤: 输入XCLIP命令 -> 选择块 -> 输入N(新建) -> 输入R(矩形) -> 选择裁剪边界");
+                        statusMessage += " 提示: 请确保您已经使用AutoCAD的XCLIP命令对块进行了裁剪。 " +
+                                        "操作步骤: 输入XCLIP命令 -> 选择块 -> 输入N(新建) -> 输入R(矩形) -> 选择裁剪边界";
                     }
                 }
                 else
                 {
-                    LogIfNotSuppressed($"选择图块失败，状态: {selRes.Status}");
+                    return OperationResult<List<XClippedBlockInfo>>.ErrorResult($"选择图块失败，状态: {selRes.Status}", DateTime.Now - startTime);
                 }
+                
+                TimeSpan duration = DateTime.Now - startTime;
+                return OperationResult<List<XClippedBlockInfo>>.SuccessResult(xclippedBlocks, duration, statusMessage);
             }
             catch (System.Exception ex)
             {
-                LogIfNotSuppressed($"查找XClip图块过程中发生异常: {ex.Message}");
+                TimeSpan duration = DateTime.Now - startTime;
+                string errorMessage = $"查找XClip图块过程中发生异常: {ex.Message}";
                 if (ex.InnerException != null)
                 {
-                    LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
+                    errorMessage += $" 内部异常: {ex.InnerException.Message}";
                 }
+                return OperationResult<List<XClippedBlockInfo>>.ErrorResult(errorMessage, duration);
             }
         }
         
         /// <summary>
-        /// 处理单个图块参照及其嵌套图块
+        /// 处理单个图块参照及其嵌套图块 - 移除所有日志输出
         /// </summary>
-        /// <param name="tr">事务</param>
-        /// <param name="blockRefId">图块参照ID</param>
-        /// <param name="xclippedBlocks">结果列表</param>
-        /// <param name="nestLevel">嵌套级别</param>
-        /// <param name="processed">已处理的图块数</param>
-        /// <param name="skipped">跳过的图块数</param>
         private void ProcessBlockReference(Transaction tr, ObjectId blockRefId, 
             List<XClippedBlockInfo> xclippedBlocks, int nestLevel, ref int processed, ref int skipped)
         {
             // 防止递归过深
             if (nestLevel > 5)
             {
-                LogIfNotSuppressed($"嵌套层级过深(>5)，跳过: {blockRefId}", false);
                 skipped++;
                 return;
             }
@@ -325,7 +301,6 @@ namespace DDNCadAddins.Services
                 // 获取块定义名
                 if (blockRef.BlockTableRecord == ObjectId.Null)
                 {
-                    LogIfNotSuppressed($"无效的块表记录ID: {blockRef.BlockTableRecord}", false);
                     skipped++;
                     return;
                 }
@@ -333,7 +308,6 @@ namespace DDNCadAddins.Services
                 BlockTableRecord blockDef = tr.GetObject(blockRef.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord;
                 if (blockDef == null)
                 {
-                    LogIfNotSuppressed($"无法获取块定义: {blockRef.BlockTableRecord}", false);
                     skipped++;
                     return;
                 }
@@ -344,8 +318,6 @@ namespace DDNCadAddins.Services
                 string detectionMethod;
                 if (IsBlockXClipped(tr, blockRef, out detectionMethod))
                 {
-                    string nestInfo = nestLevel > 0 ? $"[嵌套级别:{nestLevel}] " : "";
-                    LogIfNotSuppressed($"找到被XClip的图块! {nestInfo}名称: {blockName}, ID: {blockRef.ObjectId}, 方法: {detectionMethod}");
                     xclippedBlocks.Add(new XClippedBlockInfo
                     {
                         BlockReferenceId = blockRef.ObjectId,
@@ -364,29 +336,19 @@ namespace DDNCadAddins.Services
                     {
                         // 找到嵌套的图块参照，递归处理
                         processed++;
-                        if (processed % 20 == 0)
-                        {
-                            LogIfNotSuppressed($"已处理 {processed} 个图块...");
-                        }
-                        
                         ProcessBlockReference(tr, entId, xclippedBlocks, nestLevel + 1, ref processed, ref skipped);
                     }
                 }
             }
-            catch (System.Exception ex)
+            catch (System.Exception)
             {
-                LogIfNotSuppressed($"处理块时出错: {ex.Message}", false);
                 skipped++;
             }
         }
         
         /// <summary>
-        /// 检查图块是否被XClip裁剪
+        /// 检查图块是否被XClip裁剪 - 无需修改，因为没有IO
         /// </summary>
-        /// <param name="tr">事务</param>
-        /// <param name="blockRef">图块参照</param>
-        /// <param name="method">检测方法(输出)</param>
-        /// <returns>是否被XClip</returns>
         private bool IsBlockXClipped(Transaction tr, BlockReference blockRef, out string method)
         {
             method = "";
@@ -431,62 +393,15 @@ namespace DDNCadAddins.Services
                         }
                     }
                 }
-
-                // 2. 检查XData
-                try
-                {
-                    ResultBuffer rb = blockRef.GetXDataForApplication("ACAD");
-                    if (rb != null)
-                    {
-                        using (rb)
-                        {
-                            foreach (TypedValue tv in rb)
-                            {
-                                if (tv.TypeCode == 1000 || tv.TypeCode == 1001) // 字符串或应用程序名
-                                {
-                                    if (tv.Value != null && tv.Value.ToString().Contains("CLIP"))
-                                    {
-                                        method = "XDATA包含CLIP关键字";
-                                        return true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                catch (System.Exception ex)
-                {
-                    LogIfNotSuppressed($"读取XData时出错: {ex.Message}", false);
-                    // 忽略XData异常
-                }
-
-                // 3. 检查属性标志 - AutoCAD内部使用标志位表示是否被裁剪
-                if (blockRef.OwnerId == blockRef.Database.CurrentSpaceId)
-                {
-                    // 检查显示与图元之间的关系
-                    Extents3d? extents = null;
-                    try 
-                    {
-                        extents = blockRef.Bounds;
-                        if (extents.HasValue && extents.Value.MinPoint.DistanceTo(extents.Value.MaxPoint) < 0.001)
-                        {
-                            method = "边界异常";
-                            return true;
-                        }
-                    }
-                    catch 
-                    {
-                        // 如果获取边界失败，可能是因为被裁剪
-                        method = "无法获取边界";
-                        return true;
-                    }
-                }
                 
+                // 2. 检查是否有空间过滤器 (DrawableOverrule)
+                // 注意：此处无法直接检测，但可以通过上面扩展字典方法大部分情况能检测到
+
+                // 检查失败，未发现XClip
                 return false;
             }
-            catch (System.Exception ex)
+            catch
             {
-                LogIfNotSuppressed($"检测XClip过程中出错: {ex.Message}", false);
                 return false;
             }
         }
@@ -499,6 +414,7 @@ namespace DDNCadAddins.Services
         /// <returns>操作结果</returns>
         public OperationResult AutoXClipBlock(Database database, ObjectId blockRefId)
         {
+            // 重要说明：AUTOXCLIP是用命令行实现的，不要改为API方式
             if (database == null)
                 return OperationResult.ErrorResult("数据库为空", TimeSpan.Zero);
                 
@@ -509,17 +425,15 @@ namespace DDNCadAddins.Services
             
             try
             {
-                LogIfNotSuppressed($"开始自动对图块({blockRefId})进行XClip裁剪...");
-                
-                // 开始事务
+                // 开始事务来获取块信息
                 using (Transaction tr = database.TransactionManager.StartTransaction())
                 {
                     try
                     {
                         // 获取块参照对象
-                        BlockReference blockRef = tr.GetObject(blockRefId, OpenMode.ForWrite) as BlockReference;
+                        BlockReference blockRef = tr.GetObject(blockRefId, OpenMode.ForRead) as BlockReference;
                         if (blockRef == null)
-                            return OperationResult.ErrorResult("无法获取块参照", DateTime.Now - startTime);
+                            return OperationResult.ErrorResult("无法获取块参照对象", DateTime.Now - startTime);
                             
                         // 获取块定义名
                         if (blockRef.BlockTableRecord == ObjectId.Null)
@@ -530,14 +444,14 @@ namespace DDNCadAddins.Services
                             return OperationResult.ErrorResult("无法获取块定义", DateTime.Now - startTime);
                             
                         string blockName = blockDef.Name;
-                        LogIfNotSuppressed($"处理块: {blockName}, ID: {blockRefId}");
                         
                         // 检查块是否已被XClip
                         string detectionMethod;
                         if (IsBlockXClipped(tr, blockRef, out detectionMethod))
                         {
-                            LogIfNotSuppressed($"块已被XClip，方法: {detectionMethod}，跳过处理");
-                            return OperationResult.SuccessResult(DateTime.Now - startTime);
+                            return OperationResult.SuccessResult(
+                                DateTime.Now - startTime,
+                                $"块'{blockName}'已被XClip (方法: {detectionMethod})，无需重复裁剪");
                         }
                         
                         // 创建块的边界框
@@ -548,10 +462,9 @@ namespace DDNCadAddins.Services
                             if (!extents.HasValue)
                                 return OperationResult.ErrorResult("无法获取块的几何边界", DateTime.Now - startTime);
                         }
-                        catch (System.Exception ex)
+                        catch (Exception ex)
                         {
-                            LogIfNotSuppressed($"获取几何边界出错: {ex.Message}");
-                            return OperationResult.ErrorResult($"无法获取几何边界: {ex.Message}", DateTime.Now - startTime);
+                            return OperationResult.ErrorResult($"获取几何边界出错: {ex.Message}", DateTime.Now - startTime);
                         }
                         
                         // 设置裁剪点
@@ -565,178 +478,69 @@ namespace DDNCadAddins.Services
                         min = new Point3d(min.X + marginX, min.Y + marginY, min.Z);
                         max = new Point3d(max.X - marginX, max.Y - marginY, max.Z);
                         
-                        LogIfNotSuppressed($"创建边界框: ({min.X}, {min.Y}) 到 ({max.X}, {max.Y})");
+                        // 提交事务，为命令执行准备
+                        tr.Commit();
                         
-                        // 创建裁剪用的多段线
-                        using (Autodesk.AutoCAD.DatabaseServices.Polyline clipBoundary = new Autodesk.AutoCAD.DatabaseServices.Polyline())
+                        // 获取当前文档和编辑器
+                        Document doc = Application.DocumentManager.MdiActiveDocument;
+                        if (doc == null)
+                            return OperationResult.ErrorResult("无法获取当前文档", DateTime.Now - startTime);
+                            
+                        Editor ed = doc.Editor;
+                        
+                        // 使用命令行执行XCLIP（这是AutoCAD推荐的方式）
+                        using (doc.LockDocument())
                         {
-                            clipBoundary.AddVertexAt(0, new Point2d(min.X, min.Y), 0, 0, 0);
-                            clipBoundary.AddVertexAt(1, new Point2d(max.X, min.Y), 0, 0, 0);
-                            clipBoundary.AddVertexAt(2, new Point2d(max.X, max.Y), 0, 0, 0);
-                            clipBoundary.AddVertexAt(3, new Point2d(min.X, max.Y), 0, 0, 0);
-                            clipBoundary.Closed = true;
+                            // 创建选择集
+                            ObjectIdCollection ids = new ObjectIdCollection();
+                            ids.Add(blockRefId);
                             
-                            // 通过Xclip功能对图块进行裁剪
-                            LogIfNotSuppressed("正在应用XClip...");
+                            // 准备坐标点字符串
+                            string minPointStr = $"{min.X},{min.Y}";
+                            string maxPointStr = $"{max.X},{max.Y}";
                             
-                            // 对于CAD的XClip操作，我们需要应用空间裁剪对象到块参照
-                            // 使用DBDictionary来存储ACAD_FILTER信息
-                            if (blockRef.ExtensionDictionary == ObjectId.Null)
+                            // 执行XCLIP命令
+                            // 注意：命令行参数需要根据实际AutoCAD版本可能需要调整
+                            try
                             {
-                                blockRef.CreateExtensionDictionary();
+                                ed.Command(
+                                    "_XCLIP", // 命令名称
+                                    blockRefId, // 块参照ID
+                                    "", // 确认选择
+                                    "_N", // 新建裁剪边界
+                                    "_R", // 矩形
+                                    minPointStr, // 第一个点
+                                    maxPointStr, // 第二个点
+                                    "" // 完成命令
+                                );
                             }
-                            
-                            DBDictionary extDict = tr.GetObject(blockRef.ExtensionDictionary, OpenMode.ForWrite) as DBDictionary;
-                            if (extDict == null)
-                                return OperationResult.ErrorResult("无法获取或创建扩展字典", DateTime.Now - startTime);
-                                
-                            // 创建或获取ACAD_FILTER字典
-                            ObjectId filterId;
-                            DBDictionary filterDict;
-                            
-                            if (!extDict.Contains("ACAD_FILTER"))
+                            catch (Exception ex)
                             {
-                                filterDict = new DBDictionary();
-                                filterId = extDict.SetAt("ACAD_FILTER", filterDict);
-                                tr.AddNewlyCreatedDBObject(filterDict, true);
-                            }
-                            else
-                            {
-                                filterId = extDict.GetAt("ACAD_FILTER");
-                                filterDict = tr.GetObject(filterId, OpenMode.ForWrite) as DBDictionary;
-                            }
-                            
-                            if (filterDict == null)
-                                return OperationResult.ErrorResult("无法创建或获取ACAD_FILTER字典", DateTime.Now - startTime);
-                                
-                            // 使用更简单直接的命令方式应用XClip 
-                            // 使用AutoCAD命令方式进行XClip
-                            Document doc = Application.DocumentManager.MdiActiveDocument;
-                            if (doc == null)
-                                return OperationResult.ErrorResult("无法获取当前文档", DateTime.Now - startTime);
-                            
-                            // 由于我们已经创建了扩展字典和过滤器字典，现在我们可以用其他方式完成XClip
-                            // 将裁剪边界添加到文档中以便使用
-                            BlockTable bt = tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead) as BlockTable;
-                            BlockTableRecord modelSpace = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite) as BlockTableRecord;
-                            if (modelSpace == null)
-                                return OperationResult.ErrorResult("无法获取模型空间", DateTime.Now - startTime);
-                            
-                            ObjectId clipId = modelSpace.AppendEntity(clipBoundary);
-                            tr.AddNewlyCreatedDBObject(clipBoundary, true);
-                            
-                            // 保存当前事务的更改但不结束它
-                            tr.Commit();
-                            
-                            // 启动新事务，执行XCLIP命令
-                            using (Transaction xclipTr = database.TransactionManager.StartTransaction())
-                            {
-                                try {
-                                    // 选择块参照
-                                    ObjectIdCollection blockIds = new ObjectIdCollection();
-                                    blockIds.Add(blockRefId);
-                                    
-                                    // 使用裁剪边界创建裁剪
-                                    Autodesk.AutoCAD.DatabaseServices.BlockReference br = 
-                                        xclipTr.GetObject(blockRefId, OpenMode.ForWrite) as Autodesk.AutoCAD.DatabaseServices.BlockReference;
-                                    
-                                    if (br != null)
-                                    {
-                                        // 创建XClip过滤器并应用到块引用
-                                        if (br.ExtensionDictionary == ObjectId.Null)
-                                        {
-                                            br.CreateExtensionDictionary();
-                                        }
-                                        
-                                        DBDictionary brExtDict = xclipTr.GetObject(br.ExtensionDictionary, OpenMode.ForWrite) as DBDictionary;
-                                        if (brExtDict == null)
-                                        {
-                                            xclipTr.Abort();
-                                            return OperationResult.ErrorResult("无法获取或创建扩展字典", DateTime.Now - startTime);
-                                        }
-                                        
-                                        // 创建或获取ACAD_FILTER字典
-                                        ObjectId brFilterId;
-                                        DBDictionary brFilterDict;
-                                        
-                                        if (!brExtDict.Contains("ACAD_FILTER"))
-                                        {
-                                            brFilterDict = new DBDictionary();
-                                            brFilterId = brExtDict.SetAt("ACAD_FILTER", brFilterDict);
-                                            xclipTr.AddNewlyCreatedDBObject(brFilterDict, true);
-                                        }
-                                        else
-                                        {
-                                            brFilterId = brExtDict.GetAt("ACAD_FILTER");
-                                            brFilterDict = xclipTr.GetObject(brFilterId, OpenMode.ForWrite) as DBDictionary;
-                                        }
-                                        
-                                        if (brFilterDict == null)
-                                        {
-                                            xclipTr.Abort();
-                                            return OperationResult.ErrorResult("无法创建或获取ACAD_FILTER字典", DateTime.Now - startTime);
-                                        }
-                                        
-                                        // 使用命令行方式来执行XClip
-                                        Document activeDoc = Application.DocumentManager.MdiActiveDocument;
-                                        Editor ed = activeDoc.Editor;
-                                        
-                                        // 先提交当前事务以保证所有实体都被保存
-                                        xclipTr.Commit();
-                                        
-                                        // 使用命令行执行XClip
-                                        using (activeDoc.LockDocument())
-                                        {
-                                            // 执行XCLIP命令
-                                            // 格式: 命令 选择对象 新建 矩形 指定第一点 指定第二点
-                                            string minPointStr = $"{min.X},{min.Y}";
-                                            string maxPointStr = $"{max.X},{max.Y}";
-                                            ed.Command("._XCLIP", "S", blockRefId, "", "_N", "_R", minPointStr, maxPointStr, "");
-                                            
-                                            LogIfNotSuppressed("XCLIP命令已执行");
-                                        }
-                                        
-                                        TimeSpan duration = DateTime.Now - startTime;
-                                        LogIfNotSuppressed($"操作成功，耗时: {duration.TotalSeconds:F2}秒");
-                                        return OperationResult.SuccessResult(duration);
-                                    }
-                                    else
-                                    {
-                                        LogIfNotSuppressed("无法获取块引用以进行XClip操作");
-                                        xclipTr.Abort();
-                                        return OperationResult.ErrorResult("无法获取块引用以进行XClip操作", DateTime.Now - startTime);
-                                    }
-                                }
-                                catch (System.Exception ex)
-                                {
-                                    LogIfNotSuppressed($"XClip过程中发生异常: {ex.Message}");
-                                    xclipTr.Abort();
-                                    throw;
-                                }
+                                return OperationResult.ErrorResult($"XCLIP命令执行失败: {ex.Message}", DateTime.Now - startTime);
                             }
                         }
+                        
+                        TimeSpan duration = DateTime.Now - startTime;
+                        return OperationResult.SuccessResult(
+                            duration, 
+                            $"块'{blockName}'已成功应用XClip裁剪，范围: ({min.X:F2}, {min.Y:F2}) 到 ({max.X:F2}, {max.Y:F2})");
                     }
-                    catch (System.Exception ex)
+                    catch (Exception ex)
                     {
-                        LogIfNotSuppressed($"事务内出现异常: {ex.Message}");
-                        if (ex.InnerException != null)
-                        {
-                            LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
-                        }
                         tr.Abort(); // 确保事务被中止
                         throw; // 重新抛出以便外层捕获
                     }
                 }
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 TimeSpan duration = DateTime.Now - startTime;
-                LogIfNotSuppressed($"自动XClip操作失败: {ex.Message}");
+                string errorMessage = $"自动XClip操作失败: {ex.Message}";
                 if (ex.InnerException != null)
                 {
-                    LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
+                    errorMessage += $" 内部异常: {ex.InnerException.Message}";
                 }
-                return OperationResult.ErrorResult(ex.Message, duration);
+                return OperationResult.ErrorResult(errorMessage, duration);
             }
         }
         
@@ -749,39 +553,55 @@ namespace DDNCadAddins.Services
         /// <returns>找到的测试块ID，如未找到则返回ObjectId.Null</returns>
         public ObjectId FindTestBlock(Transaction tr, Database db, string blockName = "DDNTest")
         {
-            if (tr == null || db == null)
-                return ObjectId.Null;
-            
+            // 这个方法保留原样，因为它没有IO操作，仅返回一个对象ID
             try
             {
+                if (tr == null || db == null)
+                    return ObjectId.Null;
+                    
+                // 获取块表
                 BlockTable bt = tr.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
-                BlockTableRecord ms = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead) as BlockTableRecord;
+                if (bt == null)
+                    return ObjectId.Null;
+                    
+                // 获取模型空间
+                BlockTableRecord modelSpace = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead) as BlockTableRecord;
+                if (modelSpace == null)
+                    return ObjectId.Null;
                 
-                foreach (ObjectId id in ms)
+                // 遍历模型空间中的所有实体
+                foreach (ObjectId id in modelSpace)
                 {
-                    if (id.ObjectClass.DxfName == "INSERT")
+                    DBObject obj = tr.GetObject(id, OpenMode.ForRead);
+                    if (obj is BlockReference)
                     {
-                        BlockReference br = tr.GetObject(id, OpenMode.ForRead) as BlockReference;
-                        if (br != null)
+                        BlockReference blockRef = obj as BlockReference;
+                        BlockTableRecord blockDef = tr.GetObject(blockRef.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord;
+                        
+                        // 检查块名称是否匹配
+                        if (blockDef.Name.StartsWith(blockName))
                         {
-                            BlockTableRecord blockDef = tr.GetObject(br.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord;
-                            if (blockDef.Name == blockName)
-                            {
-                                LogIfNotSuppressed($"找到测试块ID: {id}, 名称: {blockName}");
-                                return id;
-                            }
+                            return blockRef.ObjectId;
                         }
                     }
                 }
                 
-                LogIfNotSuppressed($"未找到名为'{blockName}'的测试块");
+                // 未找到匹配的块
                 return ObjectId.Null;
             }
-            catch (System.Exception ex)
+            catch
             {
-                LogIfNotSuppressed($"查找测试块时出错: {ex.Message}");
                 return ObjectId.Null;
             }
+        }
+        
+        /// <summary>
+        /// 设置是否抑制日志输出 - 此方法在重构后不再需要，但为了接口兼容保留
+        /// </summary>
+        /// <param name="suppress">是否抑制</param>
+        public void SetLoggingSuppression(bool suppress)
+        {
+            // 方法不再需要，但为了接口兼容保留
         }
     }
 } 

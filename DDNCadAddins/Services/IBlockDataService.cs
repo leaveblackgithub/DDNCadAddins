@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
+using DDNCadAddins.Models;
 
 namespace DDNCadAddins.Services
 {
@@ -13,8 +14,8 @@ namespace DDNCadAddins.Services
         /// </summary>
         /// <param name="blockIds">图块对象ID集合</param>
         /// <param name="transaction">数据库事务</param>
-        /// <returns>图块数据和所有属性标签的元组</returns>
-        (Dictionary<ObjectId, Dictionary<string, string>> BlockData, HashSet<string> AllAttributeTags) ExtractBlockData(
+        /// <returns>操作结果，包含图块数据和所有属性标签</returns>
+        OperationResult<(Dictionary<ObjectId, Dictionary<string, string>> BlockData, HashSet<string> AllAttributeTags)> ExtractBlockData(
             IEnumerable<ObjectId> blockIds, 
             Transaction transaction);
     }

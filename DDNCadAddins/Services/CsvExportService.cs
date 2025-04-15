@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using Autodesk.AutoCAD.DatabaseServices;
 using DDNCadAddins.Infrastructure;
+using DDNCadAddins.Models;
 // 使用别名解决命名冲突
 using SystemException = System.Exception;
 
@@ -15,15 +16,11 @@ namespace DDNCadAddins.Services
     /// </summary>
     public class CsvExportService : ICsvExportService
     {
-        private readonly ILogger _logger;
-        
         /// <summary>
         /// 构造函数
         /// </summary>
-        /// <param name="logger">日志接口</param>
-        public CsvExportService(ILogger logger)
+        public CsvExportService()
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
         
         /// <summary>
@@ -32,12 +29,23 @@ namespace DDNCadAddins.Services
         /// <param name="blockData">图块数据字典</param>
         /// <param name="allAttributeTags">所有属性标签集合</param>
         /// <param name="csvFilePath">CSV文件保存路径</param>
-        /// <returns>导出的记录数</returns>
-        public int ExportToCsv(
+        /// <returns>操作结果，包含导出的记录数</returns>
+        public OperationResult<int> ExportToCsv(
             Dictionary<ObjectId, Dictionary<string, string>> blockData,
             HashSet<string> allAttributeTags,
             string csvFilePath)
         {
+            if (blockData == null)
+                return OperationResult<int>.ErrorResult("图块数据为空", TimeSpan.Zero);
+                
+            if (allAttributeTags == null)
+                return OperationResult<int>.ErrorResult("属性标签集合为空", TimeSpan.Zero);
+                
+            if (string.IsNullOrEmpty(csvFilePath))
+                return OperationResult<int>.ErrorResult("CSV文件路径无效", TimeSpan.Zero);
+                
+            DateTime startTime = DateTime.Now;
+            
             try
             {
                 // 按照收集到的所有属性名称排序创建CSV表头
@@ -85,13 +93,13 @@ namespace DDNCadAddins.Services
                     }
                 }
                 
-                return blockData.Count;
+                TimeSpan duration = DateTime.Now - startTime;
+                return OperationResult<int>.SuccessResult(blockData.Count, duration);
             }
             catch (SystemException ex)
             {
-                string errorMessage = $"写入CSV文件时出错: {ex.Message}";
-                _logger.LogError(errorMessage, ex);
-                throw;
+                TimeSpan duration = DateTime.Now - startTime;
+                return OperationResult<int>.ErrorResult($"写入CSV文件时出错: {ex.Message}", duration);
             }
         }
         

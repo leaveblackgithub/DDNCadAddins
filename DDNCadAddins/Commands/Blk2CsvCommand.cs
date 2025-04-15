@@ -15,6 +15,7 @@ using System.Windows.Forms;
 using AcadApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using SystemException = System.Exception;
 using DDNCadAddins.Services;
+using DDNCadAddins.Models;
 
 namespace DDNCadAddins.Commands
 {
@@ -37,7 +38,7 @@ namespace DDNCadAddins.Commands
             _logger = new FileLogger();
             _msgService = new AcadUserMessageService(_logger);
             _blockDataService = new BlockDataService();
-            _csvExportService = new CsvExportService(_logger);
+            _csvExportService = new CsvExportService();
             _uiService = new AcadUserInterfaceService(_logger, _msgService);
         }
         
@@ -51,6 +52,7 @@ namespace DDNCadAddins.Commands
             {
                 // 初始化日志
                 _logger.Initialize("Blk2Csv");
+                _logger.Log("开始执行Blk2Csv命令");
                 
                 // 执行导出操作
                 ExecuteExport();
@@ -58,10 +60,12 @@ namespace DDNCadAddins.Commands
             catch (SystemException ex)
             {
                 string errorMessage = $"执行命令时出错: {ex.Message}";
+                _logger.LogError(errorMessage, ex);
                 _uiService.ShowErrorMessage(errorMessage);
             }
             finally
             {
+                _logger.Log("命令执行完成");
                 _logger.Close();
             }
         }
@@ -76,6 +80,7 @@ namespace DDNCadAddins.Commands
             {
                 // 初始化日志
                 _logger.Initialize("ExportBlocksWithAttributes");
+                _logger.Log("开始执行ExportBlocksWithAttributes命令");
                 
                 // 执行导出操作
                 ExecuteExport();
@@ -83,10 +88,12 @@ namespace DDNCadAddins.Commands
             catch (SystemException ex)
             {
                 string errorMessage = $"执行命令时出错: {ex.Message}";
+                _logger.LogError(errorMessage, ex);
                 _uiService.ShowErrorMessage(errorMessage);
             }
             finally
             {
+                _logger.Log("命令执行完成");
                 _logger.Close();
             }
         }
@@ -100,6 +107,7 @@ namespace DDNCadAddins.Commands
             var doc = AcadApp.DocumentManager.MdiActiveDocument;
             if (doc == null)
             {
+                _logger.Log("当前没有打开的CAD文档");
                 AcadApp.ShowAlertDialog("当前没有打开的CAD文档");
                 return;
             }
@@ -107,24 +115,47 @@ namespace DDNCadAddins.Commands
             var db = doc.Database;
             
             // 获取用户选择的图块
+            _logger.Log("请求用户选择图块");
             var selectedBlocks = _uiService.GetSelectedBlocks();
             if (selectedBlocks == null)
+            {
+                _logger.Log("用户取消了图块选择");
                 return;
+            }
             
             // 获取用户选择的CSV保存路径
+            _logger.Log("请求用户选择CSV保存路径");
             string csvFilePath = _uiService.GetCsvSavePath();
             if (string.IsNullOrEmpty(csvFilePath))
+            {
+                _logger.Log("用户取消了文件保存");
                 return;
+            }
+            
+            _logger.Log($"用户选择了保存路径: {csvFilePath}");
             
             Dictionary<ObjectId, Dictionary<string, string>> blockData = null;
             HashSet<string> allAttribTags = null;
             
             // 提取图块数据
+            _logger.Log("开始提取图块数据");
             using (Transaction tr = db.TransactionManager.StartTransaction())
             {
                 var result = _blockDataService.ExtractBlockData(selectedBlocks, tr);
-                blockData = result.BlockData;
-                allAttribTags = result.AllAttributeTags;
+                
+                if (result.Success)
+                {
+                    var resultData = result.Data;
+                    blockData = resultData.BlockData;
+                    allAttribTags = resultData.AllAttributeTags;
+                    _logger.Log($"成功提取 {blockData.Count} 个图块数据");
+                }
+                else
+                {
+                    _logger.Log("提取图块数据失败: " + result.ErrorMessage);
+                    _uiService.ShowErrorMessage("提取图块数据失败: " + result.ErrorMessage);
+                    return;
+                }
                 
                 tr.Commit();
             }
@@ -132,46 +163,37 @@ namespace DDNCadAddins.Commands
             // 导出到CSV
             try
             {
-                int blockCount = _csvExportService.ExportToCsv(blockData, allAttribTags, csvFilePath);
+                _logger.Log("开始导出到CSV文件");
+                var exportResult = _csvExportService.ExportToCsv(blockData, allAttribTags, csvFilePath);
                 
-                // 显示结果
-                string resultMessage = $"\n已导出 {blockCount} 个图块数据到: {csvFilePath}";
-                _uiService.ShowResultMessage(resultMessage);
-                
-                // 询问是否打开CSV文件
-                if (_uiService.AskToOpenCsvFile())
+                if (exportResult.Success)
                 {
-                    _uiService.OpenFile(csvFilePath);
+                    int blockCount = exportResult.Data;
+                    _logger.Log($"成功导出 {blockCount} 个图块数据到: {csvFilePath}");
+                    
+                    // 显示结果
+                    string resultMessage = $"\n已导出 {blockCount} 个图块数据到: {csvFilePath}";
+                    _uiService.ShowResultMessage(resultMessage);
+                    
+                    // 询问是否打开CSV文件
+                    if (_uiService.AskToOpenCsvFile())
+                    {
+                        _logger.Log("用户选择打开CSV文件");
+                        _uiService.OpenFile(csvFilePath);
+                    }
+                }
+                else
+                {
+                    _logger.LogError($"导出CSV失败: {exportResult.ErrorMessage}", null);
+                    _uiService.ShowErrorMessage($"导出CSV失败: {exportResult.ErrorMessage}");
                 }
             }
             catch (SystemException ex)
             {
                 string errorMessage = $"写入CSV文件时出错: {ex.Message}";
+                _logger.LogError(errorMessage, ex);
                 _uiService.ShowErrorMessage(errorMessage);
             }
-        }
-        
-        /// <summary>
-        /// 转义CSV字段，确保包含逗号、引号或换行符的字段正确格式化
-        /// </summary>
-        private string EscapeCsvField(string field)
-        {
-            if (string.IsNullOrEmpty(field))
-                return string.Empty;
-                
-            // 检查是否需要转义
-            bool needsEscaping = field.Contains(",") || field.Contains("\"") || 
-                                 field.Contains("\r") || field.Contains("\n");
-                                 
-            if (needsEscaping)
-            {
-                // 将字段中的双引号替换为两个双引号
-                field = field.Replace("\"", "\"\"");
-                // 在字段两端添加双引号
-                field = "\"" + field + "\"";
-            }
-            
-            return field;
         }
     }
 } 

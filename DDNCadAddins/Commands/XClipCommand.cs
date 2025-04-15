@@ -29,7 +29,7 @@ namespace DDNCadAddins.Commands
             _logger = new FileLogger();
             _msgService = new AcadUserMessageService(_logger);
             _uiService = new AcadUserInterfaceService(_logger, _msgService);
-            _xclipService = new XClipBlockService(_logger);
+            _xclipService = new XClipBlockService();
             _viewService = new AcadViewService(_msgService, _logger);
         }
 
@@ -53,7 +53,7 @@ namespace DDNCadAddins.Commands
                 // 处理：调用服务查找XClip图块
                 _msgService.ShowMessage("正在搜索被XClip的图块，请稍等...");
                 
-                var result = _xclipService.FindXClippedBlocks(doc.Database);
+                var result = _xclipService.FindXClippedBlocks(doc.Database, doc.Editor);
                 
                 if (!result.Success)
                 {
@@ -96,37 +96,18 @@ namespace DDNCadAddins.Commands
                 
                 var doc = _uiService.GetActiveDocument();
                 
-                // 禁止服务层输出日志，由命令层统一控制
-                _xclipService.SetLoggingSuppression(true);
-                
                 // 处理：创建测试块
                 _msgService.ShowMessage("正在创建测试块...");
                 
-                var result = _xclipService.CreateTestBlock(doc.Database);
+                var result = _xclipService.CreateTestBlockWithId(doc.Database);
                 
                 // 输出：处理创建结果
                 if (result.Success)
                 {
                     _msgService.ShowSuccess("测试块创建成功");
                     
-                    // 查找创建的测试块并执行XClip操作
-                    using (Transaction tr = doc.Database.TransactionManager.StartTransaction())
-                    {
-                        // 查找创建的测试块
-                        ObjectId blockRefId = _xclipService.FindTestBlock(tr, doc.Database);
-                        
-                        if (blockRefId != ObjectId.Null)
-                        {
-                            // 执行自动XClip操作
-                            ExecuteAutoXClip(doc.Database, blockRefId);
-                        }
-                        else
-                        {
-                            _msgService.ShowWarning("无法找到刚创建的测试块，无法执行自动XClip");
-                        }
-                        
-                        tr.Commit();
-                    }
+                    // 执行自动XClip操作
+                    ExecuteAutoXClip(doc.Database, result.Data);
                 }
                 else
                 {
