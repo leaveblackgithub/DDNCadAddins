@@ -44,5 +44,23 @@ namespace DDNCadAddins.Services
         /// </summary>
         /// <param name="message">错误消息</param>
         void ShowErrorMessage(string message);
+        
+        /// <summary>
+        /// 询问用户是否要缩放到第一个XClip图块
+        /// </summary>
+        /// <returns>如果用户选择是，则返回true</returns>
+        bool AskToZoomToFirstBlock();
+        
+        /// <summary>
+        /// 获取当前活动文档
+        /// </summary>
+        /// <returns>当前活动文档，如果没有则返回null</returns>
+        Autodesk.AutoCAD.ApplicationServices.Document GetActiveDocument();
+        
+        /// <summary>
+        /// 验证当前活动文档是否存在
+        /// </summary>
+        /// <returns>如果当前有打开的文档则返回true</returns>
+        bool ValidateActiveDocument();
     }
 } 

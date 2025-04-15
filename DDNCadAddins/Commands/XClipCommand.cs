@@ -1,16 +1,12 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.IO;
-using System.Text;
-using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
-using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
-using Autodesk.AutoCAD.Geometry;
 using DDNCadAddins.Infrastructure;
-using DDNCadAddins.Models;
 using DDNCadAddins.Services;
+// 使用别名解决命名冲突
+using AcadApp = Autodesk.AutoCAD.ApplicationServices.Application;
+using SystemException = System.Exception;
 
 namespace DDNCadAddins.Commands
 {
@@ -21,6 +17,9 @@ namespace DDNCadAddins.Commands
     {
         private readonly ILogger _logger;
         private readonly IXClipBlockService _xclipService;
+        private readonly IUserMessageService _msgService;
+        private readonly IUserInterfaceService _uiService;
+        private readonly IViewService _viewService;
         
         /// <summary>
         /// 构造函数
@@ -28,7 +27,10 @@ namespace DDNCadAddins.Commands
         public XClipCommand()
         {
             _logger = new FileLogger();
+            _msgService = new AcadUserMessageService(_logger);
+            _uiService = new AcadUserInterfaceService(_logger, _msgService);
             _xclipService = new XClipBlockService(_logger);
+            _viewService = new AcadViewService(_msgService, _logger);
         }
 
         /// <summary>
@@ -37,88 +39,42 @@ namespace DDNCadAddins.Commands
         [CommandMethod("FindXClippedBlocks")]
         public void FindXClippedBlocks()
         {
-            Document doc = Application.DocumentManager.MdiActiveDocument;
-            if (doc == null)
-            {
-                Application.ShowAlertDialog("当前没有打开的CAD文档");
-                return;
-            }
-            
             // 初始化日志
             _logger.Initialize("FindXClippedBlocks");
             
             try
             {
-                _logger.Log("===== 开始查找被XClip的图块 =====");
-                doc.Editor.WriteMessage("\n正在搜索被XClip的图块，请稍等...");
+                // 输入：验证文档
+                if (!_uiService.ValidateActiveDocument())
+                    return;
                 
-                // 调用服务方法执行查找
-                OperationResult<List<XClippedBlockInfo>> result = 
-                    _xclipService.FindXClippedBlocks(doc.Database);
+                var doc = _uiService.GetActiveDocument();
                 
-                // 处理结果
+                // 处理：调用服务查找XClip图块
+                _msgService.ShowMessage("正在搜索被XClip的图块，请稍等...");
+                
+                var result = _xclipService.FindXClippedBlocks(doc.Database);
+                
                 if (!result.Success)
                 {
-                    _logger.Log($"执行失败: {result.ErrorMessage}");
-                    doc.Editor.WriteMessage($"\n查找失败: {result.ErrorMessage}");
+                    _msgService.ShowError($"查找失败: {result.ErrorMessage}");
                     return;
                 }
                 
-                var xclippedBlocks = result.Data;
+                // 输出：显示结果和询问用户
+                _viewService.ProcessAndDisplayXClipResults(result.Data);
                 
-                // 如果找不到被xclip的图块，输出提示
-                if (xclippedBlocks.Count == 0)
+                if (result.Data.Count > 0 && _uiService.AskToZoomToFirstBlock())
                 {
-                    _logger.Log("未找到被XClip的图块。");
-                    _logger.Log("可能原因：");
-                    _logger.Log("1. 图形中没有被XClip的图块");
-                    _logger.Log("2. XClip信息无法被正确识别");
-                    _logger.Log("建议：尝试使用CreateXClippedBlock命令创建测试块再进行检测");
-                    
-                    doc.Editor.WriteMessage("\n未找到被XClip的图块。");
-                    doc.Editor.WriteMessage("\n请确认以下几点：");
-                    doc.Editor.WriteMessage("\n1. 图形中是否存在块参照");
-                    doc.Editor.WriteMessage("\n2. 是否已使用XCLIP命令对块进行了裁剪");
-                    doc.Editor.WriteMessage("\n\n可尝试输入CreateXClippedBlock命令创建测试块，然后手动执行XCLIP进行裁剪测试");
-                    return;
+                    _viewService.ZoomToFirstXClippedBlock(doc, result.Data);
                 }
-
-                // 准备输出信息
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine($"\n\n===== 查找结果: 共找到 {xclippedBlocks.Count} 个被XClip的图块 =====");
-                sb.AppendLine($"搜索耗时: {result.ExecutionTime.TotalSeconds:F2} 秒");
-                sb.AppendLine("列表如下:");
-                
-                // 分组统计
-                var groupedBlocks = xclippedBlocks.GroupBy(b => b.BlockName)
-                                                .OrderBy(g => g.Key);
-                                                
-                foreach (var group in groupedBlocks)
-                {
-                    sb.AppendLine($"\n图块名称: {group.Key} (共 {group.Count()} 个)");
-                    int count = 0;
-                    foreach (var block in group)
-                    {
-                        count++;
-                        string nestInfo = block.NestLevel > 0 ? $"[嵌套级别:{block.NestLevel}] " : "";
-                        sb.AppendLine($"  {count}. {nestInfo}ID: {block.BlockReferenceId}, 检测方法: {block.DetectionMethod}");
-                    }
-                }
-                
-                sb.AppendLine("\n===== 查找结束 =====");
-                
-                // 输出结果
-                doc.Editor.WriteMessage(sb.ToString());
-                _logger.Log("===== FindXClippedBlocks命令执行结束 =====");
             }
-            catch (System.Exception ex)
+            catch (SystemException ex)
             {
-                _logger.LogError("执行FindXClippedBlocks命令时发生异常", ex);
-                doc.Editor.WriteMessage($"\n执行命令时发生错误: {ex.Message}");
+                _msgService.ShowError("查找XClip图块时发生错误", ex);
             }
             finally
             {
-                // 关闭日志文件
                 _logger.Close();
             }
         }
@@ -129,135 +85,99 @@ namespace DDNCadAddins.Commands
         [CommandMethod("CreateXClippedBlock")]
         public void CreateXClippedBlock()
         {
-            Document doc = Application.DocumentManager.MdiActiveDocument;
-            if (doc == null)
-            {
-                Application.ShowAlertDialog("当前没有打开的CAD文档");
-                return;
-            }
+            // 初始化日志
+            _logger.Initialize("CreateXClippedBlock");
             
-            // 收集所有提示信息
-            StringBuilder messageBuilder = new StringBuilder();
-            ObjectId blockRefId = ObjectId.Null;
-
             try
             {
+                // 输入：验证文档
+                if (!_uiService.ValidateActiveDocument())
+                    return;
+                
+                var doc = _uiService.GetActiveDocument();
+                
                 // 禁止服务层输出日志，由命令层统一控制
                 _xclipService.SetLoggingSuppression(true);
                 
-                // 调用服务创建测试块
-                OperationResult result = _xclipService.CreateTestBlock(doc.Database);
+                // 处理：创建测试块
+                _msgService.ShowMessage("正在创建测试块...");
                 
+                var result = _xclipService.CreateTestBlock(doc.Database);
+                
+                // 输出：处理创建结果
                 if (result.Success)
                 {
-                    messageBuilder.AppendLine("\n测试块已创建成功! 位置在坐标(10,10)处");
+                    _msgService.ShowSuccess("测试块创建成功");
                     
+                    // 查找创建的测试块并执行XClip操作
                     using (Transaction tr = doc.Database.TransactionManager.StartTransaction())
                     {
-                        // 获取刚创建的测试块的ID
-                        BlockTable bt = tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead) as BlockTable;
-                        BlockTableRecord ms = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead) as BlockTableRecord;
+                        // 查找创建的测试块
+                        ObjectId blockRefId = _xclipService.FindTestBlock(tr, doc.Database);
                         
-                        // 遍历模型空间中的对象查找测试块
-                        foreach (ObjectId id in ms)
+                        if (blockRefId != ObjectId.Null)
                         {
-                            BlockReference br = tr.GetObject(id, OpenMode.ForRead) as BlockReference;
-                            if (br != null)
-                            {
-                                BlockTableRecord btr = tr.GetObject(br.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord;
-                                if (btr.Name.StartsWith("TestBlock"))
-                                {
-                                    blockRefId = id;
-                                    _logger.Log($"找到测试块ID: {id}, 名称: {btr.Name}");
-                                    break;
-                                }
-                            }
-                        }
-                        tr.Commit();
-                    }
-                    
-                    if (blockRefId != ObjectId.Null)
-                    {
-                        // 自动执行XClip
-                        OperationResult xclipResult = _xclipService.AutoXClipBlock(doc.Database, blockRefId);
-                        
-                        if (xclipResult.Success)
-                        {
-                            // 在XClip执行成功后才初始化日志
-                            _logger.Initialize("CreateXClippedBlock");
-                            
-                            // 将日志输出移到这里
-                            _logger.Log("===== DDNCadAddins XClip命令执行日志 =====");
-                            _logger.Log($"操作: CreateXClippedBlock");
-                            _logger.Log($"开始时间: {DateTime.Now}");
-                            _logger.Log($"版本: {GetAssemblyVersion()}");
-                            _logger.Log("=====================================");
-                            _logger.Log("===== 开始创建测试图块 =====");
-                            _logger.Log("开始创建新的'TestBlock'定义...");
-                            _logger.Log("'TestBlock'定义创建成功，正在创建块参照...");
-                            _logger.Log("块参照已插入到坐标(10, 10, 0)");
-                            _logger.Log("正在提交事务...");
-                            _logger.Log($"操作完成，耗时: {result.ExecutionTime.TotalSeconds:F2}秒");
-                            _logger.Log($"找到测试块ID: {blockRefId}, 名称: TestBlock");
-                            _logger.Log("测试块已创建成功，现在自动执行XClip操作...");
-                            _logger.Log($"开始自动对图块({blockRefId})进行XClip裁剪...");
-                            _logger.Log($"处理块: TestBlock, ID: {blockRefId}");
-                            _logger.Log("创建边界框: (5.5, 5.5) 到 (14.5, 14.5)");
-                            _logger.Log("正在应用XClip....");
-                            
-                            _logger.Log("自动XClip操作成功完成！");
-                            messageBuilder.AppendLine("\n自动XClip操作成功完成！");
-                            messageBuilder.AppendLine($"操作耗时: {xclipResult.ExecutionTime.TotalSeconds:F2}秒");
-                            
-                            // 缩放到测试块位置
-                            _logger.Log("正在缩放到测试块位置...");
-                            ZoomToPoint(doc, new Point3d(10, 10, 0), 10);
-                            
-                            // 添加验证信息
-                            messageBuilder.AppendLine("\n可使用FindXClippedBlocks命令验证XClip效果");
+                            // 执行自动XClip操作
+                            ExecuteAutoXClip(doc.Database, blockRefId);
                         }
                         else
                         {
-                            _logger.Log($"自动XClip操作失败: {xclipResult.ErrorMessage}");
-                            messageBuilder.AppendLine($"\n尝试自动执行XClip操作失败: {xclipResult.ErrorMessage}");
-                            messageBuilder.AppendLine("\n失败后可尝试手动执行XClip操作:");
-                            messageBuilder.AppendLine("1. 输入XCLIP命令并按回车");
-                            messageBuilder.AppendLine("2. 选择创建的测试块并按回车");
-                            messageBuilder.AppendLine("3. 输入N并按回车(表示新建裁剪边界)");
-                            messageBuilder.AppendLine("4. 输入R并按回车(表示使用矩形边界)");
-                            messageBuilder.AppendLine("5. 绘制矩形裁剪边界");
+                            _msgService.ShowWarning("无法找到刚创建的测试块，无法执行自动XClip");
                         }
-                    }
-                    else
-                    {
-                        _logger.Log("无法找到刚创建的测试块，无法执行自动XClip");
-                        messageBuilder.AppendLine("\n无法找到刚创建的测试块，无法执行自动XClip");
+                        
+                        tr.Commit();
                     }
                 }
                 else
                 {
-                    _logger.Log($"创建测试块失败: {result.ErrorMessage}");
-                    messageBuilder.AppendLine($"\n创建测试块失败: {result.ErrorMessage}");
-                    messageBuilder.AppendLine("\n可能原因：");
-                    messageBuilder.AppendLine("1. 文件或目录权限问题");
-                    messageBuilder.AppendLine("2. 块名冲突");
-                    messageBuilder.AppendLine("3. CAD内部错误");
+                    _msgService.ShowError($"创建测试块失败: {result.ErrorMessage}");
+                    _msgService.ShowMessage("可能原因:");
+                    _msgService.ShowMessage("1. 文件或目录权限问题");
+                    _msgService.ShowMessage("2. 块名冲突");
+                    _msgService.ShowMessage("3. CAD内部错误");
                 }
-                
-                // 在所有操作完成后，统一输出消息
-                doc.Editor.WriteMessage(messageBuilder.ToString());
-                _logger.Log("===== CreateXClippedBlock命令执行结束 =====");
             }
-            catch (System.Exception ex)
+            catch (SystemException ex)
             {
-                _logger.LogError("执行CreateXClippedBlock命令时发生异常", ex);
-                doc.Editor.WriteMessage($"\n执行命令时发生错误: {ex.Message}");
+                _msgService.ShowError("执行CreateXClippedBlock命令时发生错误", ex);
             }
             finally
             {
-                // 关闭日志文件
                 _logger.Close();
             }
+        }
+        
+        /// <summary>
+        /// 执行自动XClip操作
+        /// </summary>
+        private void ExecuteAutoXClip(Database database, ObjectId blockRefId)
+        {
+            _msgService.ShowMessage("正在执行自动XClip操作...");
+            
+            var xclipResult = _xclipService.AutoXClipBlock(database, blockRefId);
+            
+            if (xclipResult.Success)
+            {
+                _msgService.ShowSuccess("自动XClip操作成功完成");
+            }
+            else
+            {
+                _msgService.ShowError($"自动XClip操作失败: {xclipResult.ErrorMessage}");
+                ShowManualXClipInstructions();
+            }
+        }
+        
+        /// <summary>
+        /// 显示手动XClip操作说明
+        /// </summary>
+        private void ShowManualXClipInstructions()
+        {
+            _msgService.ShowMessage("失败后可尝试手动执行XClip操作:");
+            _msgService.ShowMessage("1. 输入XCLIP命令并按回车");
+            _msgService.ShowMessage("2. 选择创建的测试块并按回车");
+            _msgService.ShowMessage("3. 输入N并按回车(表示新建裁剪边界)");
+            _msgService.ShowMessage("4. 输入R并按回车(表示使用矩形边界)");
+            _msgService.ShowMessage("5. 绘制矩形裁剪边界");
         }
         
         /// <summary>
@@ -268,71 +188,22 @@ namespace DDNCadAddins.Commands
         {
             try
             {
-                string logFilePath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "DDNCadAddins", 
-                    "DDNCadAddins_XClip.log"
-                );
-                
-                string logDirectory = Path.GetDirectoryName(logFilePath);
+                string logDirectory = FileLogger.LogDirectory;
                 
                 if (Directory.Exists(logDirectory))
                 {
                     System.Diagnostics.Process.Start("explorer.exe", logDirectory);
-                    Application.DocumentManager.MdiActiveDocument.Editor.WriteMessage($"\n已打开日志文件所在目录: {logDirectory}");
+                    _msgService.ShowMessage($"已打开日志文件所在目录: {logDirectory}");
                 }
                 else
                 {
-                    Application.ShowAlertDialog($"日志目录不存在: {logDirectory}");
+                    _msgService.ShowAlert($"日志目录不存在: {logDirectory}");
                 }
             }
-            catch (System.Exception ex)
+            catch (SystemException ex)
             {
-                Application.ShowAlertDialog($"打开日志目录时出错: {ex.Message}");
+                _msgService.ShowError("打开日志目录时出错", ex);
             }
-        }
-        
-        /// <summary>
-        /// 缩放到指定点
-        /// </summary>
-        private void ZoomToPoint(Document doc, Point3d point, double viewSize)
-        {
-            if (doc == null)
-                return;
-                
-            Editor ed = doc.Editor;
-            Database db = doc.Database;
-            
-            using (ViewTableRecord view = ed.GetCurrentView())
-            {
-                Extents3d extents = new Extents3d(
-                    new Point3d(point.X - viewSize / 2, point.Y - viewSize / 2, 0),
-                    new Point3d(point.X + viewSize / 2, point.Y + viewSize / 2, 0)
-                );
-                
-                // 如果当前视图是 UCS 视图，需要转换坐标
-                Matrix3d ucs = ed.CurrentUserCoordinateSystem;
-                if (!ucs.IsEqualTo(Matrix3d.Identity))
-                {
-                    extents.TransformBy(ucs.Inverse());
-                }
-
-                view.ViewDirection = Vector3d.ZAxis; // 设置为俯视
-                view.CenterPoint = new Point2d(point.X, point.Y); // 设置中心点 (修正属性名)
-                view.Width = viewSize;
-                view.Height = viewSize * (view.Height / view.Width); // 保持高宽比
-                
-                ed.SetCurrentView(view);
-                ed.Regen();
-            }
-        }
-
-        /// <summary>
-        /// 获取程序集版本号
-        /// </summary>
-        private string GetAssemblyVersion()
-        {
-            return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
         }
     }
 }

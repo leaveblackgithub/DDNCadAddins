@@ -27,6 +27,7 @@ namespace DDNCadAddins.Commands
         private readonly IBlockDataService _blockDataService;
         private readonly ICsvExportService _csvExportService;
         private readonly IUserInterfaceService _uiService;
+        private readonly IUserMessageService _msgService;
         
         /// <summary>
         /// 构造函数
@@ -34,9 +35,10 @@ namespace DDNCadAddins.Commands
         public Blk2CsvCommand()
         {
             _logger = new FileLogger();
+            _msgService = new AcadUserMessageService(_logger);
             _blockDataService = new BlockDataService();
             _csvExportService = new CsvExportService(_logger);
-            _uiService = new AcadUserInterfaceService(_logger);
+            _uiService = new AcadUserInterfaceService(_logger, _msgService);
         }
         
         /// <summary>

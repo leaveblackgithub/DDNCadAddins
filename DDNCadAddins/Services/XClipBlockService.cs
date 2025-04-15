@@ -122,7 +122,7 @@ namespace DDNCadAddins.Services
                 return OperationResult.ErrorResult("数据库为空", TimeSpan.Zero);
                 
             DateTime startTime = DateTime.Now;
-            string blockName = "TestBlock";
+            string blockName = "DDNTest";
             string uniqueBlockName = blockName;
                 
             try
@@ -737,6 +737,50 @@ namespace DDNCadAddins.Services
                     LogIfNotSuppressed($"内部异常: {ex.InnerException.Message}");
                 }
                 return OperationResult.ErrorResult(ex.Message, duration);
+            }
+        }
+        
+        /// <summary>
+        /// 查找测试块
+        /// </summary>
+        /// <param name="tr">事务</param>
+        /// <param name="db">数据库</param>
+        /// <param name="blockName">要查找的块名称，默认为"DDNTest"</param>
+        /// <returns>找到的测试块ID，如未找到则返回ObjectId.Null</returns>
+        public ObjectId FindTestBlock(Transaction tr, Database db, string blockName = "DDNTest")
+        {
+            if (tr == null || db == null)
+                return ObjectId.Null;
+            
+            try
+            {
+                BlockTable bt = tr.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                BlockTableRecord ms = tr.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForRead) as BlockTableRecord;
+                
+                foreach (ObjectId id in ms)
+                {
+                    if (id.ObjectClass.DxfName == "INSERT")
+                    {
+                        BlockReference br = tr.GetObject(id, OpenMode.ForRead) as BlockReference;
+                        if (br != null)
+                        {
+                            BlockTableRecord blockDef = tr.GetObject(br.BlockTableRecord, OpenMode.ForRead) as BlockTableRecord;
+                            if (blockDef.Name == blockName)
+                            {
+                                LogIfNotSuppressed($"找到测试块ID: {id}, 名称: {blockName}");
+                                return id;
+                            }
+                        }
+                    }
+                }
+                
+                LogIfNotSuppressed($"未找到名为'{blockName}'的测试块");
+                return ObjectId.Null;
+            }
+            catch (System.Exception ex)
+            {
+                LogIfNotSuppressed($"查找测试块时出错: {ex.Message}");
+                return ObjectId.Null;
             }
         }
     }

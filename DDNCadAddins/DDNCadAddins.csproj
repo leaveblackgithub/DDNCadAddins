@@ -96,16 +96,20 @@
   <ItemGroup>
     <Compile Include="Commands\Blk2CsvCommand.cs" />
     <Compile Include="Commands\XClipCommand.cs" />
+    <Compile Include="Infrastructure\AcadUserMessageService.cs" />
     <Compile Include="Infrastructure\FileLogger.cs" />
     <Compile Include="Infrastructure\ILogger.cs" />
+    <Compile Include="Infrastructure\IUserMessageService.cs" />
     <Compile Include="Models\OperationResult.cs" />
     <Compile Include="Models\XClippedBlockInfo.cs" />
     <Compile Include="Services\AcadUserInterfaceService.cs" />
+    <Compile Include="Services\AcadViewService.cs" />
     <Compile Include="Services\BlockDataService.cs" />
     <Compile Include="Services\CsvExportService.cs" />
     <Compile Include="Services\IBlockDataService.cs" />
     <Compile Include="Services\ICsvExportService.cs" />
     <Compile Include="Services\IUserInterfaceService.cs" />
+    <Compile Include="Services\IViewService.cs" />
     <Compile Include="Services\IXClipBlockService.cs" />
     <Compile Include="Services\XClipBlockService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

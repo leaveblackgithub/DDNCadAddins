@@ -19,21 +19,50 @@ namespace DDNCadAddins.Services
     public class AcadUserInterfaceService : IUserInterfaceService
     {
         private readonly ILogger _logger;
-        private readonly Document _document;
-        private readonly Editor _editor;
+        private readonly IUserMessageService _msgService;
         
         /// <summary>
         /// 构造函数
         /// </summary>
         /// <param name="logger">日志接口</param>
-        public AcadUserInterfaceService(ILogger logger)
+        /// <param name="msgService">消息服务接口</param>
+        public AcadUserInterfaceService(ILogger logger, IUserMessageService msgService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _document = AcadApp.DocumentManager.MdiActiveDocument;
-            if (_document == null)
-                throw new InvalidOperationException("当前没有打开的CAD文档");
-                
-            _editor = _document.Editor;
+            _msgService = msgService ?? throw new ArgumentNullException(nameof(msgService));
+        }
+        
+        /// <summary>
+        /// 获取当前编辑器
+        /// </summary>
+        private Editor GetCurrentEditor()
+        {
+            Document doc = AcadApp.DocumentManager.MdiActiveDocument;
+            return doc?.Editor;
+        }
+        
+        /// <summary>
+        /// 获取当前活动文档
+        /// </summary>
+        /// <returns>当前活动文档，如果没有则返回null</returns>
+        public Document GetActiveDocument()
+        {
+            return AcadApp.DocumentManager.MdiActiveDocument;
+        }
+        
+        /// <summary>
+        /// 验证当前活动文档是否存在
+        /// </summary>
+        /// <returns>如果当前有打开的文档则返回true</returns>
+        public bool ValidateActiveDocument()
+        {
+            Document doc = GetActiveDocument();
+            if (doc == null)
+            {
+                _msgService.ShowAlert("当前没有打开的CAD文档");
+                return false;
+            }
+            return true;
         }
         
         /// <summary>
@@ -43,6 +72,10 @@ namespace DDNCadAddins.Services
         public IEnumerable<ObjectId> GetSelectedBlocks()
         {
             // 选择图块
+            Editor ed = GetCurrentEditor();
+            if (ed == null)
+                return null;
+                
             PromptSelectionOptions selOpts = new PromptSelectionOptions();
             selOpts.MessageForAdding = "\n请选择要导出信息的图块: ";
             selOpts.AllowDuplicates = false;
@@ -53,14 +86,14 @@ namespace DDNCadAddins.Services
             };
             SelectionFilter filter = new SelectionFilter(filterList);
             
-            PromptSelectionResult selResult = _editor.GetSelection(selOpts, filter);
+            PromptSelectionResult selResult = ed.GetSelection(selOpts, filter);
             if (selResult.Status != PromptStatus.OK)
                 return null;
             
             SelectionSet ss = selResult.Value;
             if (ss == null || ss.Count == 0)
             {
-                _editor.WriteMessage("\n未选择任何图块。");
+                _msgService.ShowWarning("未选择任何图块");
                 return null;
             }
             
@@ -107,8 +140,7 @@ namespace DDNCadAddins.Services
         /// <param name="message">消息内容</param>
         public void ShowResultMessage(string message)
         {
-            _editor.WriteMessage(message);
-            _logger.Log(message);
+            _msgService.ShowMessage(message);
         }
         
         /// <summary>
@@ -117,13 +149,38 @@ namespace DDNCadAddins.Services
         /// <returns>如果用户选择打开，则返回true</returns>
         public bool AskToOpenCsvFile()
         {
+            Editor ed = GetCurrentEditor();
+            if (ed == null)
+                return false;
+                
             PromptKeywordOptions keyOpts = new PromptKeywordOptions("\n是否打开CSV文件? ");
             keyOpts.Keywords.Add("是");
             keyOpts.Keywords.Add("否");
             keyOpts.Keywords.Default = "是";
             keyOpts.AllowNone = true;
             
-            PromptResult keyRes = _editor.GetKeywords(keyOpts);
+            PromptResult keyRes = ed.GetKeywords(keyOpts);
+            return keyRes.Status == PromptStatus.OK && 
+                  (keyRes.StringResult == "是" || string.IsNullOrEmpty(keyRes.StringResult));
+        }
+        
+        /// <summary>
+        /// 询问用户是否要缩放到第一个XClip图块
+        /// </summary>
+        /// <returns>如果用户选择是，则返回true</returns>
+        public bool AskToZoomToFirstBlock()
+        {
+            Editor ed = GetCurrentEditor();
+            if (ed == null)
+                return false;
+                
+            PromptKeywordOptions keyOpts = new PromptKeywordOptions("\n是否要缩放到第一个XClip图块? ");
+            keyOpts.Keywords.Add("是");
+            keyOpts.Keywords.Add("否");
+            keyOpts.Keywords.Default = "是";
+            keyOpts.AllowNone = true;
+            
+            PromptResult keyRes = ed.GetKeywords(keyOpts);
             return keyRes.Status == PromptStatus.OK && 
                   (keyRes.StringResult == "是" || string.IsNullOrEmpty(keyRes.StringResult));
         }
@@ -137,10 +194,11 @@ namespace DDNCadAddins.Services
             if (File.Exists(filePath))
             {
                 Process.Start(filePath);
+                _msgService.ShowMessage($"已打开文件: {filePath}");
             }
             else
             {
-                ShowErrorMessage($"文件不存在: {filePath}");
+                _msgService.ShowError($"文件不存在: {filePath}");
             }
         }
         
@@ -150,8 +208,7 @@ namespace DDNCadAddins.Services
         /// <param name="message">错误消息</param>
         public void ShowErrorMessage(string message)
         {
-            _editor.WriteMessage("\n" + message);
-            _logger.LogError(message, null);
+            _msgService.ShowError(message);
         }
     }
 } 

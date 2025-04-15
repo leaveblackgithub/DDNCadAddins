@@ -32,6 +32,15 @@ namespace DDNCadAddins.Services
         OperationResult AutoXClipBlock(Database database, ObjectId blockRefId);
         
         /// <summary>
+        /// 查找测试块
+        /// </summary>
+        /// <param name="tr">事务</param>
+        /// <param name="db">数据库</param>
+        /// <param name="blockName">要查找的块名称，默认为"DDNTest"</param>
+        /// <returns>找到的测试块ID，如未找到则返回ObjectId.Null</returns>
+        ObjectId FindTestBlock(Transaction tr, Database db, string blockName = "DDNTest");
+        
+        /// <summary>
         /// 设置是否抑制日志输出
         /// </summary>
         /// <param name="suppress">是否抑制</param>

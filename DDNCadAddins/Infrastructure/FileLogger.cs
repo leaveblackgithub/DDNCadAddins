@@ -4,6 +4,8 @@ using System.Linq;
 using System.IO;
 using System.Text;
 using Autodesk.AutoCAD.ApplicationServices;
+// 使用别名解决命名冲突
+using AcadApp = Autodesk.AutoCAD.ApplicationServices.Application;
 
 namespace DDNCadAddins.Infrastructure
 {
@@ -13,12 +15,26 @@ namespace DDNCadAddins.Infrastructure
     public class FileLogger : ILogger
     {
         private StreamWriter _logWriter;
-        private StringBuilder _logBuffer = new StringBuilder();
+        private readonly StringBuilder _logBuffer = new StringBuilder();
+        private string _operationName;
+        private DateTime _startTime;
         
         /// <summary>
         /// 日志文件路径
         /// </summary>
         public string LogFilePath { get; private set; }
+        
+        /// <summary>
+        /// 日志目录
+        /// </summary>
+        public static string LogDirectory
+        {
+            get
+            {
+                string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                return Path.Combine(appDataPath, "DDNCadAddins", "Logs");
+            }
+        }
         
         /// <summary>
         /// 初始化日志文件
@@ -28,37 +44,33 @@ namespace DDNCadAddins.Infrastructure
         {
             try
             {
-                string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string logDir = Path.Combine(appDataPath, "DDNCadAddins", "Logs");
+                _operationName = operationName;
+                _startTime = DateTime.Now;
                 
                 // 确保日志目录存在
-                if (!Directory.Exists(logDir))
+                if (!Directory.Exists(LogDirectory))
                 {
-                    Directory.CreateDirectory(logDir);
+                    Directory.CreateDirectory(LogDirectory);
                 }
                 
                 // 创建带有时间戳的日志文件名
-                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                LogFilePath = Path.Combine(logDir, $"XClipCommand_{operationName}_{timestamp}.log");
+                string timestamp = _startTime.ToString("yyyyMMdd_HHmmss");
+                LogFilePath = Path.Combine(LogDirectory, $"{operationName}_{timestamp}.log");
                 
                 // 创建日志文件流
                 _logWriter = new StreamWriter(LogFilePath, false, Encoding.UTF8);
                 _logWriter.AutoFlush = true;
                 
                 // 写入日志头信息
-                if (operationName != "CreateXClippedBlock")
-                {
-                    Log("===== DDNCadAddins XClip命令执行日志 =====");
-                    Log($"操作: {operationName}");
-                    Log($"开始时间: {DateTime.Now}");
-                    Log($"版本: {GetAssemblyVersion()}");
-                    Log("=====================================");
-                }
+                Log($"===== DDNCadAddins {operationName}命令执行日志 =====", false);
+                Log($"开始时间: {_startTime}", false);
+                Log($"版本: {GetAssemblyVersion()}", false);
+                Log("=====================================", false);
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 // 如果初始化日志失败，输出到AutoCAD命令行
-                Document doc = Application.DocumentManager.MdiActiveDocument;
+                Document doc = AcadApp.DocumentManager.MdiActiveDocument;
                 if (doc != null)
                 {
                     doc.Editor.WriteMessage($"\n日志初始化失败: {ex.Message}");
@@ -75,19 +87,22 @@ namespace DDNCadAddins.Infrastructure
         {
             try
             {
+                // 添加时间戳
+                string timestampedMessage = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
+                
                 // 写入到日志文件
                 if (_logWriter != null)
                 {
-                    _logWriter.WriteLine(message);
+                    _logWriter.WriteLine(timestampedMessage);
                 }
                 
                 // 添加到缓冲区
-                _logBuffer.AppendLine(message);
+                _logBuffer.AppendLine(timestampedMessage);
                 
-                // 写入到命令行
+                // 写入到命令行（仅在需要时）
                 if (writeToCommand)
                 {
-                    Document doc = Application.DocumentManager.MdiActiveDocument;
+                    Document doc = AcadApp.DocumentManager.MdiActiveDocument;
                     if (doc != null)
                     {
                         doc.Editor.WriteMessage($"\n{message}");
@@ -105,14 +120,14 @@ namespace DDNCadAddins.Infrastructure
         /// </summary>
         /// <param name="message">错误消息</param>
         /// <param name="ex">异常对象</param>
-        public void LogError(string message, System.Exception ex)
+        public void LogError(string message, Exception ex)
         {
-            Log($"错误: {message}");
+            Log($"错误: {message}", false);
             if (ex != null)
             {
-                Log($"异常类型: {ex.GetType().Name}");
-                Log($"异常消息: {ex.Message}");
-                Log($"堆栈跟踪: {ex.StackTrace}");
+                Log($"异常类型: {ex.GetType().Name}", false);
+                Log($"异常消息: {ex.Message}", false);
+                Log($"堆栈跟踪: {ex.StackTrace}", false);
             }
         }
         
@@ -125,8 +140,10 @@ namespace DDNCadAddins.Infrastructure
             {
                 if (_logWriter != null)
                 {
-                    Log($"结束时间: {DateTime.Now}");
-                    Log("===== 日志结束 =====");
+                    TimeSpan duration = DateTime.Now - _startTime;
+                    Log($"执行时间: {duration.TotalSeconds:F2}秒", false);
+                    Log($"结束时间: {DateTime.Now}", false);
+                    Log($"===== {_operationName}命令日志结束 =====", false);
                     
                     _logWriter.Flush();
                     _logWriter.Close();
@@ -152,19 +169,16 @@ namespace DDNCadAddins.Infrastructure
         /// <summary>
         /// 获取最新日志文件路径
         /// </summary>
-        /// <param name="fileNamePrefix">文件名前缀</param>
+        /// <param name="commandName">命令名称</param>
         /// <returns>日志文件路径，如果不存在则返回null</returns>
-        public static string GetLatestLogFile(string fileNamePrefix)
+        public static string GetLatestLogFile(string commandName)
         {
             try
             {
-                string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string logDir = Path.Combine(appDataPath, "DDNCadAddins", "Logs");
-                
-                if (Directory.Exists(logDir))
+                if (Directory.Exists(LogDirectory))
                 {
                     // 查找最新的日志文件
-                    var logFiles = new DirectoryInfo(logDir).GetFiles($"{fileNamePrefix}_*.log")
+                    var logFiles = new DirectoryInfo(LogDirectory).GetFiles($"{commandName}_*.log")
                                                           .OrderByDescending(f => f.LastWriteTime)
                                                           .ToList();
                     

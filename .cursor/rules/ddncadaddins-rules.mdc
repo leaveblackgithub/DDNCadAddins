@@ -5,3 +5,4 @@ alwaysApply: true
 ---
 
 # 使用CAD .NET 2019 API
+# 捕捉所有异常，用OperationResult返回调用函数，不允许抛出任何异常。
