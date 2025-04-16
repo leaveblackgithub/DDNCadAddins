@@ -1,0 +1,92 @@
+# EditorConfig帮助开发者在不同编辑器和IDE中保持一致的编码风格
+# https://editorconfig.org/
+
+# 顶级EditorConfig文件
+root = true
+
+# 所有文件
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+end_of_line = crlf
+
+# C#文件
+[*.cs]
+
+# 设置代码样式规则
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# 命名规则
+dotnet_naming_rule.private_members_with_underscore.symbols = private_fields
+dotnet_naming_rule.private_members_with_underscore.style = prefix_underscore
+dotnet_naming_rule.private_members_with_underscore.severity = suggestion
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.prefix_underscore.capitalization = camel_case
+dotnet_naming_style.prefix_underscore.required_prefix = _
+
+# 调用实例方法时使用this前缀 (解决SA1101)
+dotnet_style_qualification_for_field = true:warning
+dotnet_style_qualification_for_property = true:warning
+dotnet_style_qualification_for_method = true:warning
+dotnet_style_qualification_for_event = true:warning
+
+# 单行语句必须使用大括号 (解决SA1503)
+csharp_prefer_braces = true:warning
+
+# 参数格式化 (解决SA1117)
+dotnet_style_coalesce_expression = true:warning
+dotnet_style_collection_initializer = true:warning
+dotnet_style_explicit_tuple_names = true:warning
+dotnet_style_null_propagation = true:warning
+dotnet_style_object_initializer = true:warning
+
+# 运算符空格 (解决SA1003)
+csharp_space_around_binary_operators = before_and_after
+
+# 多行初始化器的末尾逗号 (解决SA1413)
+dotnet_style_prefer_collection_expression = whenever_possible
+
+# 代码分析规则
+# 使用StringComparison (解决CA1310)
+dotnet_diagnostic.CA1310.severity = warning
+
+# 验证参数非null (解决CA1062)
+dotnet_diagnostic.CA1062.severity = warning
+dotnet_code_quality.CA1062.exclude_extension_method_this_parameter = true
+dotnet_code_quality.CA1062.null_check_validation_methods = ArgumentNotNull|ThrowIfNull
+
+# 使用using语句确保Disposable对象正确释放 (解决CA2000)
+dotnet_diagnostic.CA2000.severity = warning
+
+# 捕获特定异常类型 (解决CA1031)
+dotnet_diagnostic.CA1031.severity = warning
+
+# 指定StringComparison (解决CA1304, CA1305, CA1310)
+dotnet_diagnostic.CA1304.severity = warning
+dotnet_diagnostic.CA1305.severity = warning
+
+# 静态成员 (解决CA1822)
+dotnet_diagnostic.CA1822.severity = warning
+
+# StyleCop规则
+# 禁用文档注释规则（可以根据项目需要启用）
+dotnet_diagnostic.SA1600.severity = none
+dotnet_diagnostic.SA1601.severity = none
+dotnet_diagnostic.SA1602.severity = none
+dotnet_diagnostic.SA1633.severity = none
+
+# 启用核心格式规则
+dotnet_diagnostic.SA1101.severity = warning  # 本地调用前缀使用this
+dotnet_diagnostic.SA1503.severity = warning  # 不能省略大括号
+dotnet_diagnostic.SA1117.severity = warning  # 参数应该全部在同一行或每个参数一行
+dotnet_diagnostic.SA1413.severity = warning  # 多行初始化器使用尾部逗号
+dotnet_diagnostic.SA1003.severity = warning  # 运算符前后应有空格
+dotnet_diagnostic.SA1108.severity = warning  # 代码块不应包含嵌入式注释
+dotnet_diagnostic.SA1500.severity = warning  # 多行语句的大括号不应共享一行
+dotnet_diagnostic.SA1519.severity = warning  # 不应从多行子语句中省略大括号 

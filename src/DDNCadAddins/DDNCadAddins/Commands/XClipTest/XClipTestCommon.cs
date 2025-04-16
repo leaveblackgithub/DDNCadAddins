@@ -49,9 +49,8 @@ namespace DDNCadAddins.Commands.XClipTest
         {
             if (id != ObjectId.Null && id.IsValid)
             {
-                BlockIds.Add(id);
-                if (!string.IsNullOrEmpty(name))
-                    NamedBlocks[name] = id;
+                this.BlockIds.Add(id);
+                if (!string.IsNullOrEmpty(name)) {NamedBlocks[name] = id;}
             }
         }
     }

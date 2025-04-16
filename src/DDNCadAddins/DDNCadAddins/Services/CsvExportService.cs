@@ -35,14 +35,11 @@ namespace DDNCadAddins.Services
             HashSet<string> allAttributeTags,
             string csvFilePath)
         {
-            if (blockData == null)
-                return OperationResult<int>.ErrorResult("图块数据为空", TimeSpan.Zero);
+            if (blockData == null) {return OperationResult<int>.ErrorResult("图块数据为空", TimeSpan.Zero);}
                 
-            if (allAttributeTags == null)
-                return OperationResult<int>.ErrorResult("属性标签集合为空", TimeSpan.Zero);
+            if (allAttributeTags == null) {return OperationResult<int>.ErrorResult("属性标签集合为空", TimeSpan.Zero);}
                 
-            if (string.IsNullOrEmpty(csvFilePath))
-                return OperationResult<int>.ErrorResult("CSV文件路径无效", TimeSpan.Zero);
+            if (string.IsNullOrEmpty(csvFilePath)) {return OperationResult<int>.ErrorResult("CSV文件路径无效", TimeSpan.Zero);}
                 
             DateTime startTime = DateTime.Now;
             
@@ -53,10 +50,10 @@ namespace DDNCadAddins.Services
                 sortedTags.Sort();
                 
                 // 将BlockName, X, Y, Z放在前面
-                if (sortedTags.Contains("Z")) sortedTags.Remove("Z");
-                if (sortedTags.Contains("Y")) sortedTags.Remove("Y");
-                if (sortedTags.Contains("X")) sortedTags.Remove("X");
-                if (sortedTags.Contains("BlockName")) sortedTags.Remove("BlockName");
+                if (sortedTags.Contains("Z")) {sortedTags.Remove("Z");}
+                if (sortedTags.Contains("Y")) {sortedTags.Remove("Y");}
+                if (sortedTags.Contains("X")) {sortedTags.Remove("X");}
+                if (sortedTags.Contains("BlockName")) {sortedTags.Remove("BlockName");}
                 
                 sortedTags.Insert(0, "Z");
                 sortedTags.Insert(0, "Y");
@@ -108,8 +105,7 @@ namespace DDNCadAddins.Services
         /// </summary>
         private string EscapeCsvField(string field)
         {
-            if (string.IsNullOrEmpty(field))
-                return string.Empty;
+            if (string.IsNullOrEmpty(field)) {return string.Empty;}
                 
             // 检查是否需要转义
             bool needsEscaping = field.Contains(",") || field.Contains("\"") || 

@@ -156,7 +156,12 @@ namespace DDNCadAddins.Infrastructure
                 // 忽略关闭日志错误
             }
         }
-        
+
+        public void LogInfo(string statusMessage)
+        {
+            Log($"{statusMessage}", false);
+        }
+
         /// <summary>
         /// 获取程序集版本号
         /// </summary>

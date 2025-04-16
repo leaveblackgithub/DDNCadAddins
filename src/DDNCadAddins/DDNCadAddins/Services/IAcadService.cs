@@ -113,5 +113,6 @@ namespace DDNCadAddins.Services
         /// </summary>
         /// <param name="message">消息内容</param>
         void WriteMessage(string message);
+        Editor GetEditor();
     }
 } 

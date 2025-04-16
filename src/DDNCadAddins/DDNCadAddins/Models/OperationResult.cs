@@ -1,38 +1,82 @@
 using System;
+using System.Collections.Generic;
 
 namespace DDNCadAddins.Models
 {
     /// <summary>
-    /// 操作结果基类 - 用于统一返回结果
+    /// 操作结果接口 - 基础接口
     /// </summary>
-    public class OperationResult
+    public interface IOperationResult
     {
         /// <summary>
-        /// 结果类型枚举
+        /// 操作是否成功
         /// </summary>
-        public enum ResultType
-        {
-            /// <summary>
-            /// 成功
-            /// </summary>
-            Success,
-            
-            /// <summary>
-            /// 错误
-            /// </summary>
-            Error,
-            
-            /// <summary>
-            /// 警告
-            /// </summary>
-            Warning,
-            
-            /// <summary>
-            /// 信息
-            /// </summary>
-            Info
-        }
+        bool Success { get; }
         
+        /// <summary>
+        /// 错误信息（如果操作失败）
+        /// </summary>
+        string ErrorMessage { get; }
+        
+        /// <summary>
+        /// 成功消息（如果操作成功）
+        /// </summary>
+        string Message { get; }
+        
+        /// <summary>
+        /// 操作执行时间
+        /// </summary>
+        TimeSpan ExecutionTime { get; }
+        
+        /// <summary>
+        /// 结果类型
+        /// </summary>
+        OperationResultType Type { get; }
+    }
+    
+    /// <summary>
+    /// 泛型操作结果接口 - 带返回数据
+    /// </summary>
+    /// <typeparam name="T">数据类型</typeparam>
+    public interface IOperationResult<T> : IOperationResult
+    {
+        /// <summary>
+        /// 返回的数据
+        /// </summary>
+        T Data { get; }
+    }
+    
+    /// <summary>
+    /// 结果类型枚举
+    /// </summary>
+    public enum OperationResultType
+    {
+        /// <summary>
+        /// 成功
+        /// </summary>
+        Success,
+        
+        /// <summary>
+        /// 错误
+        /// </summary>
+        Error,
+        
+        /// <summary>
+        /// 警告
+        /// </summary>
+        Warning,
+        
+        /// <summary>
+        /// 信息
+        /// </summary>
+        Info
+    }
+    
+    /// <summary>
+    /// 操作结果基类 - 用于统一返回结果
+    /// </summary>
+    public class OperationResult : IOperationResult
+    {
         /// <summary>
         /// 操作是否成功
         /// </summary>
@@ -56,7 +100,7 @@ namespace DDNCadAddins.Models
         /// <summary>
         /// 结果类型
         /// </summary>
-        public ResultType Type { get; set; } = ResultType.Success;
+        public OperationResultType Type { get; set; } = OperationResultType.Success;
         
         /// <summary>
         /// 默认构造函数
@@ -72,13 +116,11 @@ namespace DDNCadAddins.Models
         /// <param name="message">消息</param>
         /// <param name="executionTime">执行时间</param>
         /// <param name="type">结果类型</param>
-        public OperationResult(bool success, string message, TimeSpan executionTime, ResultType type = ResultType.Success)
+        public OperationResult(bool success, string message, TimeSpan executionTime, OperationResultType type = OperationResultType.Success)
         {
             Success = success;
-            if (success)
-                Message = message;
-            else
-                ErrorMessage = message;
+            if (success) {Message = message;}
+            else {ErrorMessage = message;}
             ExecutionTime = executionTime;
             Type = type;
         }
@@ -94,7 +136,7 @@ namespace DDNCadAddins.Models
             { 
                 Success = true,
                 ExecutionTime = executionTime,
-                Type = ResultType.Success
+                Type = OperationResultType.Success
             };
         }
         
@@ -111,7 +153,7 @@ namespace DDNCadAddins.Models
                 Success = true,
                 Message = message,
                 ExecutionTime = executionTime,
-                Type = ResultType.Success
+                Type = OperationResultType.Success
             };
         }
         
@@ -128,7 +170,7 @@ namespace DDNCadAddins.Models
                 Success = false,
                 ErrorMessage = errorMessage,
                 ExecutionTime = executionTime,
-                Type = ResultType.Error
+                Type = OperationResultType.Error
             };
         }
         
@@ -145,7 +187,7 @@ namespace DDNCadAddins.Models
                 Success = false,
                 Message = warningMessage,
                 ExecutionTime = executionTime,
-                Type = ResultType.Warning
+                Type = OperationResultType.Warning
             };
         }
     }
@@ -154,12 +196,33 @@ namespace DDNCadAddins.Models
     /// 泛型操作结果类 - 用于返回带数据的结果
     /// </summary>
     /// <typeparam name="T">返回数据类型</typeparam>
-    public class OperationResult<T> : OperationResult
+    public class OperationResult<T> : OperationResult, IOperationResult<T>
     {
         /// <summary>
         /// 返回的数据
         /// </summary>
         public T Data { get; set; }
+        
+        /// <summary>
+        /// 默认构造函数
+        /// </summary>
+        public OperationResult() : base()
+        {
+        }
+        
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="success">是否成功</param>
+        /// <param name="data">返回数据</param>
+        /// <param name="message">消息</param>
+        /// <param name="executionTime">执行时间</param>
+        /// <param name="type">结果类型</param>
+        public OperationResult(bool success, T data, string message, TimeSpan executionTime, OperationResultType type = OperationResultType.Success)
+            : base(success, message, executionTime, type)
+        {
+            Data = data;
+        }
         
         /// <summary>
         /// 创建成功结果并包含数据
@@ -174,7 +237,7 @@ namespace DDNCadAddins.Models
                 Success = true,
                 Data = data,
                 ExecutionTime = executionTime,
-                Type = ResultType.Success
+                Type = OperationResultType.Success
             };
         }
         
@@ -193,7 +256,7 @@ namespace DDNCadAddins.Models
                 Data = data,
                 Message = message,
                 ExecutionTime = executionTime,
-                Type = ResultType.Success
+                Type = OperationResultType.Success
             };
         }
         
@@ -210,7 +273,7 @@ namespace DDNCadAddins.Models
                 Success = false,
                 ErrorMessage = errorMessage,
                 ExecutionTime = executionTime,
-                Type = ResultType.Error
+                Type = OperationResultType.Error
             };
         }
         
@@ -227,7 +290,7 @@ namespace DDNCadAddins.Models
                 Success = false,
                 Message = warningMessage,
                 ExecutionTime = executionTime,
-                Type = ResultType.Warning
+                Type = OperationResultType.Warning
             };
         }
     }

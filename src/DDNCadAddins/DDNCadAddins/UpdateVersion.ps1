@@ -1,48 +1,48 @@
-# 版本号更新脚本
+# Version Update Script
 param (
     [string]$assemblyInfoPath = "Properties\AssemblyInfo.cs"
 )
 
-# 设置输出编码为UTF-8
+# Set output encoding to UTF-8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 获取完整路径
+# Get full path
 $fullPath = Join-Path $PSScriptRoot $assemblyInfoPath
-Write-Host "更新版本号：$fullPath"
+Write-Host "Updating version number: $fullPath"
 
-# 读取文件内容
+# Read file content
 $content = Get-Content $fullPath -Raw
 
-# 查找版本号
+# Find version number
 $versionPattern = '\[assembly: AssemblyVersion\("(\d+)\.(\d+)\.(\d+)\.(\d+)"\)\]'
 $versionMatch = [regex]::Match($content, $versionPattern)
 
 if ($versionMatch.Success) {
-    # 提取当前版本号
+    # Extract current version number
     $major = [int]$versionMatch.Groups[1].Value
     $minor = [int]$versionMatch.Groups[2].Value
     $build = [int]$versionMatch.Groups[3].Value
     $revision = [int]$versionMatch.Groups[4].Value + 1
     
-    # 创建新版本号
+    # Create new version number
     $newVersion = "$major.$minor.$build.$revision"
     
-    Write-Host "旧版本: $major.$minor.$build.$($revision-1)"
-    Write-Host "新版本: $newVersion"
+    Write-Host "Old version: $major.$minor.$build.$($revision-1)"
+    Write-Host "New version: $newVersion"
     
-    # 更新AssemblyVersion
+    # Update AssemblyVersion
     $newAssemblyVersion = "[assembly: AssemblyVersion(""$newVersion"")]"
     $content = [regex]::Replace($content, $versionPattern, $newAssemblyVersion)
     
-    # 更新AssemblyFileVersion
+    # Update AssemblyFileVersion
     $fileVersionPattern = '\[assembly: AssemblyFileVersion\("(\d+)\.(\d+)\.(\d+)\.(\d+)"\)\]'
     $newFileVersion = "[assembly: AssemblyFileVersion(""$newVersion"")]"
     $content = [regex]::Replace($content, $fileVersionPattern, $newFileVersion)
     
-    # 写回文件
+    # Write back to file
     Set-Content -Path $fullPath -Value $content
     
-    Write-Host "版本号已更新为 $newVersion"
+    Write-Host "Version number updated to $newVersion"
 } else {
-    Write-Host "未找到版本号信息"
+    Write-Host "Version number information not found"
 } 

@@ -1,4 +1,5 @@
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
 
 namespace DDNCadAddins.Models
 {
@@ -26,5 +27,10 @@ namespace DDNCadAddins.Models
         /// 嵌套级别，0表示顶层图块，大于0表示嵌套图块
         /// </summary>
         public int NestLevel { get; set; }
+        
+        /// <summary>
+        /// 图块插入点位置
+        /// </summary>
+        public Point3d Position { get; set; }
     }
 } 

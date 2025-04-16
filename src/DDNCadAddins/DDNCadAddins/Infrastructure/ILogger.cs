@@ -31,5 +31,6 @@ namespace DDNCadAddins.Infrastructure
         /// 关闭日志
         /// </summary>
         void Close();
+        void LogInfo(string statusMessage);
     }
 } 
