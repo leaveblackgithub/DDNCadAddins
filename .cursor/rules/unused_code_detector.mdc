@@ -1,0 +1,60 @@
+# Unused Code Detector
+
+This rule detects and highlights unused code in C# files, including:
+
+1. Unused private methods
+2. Unused private fields
+3. Unused local variables
+4. Unused parameters
+5. Unused using directives
+
+## How to Use
+
+Cursor will automatically highlight unused code with warnings. You can:
+
+1. Hover over the highlighted code to see the warning
+2. Use the quick fix menu (Ctrl+.) to remove the unused code
+3. Run the "Remove Unused Code" action to automatically clean up all detected issues
+
+## Configuration
+
+This rule is enabled by default. No additional configuration is required.
+
+## Examples
+
+### Unused Private Method
+
+```csharp
+private void UnusedMethod() {
+    // This method is never called
+}
+```
+
+### Unused Private Field
+
+```csharp
+private int _unusedField;
+```
+
+### Unused Local Variable
+
+```csharp
+void Method() {
+    string unusedVariable = "unused";
+    Console.WriteLine("Hello");
+}
+```
+
+### Unused Parameter
+
+```csharp
+void Method(string unusedParam) {
+    Console.WriteLine("Hello");
+}
+```
+
+### Unused Using Directive
+
+```csharp
+using System.Linq; // Never used
+``` 
