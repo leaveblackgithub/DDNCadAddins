@@ -1,0 +1,26 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build .NET Framework 4.7 Solution",
+            "type": "shell",
+            "command": "MSBuild",
+            "args": [
+                "${workspaceFolder}\\src\\DDNCadAddins.sln",
+                "/p:Configuration=Debug",
+                "/p:Platform=x64",
+                "/p:TargetFrameworkVersion=v4.7",
+                "/p:GenerateFullPaths=true",
+                "/verbosity:minimal"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$msCompile",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        }
+    ]
+}
