@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+TestRunnerACAD.csproj.user - 项目用户设置文件
+
+注意：
+- 此项目是库项目，不需要调试设置
+- 调试通过ACADExampleTest项目进行
+-->
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ProjectView>ShowAllFiles</ProjectView>
+  </PropertyGroup>
+</Project>
