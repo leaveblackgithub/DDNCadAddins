@@ -1,8 +1,9 @@
-﻿using System.Reflection;
+using System.Reflection;
 using AddinsACAD;
-using Autodesk.AutoCAD.Runtime;
-using TestRunnerACAD;
 using Autodesk.AutoCAD.ApplicationServices.Core;
+using Autodesk.AutoCAD.Runtime;
+using ServiceACAD;
+using TestRunnerACAD;
 
 [assembly: CommandClass(typeof(RunTestsCommand))]
 
@@ -13,6 +14,10 @@ namespace AddinsACAD
         [CommandMethod("RunTests", CommandFlags.Session)]
         public void RunTests()
         {
+
+            // var document = Application.DocumentManager.MdiActiveDocument;
+            // var documentService = new DocumentService(document);
+            // documentService.CadEd.WriteMessage("\nTest");
             var assembly = Assembly.GetExecutingAssembly();
             
             // 合并的代码：根据运行环境决定是否排除测试

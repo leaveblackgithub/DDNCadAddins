@@ -3,8 +3,16 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.7.34031.279
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestRunnerACAD", "TestRunnerACAD\TestRunnerACAD.csproj", "{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}"
+	ProjectSection(ProjectDependencies) = postProject
+		{F9A5342C-C55F-4220-AEF4-14522860A63D} = {F9A5342C-C55F-4220-AEF4-14522860A63D}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AddinsACAD", "AddinsACAD\AddinsACAD.csproj", "{0D9B48BE-20B0-4C41-880D-A42B2A491218}"
+	ProjectSection(ProjectDependencies) = postProject
+		{F9A5342C-C55F-4220-AEF4-14522860A63D} = {F9A5342C-C55F-4220-AEF4-14522860A63D}
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ServiceACAD", "ServiceACAD\ServiceACAD.csproj", "{F9A5342C-C55F-4220-AEF4-14522860A63D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -20,6 +28,10 @@ Global
 		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.Debug|x64.Build.0 = Debug|x64
 		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.Release|x64.ActiveCfg = Release|x64
 		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.Release|x64.Build.0 = Release|x64
+		{F9A5342C-C55F-4220-AEF4-14522860A63D}.Debug|x64.ActiveCfg = Debug|x64
+		{F9A5342C-C55F-4220-AEF4-14522860A63D}.Debug|x64.Build.0 = Debug|x64
+		{F9A5342C-C55F-4220-AEF4-14522860A63D}.Release|x64.ActiveCfg = Release|x64
+		{F9A5342C-C55F-4220-AEF4-14522860A63D}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -27,4 +39,4 @@ Global
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {1124BB0C-78F4-4969-8704-30B24CE29B41}
 	EndGlobalSection
-EndGlobal 
+EndGlobal

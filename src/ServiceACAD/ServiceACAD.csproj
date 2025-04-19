@@ -1,10 +1,10 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!--
-ACADExampleTest.csproj - AutoCAD Unit Test Project File
+ServiceACAD.csproj - AutoCAD Service Library Project File
 
 Features:
-1. Encapsulates test cases
-2. References TestRunnerACAD library
+1. Encapsulates AutoCAD services
+2. Provides access to AutoCAD functionality
 -->
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!-- Import the shared properties from Directory.props -->
@@ -12,13 +12,13 @@ Features:
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
-    <ProjectGuid>{0D9B48BE-20B0-4C41-880D-A42B2A491218}</ProjectGuid>
+    <ProjectGuid>{F9A5342C-C55F-4220-AEF4-14522860A63D}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
-    <RootNamespace>AddinsACAD</RootNamespace>
-    <AssemblyName>AddinsACAD</AssemblyName>
+    <RootNamespace>ServiceACAD</RootNamespace>
+    <AssemblyName>ServiceACAD</AssemblyName>
   </PropertyGroup>
   <!-- Debug配置 -->
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
@@ -33,24 +33,14 @@ Features:
     <Compile Include="$(SolutionDir)CommonAssemblyInfo.cs">
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
-    <Compile Include="ExampleTests.cs" />
+    <Compile Include="DocumentService.cs" />
+    <Compile Include="IDocumentService.cs" />
+    <Compile Include="OpResult.cs" />
+    <Compile Include="TransactionExtension.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="RunTestsCommand.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="$(SolutionDir)TestRunnerACAD\TestRunnerACAD.csproj">
-      <Project>{e63bebf1-521b-4665-adae-c55e1c4898ce}</Project>
-      <n>TestRunnerACAD</n>
-      <Private>True</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\ServiceACAD\ServiceACAD.csproj">
-      <Project>{f9a5342c-c55f-4220-aef4-14522860a63d}</Project>
-      <n>ServiceACAD</n>
-      <Private>True</Private>
-    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <!-- 系统引用 -->

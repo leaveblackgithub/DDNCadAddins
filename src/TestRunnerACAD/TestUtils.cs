@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.DatabaseServices;
-using NUnitLite;
-using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 using NUnit.Framework;
+using NUnitLite;
+using ServiceACAD;
+using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace TestRunnerACAD
 {
@@ -42,51 +42,59 @@ namespace TestRunnerACAD
             reportGenerator.OpenHtmlReport();
         }
 
-        
-          
-
-        /// <summary>
-        ///     执行测试动作 - 自动处理所有环境
-        /// </summary>
-        /// <param name="testActions">要执行的测试动作数组</param>
-        /// <param name="drawingFile">可选的图形文件路径</param>
-        public static void ExecuteDbActions(string drawingFile = "", params Action<Database, Transaction>[] testActions)
+        public static void ExecuteInTransactions(Action<IDocumentService, Transaction> testAction1,
+            params Action<IDocumentService, Transaction>[] OtherTestActions)
         {
-                // 在App环境中运行
-                ExecuteInApp(testActions);
+            var testActions = new List<Action<IDocumentService, Transaction>> { testAction1 };
+            if (OtherTestActions.Length > 0)
+            {
+                testActions.AddRange(OtherTestActions);
+            }
+
+            var document = Application.DocumentManager.MdiActiveDocument;
+            var documentService = new DocumentService(document);
+            documentService.ExecuteInTransactions(testActions);
         }
 
-        public static void ExecuteInApp(Action<Database, Transaction>[] testActions)
+        // public static void ExecuteInCad(Action<IDocumentService> testAction)
+        // {
+        //     var document = Application.DocumentManager.MdiActiveDocument;
+        //     var documentService = new DocumentService(document);
+        //     documentService.Execute(testAction);
+        // }
+        public static void ExecuteInApp(Action<Database, Transaction> testAction1,
+            params Action<Database, Transaction>[] OtherTestActions)
         {
+            var testActions = new List<Action<Database, Transaction>> { testAction1 };
+            if (OtherTestActions.Length > 0)
+            {
+                testActions.AddRange(OtherTestActions);
+            }
+
             var document = Application.DocumentManager.MdiActiveDocument;
 
             // Lock the document and execute the test actions.
             using (document.LockDocument())
             using (var db = document.Database)
             {
-                ExecuteActions(testActions, db);
-            }
-        }
-
-        private static void ExecuteActions(Action<Database, Transaction>[] testActions, Database db)
-        {
-            foreach (var testAction in testActions)
-            {
-                using (var tr = db.TransactionManager.StartTransaction())
+                foreach (var testAction in (ICollection<Action<Database, Transaction>>)testActions)
                 {
-                    try
+                    using (var tr = db.TransactionManager.StartTransaction())
                     {
-                        // Execute the test action.
-                        testAction(db, tr);
-                    }
-                    catch (Exception e)
-                    {
-                        tr.Commit();
-                        MessageBox.Show(e.ToString());
-                        break;
-                    }
+                        try
+                        {
+                            // Execute the test action.
+                            testAction(db, tr);
+                        }
+                        catch (Exception e)
+                        {
+                            tr.Commit();
+                            MessageBox.Show(e.ToString());
+                            break;
+                        }
 
-                    tr.Commit();
+                        tr.Commit();
+                    }
                 }
             }
         }
