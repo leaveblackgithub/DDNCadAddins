@@ -44,6 +44,13 @@ TestRunnerACAD.csproj - AutoCAD测试运行器库项目
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\ServiceACAD\ServiceACAD.csproj">
+      <Project>{f9a5342c-c55f-4220-aef4-14522860a63d}</Project>
+      <n>ServiceACAD</n>
+      <Private>True</Private>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="ExtentReports\ExtentReports.exe">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

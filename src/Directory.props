@@ -53,20 +53,4 @@ Directory.props - 解决方案全局设置文件
     <!-- 平台设置 -->
     <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
-  
-  <!-- 版本更新自动化 -->
-  <PropertyGroup>
-    <!-- 版本更新脚本路径 -->
-    <UpdateVersionScript>$(SolutionDir)src\scripts\UpdateVersion.ps1</UpdateVersionScript>
-    <!-- 是否在每次构建时自动更新版本号 -->
-    <AutoUpdateVersion Condition="'$(AutoUpdateVersion)' == ''">true</AutoUpdateVersion>
-    <!-- 要更新的版本号类型 (major/minor/build/revision) -->
-    <VersionUpdateType Condition="'$(VersionUpdateType)' == ''">build</VersionUpdateType>
-  </PropertyGroup>
-
-  <!-- 在编译前执行版本更新的目标 -->
-  <Target Name="UpdateVersionBeforeBuild" BeforeTargets="BeforeBuild" Condition="'$(AutoUpdateVersion)' == 'true'">
-    <Message Text="正在更新版本号..." Importance="high" />
-    <Exec Command="powershell.exe -ExecutionPolicy Bypass -File &quot;$(UpdateVersionScript)&quot; -VersionType &quot;$(VersionUpdateType)&quot; -ProjectRoot &quot;$(SolutionDir)&quot;" />
-  </Target>
 </Project> 

@@ -10,4 +10,4 @@ using System.Runtime.InteropServices;
 // 该文件只保留项目特有的信息
 
 // Guid for type library
-[assembly: Guid("0d9b48be-20b0-4c41-880d-a42b2a491218")] 
+[assembly: Guid("0d9b48be-20b0-4c41-880d-a42b2a491218")]

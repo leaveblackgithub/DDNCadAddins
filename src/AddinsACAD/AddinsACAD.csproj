@@ -33,10 +33,12 @@ Features:
     <Compile Include="$(SolutionDir)CommonAssemblyInfo.cs">
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
-    <Compile Include="ExampleTestsInOtherProjects.cs" />
+    <Compile Include="ExampleTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RunTestsCommand.cs" />
-    <Compile Include="TestInApp\ExampleTestsInOtherProjects.cs" />
+    <Compile Include="ServiceTests\BlockServiceTests.cs" />
+    <Compile Include="ServiceTests\DocumentServiceTest.cs" />
+    <Compile Include="ServiceTests\TransactionExtensionTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -44,7 +46,12 @@ Features:
   <ItemGroup>
     <ProjectReference Include="$(SolutionDir)TestRunnerACAD\TestRunnerACAD.csproj">
       <Project>{e63bebf1-521b-4665-adae-c55e1c4898ce}</Project>
-      <Name>TestRunnerACAD</Name>
+      <n>TestRunnerACAD</n>
+      <Private>True</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\ServiceACAD\ServiceACAD.csproj">
+      <Project>{f9a5342c-c55f-4220-aef4-14522860a63d}</Project>
+      <n>ServiceACAD</n>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>
