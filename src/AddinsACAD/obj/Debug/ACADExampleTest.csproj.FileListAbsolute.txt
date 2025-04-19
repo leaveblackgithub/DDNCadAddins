@@ -1,0 +1,15 @@
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\bin\Debug\TestDrawing.dwg
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\bin\Debug\TestLoader.scr
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\bin\Debug\ExtentReports\ExtentReports.exe
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\bin\Debug\ACADExampleTest.dll
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\bin\Debug\ACADExampleTest.pdb
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\bin\Debug\nunit.framework.dll
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\bin\Debug\TestRunnerACAD.dll
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\bin\Debug\nunitlite.dll
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\bin\Debug\TestRunnerACAD.pdb
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\bin\Debug\nunit.framework.xml
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\obj\Debug\ACADExampleTest.csproj.AssemblyReference.cache
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\obj\Debug\ACADExampleTest.csproj.CoreCompileInputs.cache
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\obj\Debug\ACADExam.2007B206.Up2Date
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\obj\Debug\ACADExampleTest.dll
+D:\leaveblackgithub\AutoCAD_UnitTest\ACADExampleTest\obj\Debug\ACADExampleTest.pdb
