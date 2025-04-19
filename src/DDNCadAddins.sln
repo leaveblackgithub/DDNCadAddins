@@ -8,23 +8,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AddinsACAD", "AddinsACAD\Ad
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		DebugInAcCoreConsle|Any CPU = DebugInAcCoreConsle|Any CPU
-		DebugInApp|Any CPU = DebugInApp|Any CPU
-		Release|Any CPU = Release|Any CPU
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}.DebugInAcCoreConsle|Any CPU.ActiveCfg = DebugInAcCoreConsle|Any CPU
-		{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}.DebugInAcCoreConsle|Any CPU.Build.0 = DebugInAcCoreConsle|Any CPU
-		{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}.DebugInApp|Any CPU.ActiveCfg = DebugInApp|Any CPU
-		{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}.DebugInApp|Any CPU.Build.0 = DebugInApp|Any CPU
-		{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}.Release|Any CPU.Build.0 = Release|Any CPU
-		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.DebugInAcCoreConsle|Any CPU.ActiveCfg = DebugInAcCoreConsle|Any CPU
-		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.DebugInAcCoreConsle|Any CPU.Build.0 = DebugInAcCoreConsle|Any CPU
-		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.DebugInApp|Any CPU.ActiveCfg = DebugInApp|Any CPU
-		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.DebugInApp|Any CPU.Build.0 = DebugInApp|Any CPU
-		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}.Debug|x64.ActiveCfg = Debug|x64
+		{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}.Debug|x64.Build.0 = Debug|x64
+		{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}.Release|x64.ActiveCfg = Release|x64
+		{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}.Release|x64.Build.0 = Release|x64
+		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.Debug|x64.ActiveCfg = Debug|x64
+		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.Debug|x64.Build.0 = Debug|x64
+		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.Release|x64.ActiveCfg = Release|x64
+		{0D9B48BE-20B0-4C41-880D-A42B2A491218}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -6,7 +6,7 @@ Directory.props - 解决方案全局设置文件
 2. 自动将命名空间设置为与项目名称相同
 3. 设置Deterministic=false以支持通配符版本号
 4. 统一常用构建参数和引用
-5. 支持不同的配置(DebugInApp/DebugInAcCoreConsle)
+5. 支持不同的配置(Debug/Release)
 6. 集中管理版本和语言设置
 -->
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
@@ -17,8 +17,7 @@ Directory.props - 解决方案全局设置文件
     <SolutionBinDir>$(SolutionDir)bin\</SolutionBinDir>
     
     <!-- 根据配置设置不同的输出子文件夹 -->
-    <OutputPath Condition="'$(Configuration)' == 'DebugInApp'">$(SolutionBinDir)DebugInApp\</OutputPath>
-    <OutputPath Condition="'$(Configuration)' == 'DebugInAcCoreConsle'">$(SolutionBinDir)DebugInAcCoreConsle\</OutputPath>
+    <OutputPath Condition="'$(Configuration)' == 'Debug'">$(SolutionBinDir)Debug\</OutputPath>
     <OutputPath Condition="'$(Configuration)' == 'Release'">$(SolutionBinDir)Release\</OutputPath>
     
     <BaseIntermediateOutputPath>$(SolutionBinDir)obj\</BaseIntermediateOutputPath>
@@ -34,53 +33,40 @@ Directory.props - 解决方案全局设置文件
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <!-- 设置为false允许使用通配符版本号(如1.0.*) -->
     <Deterministic>false</Deterministic>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <LangVersion>7.0</LangVersion>
     
-    <!-- 版本控制信息 -->
-    <Company></Company>
-    <Product>AutoCAD_UnitTest</Product>
-    <Copyright>Copyright © 2023</Copyright>
-    <AssemblyVersion>1.0.*</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
     
     <!-- 根据配置设置条件编译常量 -->
-    <DefineConstants Condition="'$(Configuration)' == 'DebugInApp'">DEBUG;TRACE;IN_APP;USE_DIRECTORY_PROPS</DefineConstants>
-    <DefineConstants Condition="'$(Configuration)' == 'DebugInAcCoreConsle'">DEBUG;TRACE;IN_ACCORE;USE_DIRECTORY_PROPS</DefineConstants>
+    <DefineConstants Condition="'$(Configuration)' == 'Debug'">DEBUG;TRACE;IN_APP;IN_ACCORE;USE_DIRECTORY_PROPS</DefineConstants>
     <DefineConstants Condition="'$(Configuration)' == 'Release'">TRACE;USE_DIRECTORY_PROPS</DefineConstants>
     
     <!-- Common debug/release properties -->
-    <DebugType Condition="'$(Configuration)' == 'DebugInApp' Or '$(Configuration)' == 'DebugInAcCoreConsle'">full</DebugType>
+    <DebugType Condition="'$(Configuration)' == 'Debug'">full</DebugType>
     <DebugType Condition="'$(Configuration)' == 'Release'">pdbonly</DebugType>
-    <DebugSymbols Condition="'$(Configuration)' == 'DebugInApp' Or '$(Configuration)' == 'DebugInAcCoreConsle'">true</DebugSymbols>
-    <Optimize Condition="'$(Configuration)' == 'DebugInApp' Or '$(Configuration)' == 'DebugInAcCoreConsle'">false</Optimize>
+    <DebugSymbols Condition="'$(Configuration)' == 'Debug'">true</DebugSymbols>
+    <Optimize Condition="'$(Configuration)' == 'Debug'">false</Optimize>
     <Optimize Condition="'$(Configuration)' == 'Release'">true</Optimize>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    
+    <!-- 平台设置 -->
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
   
-  <!-- Common package references -->
-  <ItemGroup>
-    <!-- 引用已移回各项目自己的csproj文件 -->
-  </ItemGroup>
-  
-  <!-- 公共系统引用 -->
-  <ItemGroup>
-    <!-- 引用已移回各项目自己的csproj文件 -->
-  </ItemGroup>
-  
-  <!-- 仅在App环境下引用的系统组件 -->
-  <ItemGroup Condition="'$(Configuration)' == 'DebugInApp'">
-    <!-- 引用已移回各项目自己的csproj文件 -->
-  </ItemGroup>
-  
-  <!-- AutoCAD引用配置 -->
-  <!-- 核心库在所有配置下引用 -->
-  <ItemGroup>
-    <!-- 引用已移回各项目自己的csproj文件 -->
-  </ItemGroup>
-  
-  <!-- 仅在DebugInApp配置下引用的库 -->
-  <ItemGroup Condition="'$(Configuration)' == 'DebugInApp'">
-    <!-- 引用已移回各项目自己的csproj文件 -->
-  </ItemGroup>
+  <!-- 版本更新自动化 -->
+  <PropertyGroup>
+    <!-- 版本更新脚本路径 -->
+    <UpdateVersionScript>$(SolutionDir)src\scripts\UpdateVersion.ps1</UpdateVersionScript>
+    <!-- 是否在每次构建时自动更新版本号 -->
+    <AutoUpdateVersion Condition="'$(AutoUpdateVersion)' == ''">true</AutoUpdateVersion>
+    <!-- 要更新的版本号类型 (major/minor/build/revision) -->
+    <VersionUpdateType Condition="'$(VersionUpdateType)' == ''">build</VersionUpdateType>
+  </PropertyGroup>
+
+  <!-- 在编译前执行版本更新的目标 -->
+  <Target Name="UpdateVersionBeforeBuild" BeforeTargets="BeforeBuild" Condition="'$(AutoUpdateVersion)' == 'true'">
+    <Message Text="正在更新版本号..." Importance="high" />
+    <Exec Command="powershell.exe -ExecutionPolicy Bypass -File &quot;$(UpdateVersionScript)&quot; -VersionType &quot;$(VersionUpdateType)&quot; -ProjectRoot &quot;$(SolutionDir)&quot;" />
+  </Target>
 </Project> 

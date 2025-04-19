@@ -42,65 +42,18 @@ namespace TestRunnerACAD
             reportGenerator.OpenHtmlReport();
         }
 
-        /// <summary>
-        ///     Executes a list of delegate actions
-        /// </summary>
-        /// <param name="drawingFile">Path to the test drawing file.</param>
-        /// <param name="testActions">Test actions to execute.</param>
-        public static void ExcecuteInCl(string drawingFile = "",
-            params Action<Database, Transaction>[] testActions)
-        {
-            bool defaultDrawing;
-            if (string.IsNullOrEmpty(drawingFile))
-            {
-                defaultDrawing = true;
-                // Should this be executing assembly path instead?
-                drawingFile = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestDrawing.dwg");
-            }
-            else
-            {
-                defaultDrawing = false;
-                if (!File.Exists(drawingFile))
-                {
-                    Assert.Fail($"Drawing file {drawingFile} does not exist.");
-                }
-            }
-
-            var document = Application.DocumentManager.MdiActiveDocument;
-
-            // Lock the document and execute the test actions.
-            using (document.LockDocument())
-            using (var db = new Database(defaultDrawing, false))
-            {
-                if (!string.IsNullOrEmpty(drawingFile))
-                {
-                    db.ReadDwgFile(drawingFile, FileOpenMode.OpenForReadAndWriteNoShare, true, null);
-                }
-
-                var oldDb = HostApplicationServices.WorkingDatabase;
-                HostApplicationServices.WorkingDatabase = db; // change to the current database.
-
-
-                ExecuteActions(testActions, db);
-
-                // Change the database back to the original.
-                HostApplicationServices.WorkingDatabase = oldDb;
-            }
-        }
+        
+          
 
         /// <summary>
-        ///     执行测试动作 - 根据编译环境自动选择合适的执行方法
+        ///     执行测试动作 - 自动处理所有环境
         /// </summary>
         /// <param name="testActions">要执行的测试动作数组</param>
-        /// <param name="drawingFile">可选的图形文件路径，仅用于AcCoreConsole环境</param>
+        /// <param name="drawingFile">可选的图形文件路径</param>
         public static void ExecuteDbActions(string drawingFile = "", params Action<Database, Transaction>[] testActions)
         {
-#if IN_ACCORE
-            // 在AcCoreConsole环境下运行
-            ExcecuteInCl(drawingFile, testActions);
-#else
-            ExecuteInApp(testActions);
-#endif
+                // 在App环境中运行
+                ExecuteInApp(testActions);
         }
 
         public static void ExecuteInApp(Action<Database, Transaction>[] testActions)

@@ -1,5 +1,0 @@
-setvar
-trustedpaths
-D:/leaveblackgithub/DDNCadAddins/src/bin/DebugInAcCoreConsle
-netload D:/leaveblackgithub/DDNCadAddins/src/bin/DebugInAcCoreConsle/AddinsACAD.dll
-RunTests 

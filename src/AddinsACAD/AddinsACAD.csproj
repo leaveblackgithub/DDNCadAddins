@@ -5,16 +5,13 @@ ACADExampleTest.csproj - AutoCAD Unit Test Project File
 Features:
 1. Encapsulates test cases
 2. References TestRunnerACAD library
-3. Processes output TestLoader.scr script
-
-This project is the main test project for the solution, responsible for executing all tests
 -->
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!-- Import the shared properties from Directory.props -->
   <Import Project="$(MSBuildThisFileDirectory)\..\Directory.props" />
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">DebugInApp</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
     <ProjectGuid>{0D9B48BE-20B0-4C41-880D-A42B2A491218}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
@@ -23,14 +20,11 @@ This project is the main test project for the solution, responsible for executin
     <RootNamespace>AddinsACAD</RootNamespace>
     <AssemblyName>AddinsACAD</AssemblyName>
   </PropertyGroup>
-  <!-- DebugInApp配置 -->
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'DebugInApp|AnyCPU' ">
-  </PropertyGroup>
-  <!-- DebugInAcCoreConsle配置 -->
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'DebugInAcCoreConsle|AnyCPU' ">
+  <!-- Debug配置 -->
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
   </PropertyGroup>
   <!-- Release配置 -->
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
   </PropertyGroup>
   <ItemGroup>
     <!-- 系统引用已迁移到Directory.props -->
@@ -46,12 +40,6 @@ This project is the main test project for the solution, responsible for executin
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-    <None Include="TestDrawing.dwg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="TestLoader.scr">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(SolutionDir)TestRunnerACAD\TestRunnerACAD.csproj">
@@ -91,9 +79,7 @@ This project is the main test project for the solution, responsible for executin
       <HintPath>C:\Program Files\Autodesk\AutoCAD 2019\AcDbMgd.dll</HintPath>
       <Private>False</Private>
     </Reference>
-  </ItemGroup>
-  <ItemGroup Condition=" '$(Configuration)|$(Platform)' == 'DebugInApp|AnyCPU' ">
-    <!-- 仅在DebugInApp配置下引用的AutoCAD UI库 -->
+    <!-- AutoCAD UI库 -->
     <Reference Include="acmgd">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>C:\Program Files\Autodesk\AutoCAD 2019\acmgd.dll</HintPath>
@@ -106,58 +92,22 @@ This project is the main test project for the solution, responsible for executin
     </Reference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- Process SCR file, replace relative paths with absolute paths -->
-  <Target Name="ProcessScrFile" AfterTargets="Build">
-    <PropertyGroup>
-      <ScrSourceFile>$(ProjectDir)TestLoader.scr</ScrSourceFile>
-      <ScrTargetFile>$(OutputPath)TestLoader.scr</ScrTargetFile>
-      <!-- Ensure paths use forward slash format -->
-      <OutputPathForward>$(OutputPath.Replace('\', '/'))</OutputPathForward>
-    </PropertyGroup>
-    <!-- SCR file description (not written to file):
-         1. Set trusted path to DLL directory
-         2. Load test DLL
-         3. Execute tests
-         
-         Note:
-         - This file will be copied to output directory
-         - AutoCAD does not support comments, so SCR file contains no comments
-         - Only includes actual commands to execute
-    -->
-    <!-- Read SCR file content -->
-    <ReadLinesFromFile File="$(ScrSourceFile)">
-      <Output TaskParameter="Lines" ItemName="ScrFileLines" />
-    </ReadLinesFromFile>
-    <!-- Create temporary file with actual paths, without comments -->
-    <WriteLinesToFile File="$(ScrTargetFile).temp" Lines="setvar&#xD;&#xA;trustedpaths&#xD;&#xA;$(OutputPathForward)&#xD;&#xA;netload $(OutputPathForward)AddinsACAD.dll&#xD;&#xA;RunTests" Overwrite="true" />
-    <!-- Replace target file with temporary file -->
-    <Copy SourceFiles="$(ScrTargetFile).temp" DestinationFiles="$(ScrTargetFile)" />
-    <Delete Files="$(ScrTargetFile).temp" />
-    <Message Text="Processed SCR file, replaced relative paths with absolute paths: $(ScrTargetFile)" Importance="high" />
-    <Message Text="SCR file function: Set trusted paths, load DLL, execute tests" Importance="high" />
-  </Target>
-  <!-- Automatically generate debug settings, using absolute paths -->
-  <Target Name="GenerateDebugSettings" AfterTargets="ProcessScrFile">
-    <PropertyGroup>
-      <!-- AutoCAD paths -->
-      <AcadFullPath>C:/Program Files/Autodesk/AutoCAD 2019/acad.exe</AcadFullPath>
-      <AcadCorePath>C:/Program Files/Autodesk/AutoCAD 2019/accoreconsole.exe</AcadCorePath>
-      <!-- Get full absolute path for output path -->
-      <OutputPathAbs>$([System.IO.Path]::GetFullPath('$(OutputPath)').Replace('\', '/'))</OutputPathAbs>
-      <!-- Get full absolute path for SCR file -->
-      <ScrFileAbs>$([System.IO.Path]::GetFullPath('$(OutputPath)TestLoader.scr').Replace('\', '/'))</ScrFileAbs>
-      <!-- Output user settings file -->
-      <UserFile>$(ProjectDir)$(MSBuildProjectName).csproj.user</UserFile>
-    </PropertyGroup>
-    <Message Text="Calculated absolute paths:" Importance="high" />
-    <Message Text="Output directory: $(OutputPathAbs)" Importance="high" />
-    <Message Text="SCR file: $(ScrFileAbs)" Importance="high" />
-    <!-- Create custom user settings file template -->
-    <WriteLinesToFile File="$(UserFile).temp" Lines="&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;&#xD;&#xA;&lt;!--&#xD;&#xA;Automatically generated debug settings file - $(MSBuildProjectName).csproj.user&#xD;&#xA;Generation time: $([System.DateTime]::Now)&#xD;&#xA;&#xD;&#xA;Features:&#xD;&#xA;1. Configure AutoCAD debug settings using full absolute paths&#xD;&#xA;2. Automatically set startup parameters and working directory&#xD;&#xA;&#xD;&#xA;Notes:&#xD;&#xA;- This file is automatically generated by the build process&#xD;&#xA;- All paths use AutoCAD-compatible forward slash (/) format&#xD;&#xA;- Command line arguments use forward slash (/s) as option flags&#xD;&#xA;- Working directory is set to solution output path&#xD;&#xA;- Do not modify manually, modifications will be overwritten in the next build&#xD;&#xA;--&gt;&#xD;&#xA;&lt;Project ToolsVersion=&quot;Current&quot; xmlns=&quot;http://schemas.microsoft.com/developer/msbuild/2003&quot;&gt;&#xD;&#xA;  &lt;PropertyGroup Condition=&quot;'%24(Configuration)|%24(Platform)' == 'DebugInApp|AnyCPU'&quot;&gt;&#xD;&#xA;    &lt;StartAction&gt;Program&lt;/StartAction&gt;&#xD;&#xA;    &lt;StartProgram&gt;$(AcadFullPath)&lt;/StartProgram&gt;&#xD;&#xA;  &lt;/PropertyGroup&gt;&#xD;&#xA;  &lt;PropertyGroup Condition=&quot;'%24(Configuration)|%24(Platform)' == 'DebugInAcCoreConsle|AnyCPU'&quot;&gt;&#xD;&#xA;    &lt;StartAction&gt;Program&lt;/StartAction&gt;&#xD;&#xA;    &lt;StartProgram&gt;$(AcadCorePath)&lt;/StartProgram&gt;&#xD;&#xA;    &lt;StartArguments&gt;/s &quot;$(ScrFileAbs)&quot;&lt;/StartArguments&gt;&#xD;&#xA;    &lt;StartWorkingDirectory&gt;$(OutputPathAbs)&lt;/StartWorkingDirectory&gt;&#xD;&#xA;  &lt;/PropertyGroup&gt;&#xD;&#xA;  &lt;PropertyGroup&gt;&#xD;&#xA;    &lt;ProjectView&gt;ShowAllFiles&lt;/ProjectView&gt;&#xD;&#xA;  &lt;/PropertyGroup&gt;&#xD;&#xA;&lt;/Project&gt;" Overwrite="true" />
-    <!-- Replace user settings file -->
-    <Copy SourceFiles="$(UserFile).temp" DestinationFiles="$(UserFile)" />
-    <Delete Files="$(UserFile).temp" />
-    <Message Text="Generated debug settings using absolute paths: $(UserFile)" Importance="high" />
+  <!-- 检查版本号 -->
+  <Target Name="CheckAssemblyVersion" AfterTargets="Build">
+    <Message Text="检查编译后版本号信息..." Importance="high" />
+    <Message Text="项目: $(MSBuildProjectName)" Importance="high" />
+    <Message Text="输出路径: $(OutputPath)" Importance="high" />
+    <Message Text="配置: $(Configuration)" Importance="high" />
+    <Message Text="平台: $(Platform)" Importance="high" />
+    <Message Text="编译常量: $(DefineConstants)" Importance="high" />
+    <Message Text="--------------------------------------------------" Importance="high" />
+    <Message Text="如果版本号仍显示为0.0.0.0，请尝试以下解决方案:" Importance="high" />
+    <Message Text="1. 确保已将GenerateAssemblyInfo设置为false" Importance="high" />
+    <Message Text="2. 确保Deterministic设置为false" Importance="high" />
+    <Message Text="3. 确保在CommonAssemblyInfo.cs中使用[assembly: AssemblyVersion(&quot;1.0.*&quot;)]" Importance="high" />
+    <Message Text="4. 确保项目文件中正确引用了CommonAssemblyInfo.cs" Importance="high" />
+    <Message Text="5. 确保USE_DIRECTORY_PROPS常量已正确定义" Importance="high" />
+    <Message Text="--------------------------------------------------" Importance="high" />
   </Target>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>

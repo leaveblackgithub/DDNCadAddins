@@ -17,23 +17,20 @@
  * </Compile>
  */
 
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 // Setting ComVisible to false makes the types in this assembly not visible
 // to COM components.
 [assembly: ComVisible(false)]
 
-// 注意：版本信息现已移至Directory.props
-// 下面的特性仅在不使用Directory.props的项目中生效
-#if !USE_DIRECTORY_PROPS
 // General Information about the solution
-[assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("AutoCAD_UnitTest")]
-[assembly: AssemblyCopyright("Copyright © 2023")]
+[assembly: AssemblyCompany("DDN")]
+[assembly: AssemblyProduct("DDNCadAddins")]
+[assembly: AssemblyCopyright("Copyright © 2024")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
 // Version information
 [assembly: AssemblyVersion("1.0.*")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
-#endif
