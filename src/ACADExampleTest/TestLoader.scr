@@ -1,5 +1,0 @@
-setvar
-trustedpaths
-$(OutputPath)
-netload $(OutputPath)ACADExampleTest.dll
-RunTests 

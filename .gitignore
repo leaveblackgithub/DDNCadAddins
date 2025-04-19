@@ -1,0 +1,20 @@
+# AutoCAD锁定文件
+*.dwl
+*.dwl2
+
+# Visual Studio文件
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.pdb
+
+# 包文件夹
+packages/
+
+# 临时文件
+*.tmp
+*.bak
+*.log 

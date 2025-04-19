@@ -1,0 +1,132 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+TestRunnerACAD.csproj - AutoCAD测试运行器库项目
+
+功能：
+1. 提供测试框架核心功能
+2. 处理测试报告生成
+3. 提供基类和工具类
+
+此项目是库项目，不包含具体测试用例，被ACADExampleTest项目引用
+-->
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Import the shared properties from Directory.props -->
+  <Import Project="$(MSBuildThisFileDirectory)\..\Directory.props" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">DebugInApp</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{E63BEBF1-521B-4665-ADAE-C55E1C4898CE}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+  <!-- DebugInApp配置 -->
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'DebugInApp|AnyCPU' ">
+    <!-- 仅保留特定于此配置的特有设置，移除与Directory.props重复的部分 -->
+  </PropertyGroup>
+  <!-- DebugInAcCoreConsle配置 -->
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'DebugInAcCoreConsle|AnyCPU' ">
+    <!-- 仅保留特定于此配置的特有设置，移除与Directory.props重复的部分 -->
+  </PropertyGroup>
+  <!-- Release配置 -->
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <!-- 仅保留特定于此配置的特有设置，移除与Directory.props重复的部分 -->
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- NUnit引用已在Directory.props中统一设置 -->
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="$(SolutionDir)CommonAssemblyInfo.cs">
+      <Link>Properties\CommonAssemblyInfo.cs</Link>
+    </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ConfigReader.cs" />
+    <Compile Include="PathManager.cs" />
+    <Compile Include="ReportGenerator.cs" />
+    <Compile Include="TestUtils.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="ExtentReports\ExtentReports.exe">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <None Include="paths.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- NUnit引用 -->
+    <Reference Include="nunit.framework, Version=3.13.2.0, Culture=neutral, PublicKeyToken=2638cd05610744eb">
+      <HintPath>$(SolutionDir)packages\NUnit.3.13.2\lib\net45\nunit.framework.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="nunitlite, Version=3.13.2.0, Culture=neutral, PublicKeyToken=2638cd05610744eb">
+      <HintPath>$(SolutionDir)packages\NUnitLite.3.13.2\lib\net45\nunitlite.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <!-- 系统引用 -->
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.Windows.Forms" />
+    <!-- AutoCAD引用 -->
+    <Reference Include="AcCoreMgd">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2019\AcCoreMgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2019\AcDbMgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup Condition=" '$(Configuration)|$(Platform)' == 'DebugInApp|AnyCPU' ">
+    <!-- 仅在DebugInApp配置下引用的AutoCAD UI库 -->
+    <Reference Include="acmgd">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2019\acmgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AdWindows">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>C:\Program Files\Autodesk\AutoCAD 2019\AdWindows.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- 在构建开始前更新paths.config中的输出路径常量 -->
+  <Target Name="UpdateConfigPathConstant" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <!-- 计算实际输出路径的完整路径 -->
+      <ActualOutputPath>$([System.IO.Path]::GetFullPath('$(OutputPath)'))</ActualOutputPath>
+      <!-- 配置文件路径 -->
+      <ConfigFile>$(ProjectDir)paths.config</ConfigFile>
+    </PropertyGroup>
+    <!-- 确保配置文件存在 -->
+    <PropertyGroup>
+      <ConfigFileContent Condition="!Exists('$(ConfigFile)')"><![CDATA[<?xml version="1.0" encoding="utf-8" ?>
+<configuration>
+  <appSettings>
+    <add key="OutputPath" value="$(ActualOutputPath)" />
+  </appSettings>
+</configuration>]]></ConfigFileContent>
+    </PropertyGroup>
+    <!-- 如果配置文件不存在，则创建它 -->
+    <WriteLinesToFile File="$(ConfigFile)" Lines="$(ConfigFileContent)" Overwrite="true" Condition="!Exists('$(ConfigFile)')" />
+    <!-- 读取配置文件 -->
+    <XmlPeek XmlInputPath="$(ConfigFile)" Query="/configuration/appSettings/add[@key='OutputPath']/@value" Condition="Exists('$(ConfigFile)')">
+      <Output TaskParameter="Result" PropertyName="CurrentOutputPathValue" />
+    </XmlPeek>
+    <!-- 只有当路径需要更新时才更新配置文件 -->
+    <XmlPoke XmlInputPath="$(ConfigFile)" Query="/configuration/appSettings/add[@key='OutputPath']/@value" Value="$(ActualOutputPath)" Condition="$(CurrentOutputPathValue) != '$(ActualOutputPath)'" />
+    <Message Text="Updated paths.config with output path: $(ActualOutputPath)" Importance="high" />
+  </Target>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Enable NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105.The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(SolutionDir)packages\NUnit.3.13.2\build\NUnit.props')" Text="$([System.String]::Format('$(ErrorText)', '$(SolutionDir)packages\NUnit.3.13.2\build\NUnit.props'))" />
+  </Target>
+</Project>
