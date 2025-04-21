@@ -3,6 +3,9 @@
   "WorkspaceRootPath": "D:\\leaveblackgithub\\DDNCadAddins\\src\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\CFDDN\\AppData\\Local\\Temp\\.vsdbgsrc\\09655942df3623fc50409fbf3c51c285c29bf464a73f9b642d4648e4de17cf2b\\Assert.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{0D9B48BE-20B0-4C41-880D-A42B2A491218}|AddinsACAD\\AddinsACAD.csproj|D:\\leaveblackgithub\\DDNCadAddins\\src\\addinsacad\\servicetests\\blockservicetests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{0D9B48BE-20B0-4C41-880D-A42B2A491218}|AddinsACAD\\AddinsACAD.csproj|solutionrelative:addinsacad\\servicetests\\blockservicetests.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -40,9 +43,6 @@
     },
     {
       "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\CFDDN\\AppData\\Local\\Temp\\.vsdbgsrc\\5b87d42f7c5ee1f59f67598c0b99d31debe4a5b47b6a0de129cc5f1de1de97aa\\TestWorker.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\CFDDN\\AppData\\Local\\Temp\\.vsdbgsrc\\09655942df3623fc50409fbf3c51c285c29bf464a73f9b642d4648e4de17cf2b\\Assert.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{F9A5342C-C55F-4220-AEF4-14522860A63D}|ServiceACAD\\ServiceACAD.csproj|d:\\leaveblackgithub\\ddncadaddins\\src\\serviceacad\\ieditorservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -88,7 +88,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 17,
+          "SelectedChildIndex": 15,
           "Children": [
             {
               "$type": "Bookmark",
@@ -136,20 +136,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
-              "Title": "IBlockService.cs",
-              "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\IBlockService.cs",
-              "RelativeDocumentMoniker": "ServiceACAD\\IBlockService.cs",
-              "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\IBlockService.cs",
-              "RelativeToolTip": "ServiceACAD\\IBlockService.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-04-21T13:03:06.472Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 2,
               "Title": "BlockService.cs",
               "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\BlockService.cs",
               "RelativeDocumentMoniker": "ServiceACAD\\BlockService.cs",
@@ -162,7 +149,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 6,
+              "DocumentIndex": 7,
               "Title": "CommonTestMethods.cs",
               "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\AddinsACAD\\ServiceTests\\CommonTestMethods.cs",
               "RelativeDocumentMoniker": "AddinsACAD\\ServiceTests\\CommonTestMethods.cs",
@@ -175,46 +162,20 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 7,
+              "DocumentIndex": 8,
               "Title": "EditorService.cs",
               "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\EditorService.cs",
               "RelativeDocumentMoniker": "ServiceACAD\\EditorService.cs",
               "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\EditorService.cs",
               "RelativeToolTip": "ServiceACAD\\EditorService.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAuwA4AAAApAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAuwBoAAAApAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-04-21T11:56:02.772Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 5,
-              "Title": "TransactionService.cs",
-              "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\TransactionService.cs",
-              "RelativeDocumentMoniker": "ServiceACAD\\TransactionService.cs",
-              "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\TransactionService.cs",
-              "RelativeToolTip": "ServiceACAD\\TransactionService.cs",
-              "ViewState": "AgIAABUAAAAAAAAAAAASwCIAAABTAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-04-21T02:45:40.749Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 2,
-              "Title": "TransactionServiceTest.cs",
-              "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\AddinsACAD\\ServiceTests\\TransactionServiceTest.cs",
-              "RelativeDocumentMoniker": "AddinsACAD\\ServiceTests\\TransactionServiceTest.cs",
-              "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\AddinsACAD\\ServiceTests\\TransactionServiceTest.cs",
-              "RelativeToolTip": "AddinsACAD\\ServiceTests\\TransactionServiceTest.cs",
-              "ViewState": "AgIAACkAAAAAAAAAAAAAADwAAAAMAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-04-20T09:54:08.757Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
               "Title": "BlockServiceTests.cs",
               "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\AddinsACAD\\ServiceTests\\BlockServiceTests.cs",
               "RelativeDocumentMoniker": "AddinsACAD\\ServiceTests\\BlockServiceTests.cs",
@@ -227,7 +188,57 @@
             },
             {
               "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Assert.cs",
+              "DocumentMoniker": "C:\\Users\\CFDDN\\AppData\\Local\\Temp\\.vsdbgsrc\\09655942df3623fc50409fbf3c51c285c29bf464a73f9b642d4648e4de17cf2b\\Assert.cs",
+              "ToolTip": "C:\\Users\\CFDDN\\AppData\\Local\\Temp\\.vsdbgsrc\\09655942df3623fc50409fbf3c51c285c29bf464a73f9b642d4648e4de17cf2b\\Assert.cs [Read Only]",
+              "ViewState": "AgIAAEIDAAAAAAAAAAAkwFQDAAACAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-04-20T09:59:06.876Z",
+              "EditorCaption": " [Read Only]"
+            },
+            {
+              "$type": "Document",
               "DocumentIndex": 4,
+              "Title": "IBlockService.cs",
+              "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\IBlockService.cs",
+              "RelativeDocumentMoniker": "ServiceACAD\\IBlockService.cs",
+              "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\IBlockService.cs",
+              "RelativeToolTip": "ServiceACAD\\IBlockService.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-04-21T13:03:06.472Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "TransactionService.cs",
+              "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\TransactionService.cs",
+              "RelativeDocumentMoniker": "ServiceACAD\\TransactionService.cs",
+              "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\TransactionService.cs",
+              "RelativeToolTip": "ServiceACAD\\TransactionService.cs",
+              "ViewState": "AgIAABUAAAAAAAAAAAASwCIAAABTAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-04-21T02:45:40.749Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "TransactionServiceTest.cs",
+              "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\AddinsACAD\\ServiceTests\\TransactionServiceTest.cs",
+              "RelativeDocumentMoniker": "AddinsACAD\\ServiceTests\\TransactionServiceTest.cs",
+              "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\AddinsACAD\\ServiceTests\\TransactionServiceTest.cs",
+              "RelativeToolTip": "AddinsACAD\\ServiceTests\\TransactionServiceTest.cs",
+              "ViewState": "AgIAACkAAAAAAAAAAAAAAD0AAAAMAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-04-20T09:54:08.757Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
               "Title": "ITransactionService.cs",
               "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\ITransactionService.cs",
               "RelativeDocumentMoniker": "ServiceACAD\\ITransactionService.cs",
@@ -240,31 +251,20 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 10,
-              "Title": "Assert.cs",
-              "DocumentMoniker": "C:\\Users\\CFDDN\\AppData\\Local\\Temp\\.vsdbgsrc\\09655942df3623fc50409fbf3c51c285c29bf464a73f9b642d4648e4de17cf2b\\Assert.cs",
-              "ToolTip": "C:\\Users\\CFDDN\\AppData\\Local\\Temp\\.vsdbgsrc\\09655942df3623fc50409fbf3c51c285c29bf464a73f9b642d4648e4de17cf2b\\Assert.cs [Read Only]",
-              "ViewState": "AgIAAEIDAAAAAAAAAAAkwFQDAAACAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-04-20T09:59:06.876Z",
-              "EditorCaption": " [Read Only]"
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 8,
+              "DocumentIndex": 9,
               "Title": "DocumentService.cs",
               "DocumentMoniker": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\DocumentService.cs",
               "RelativeDocumentMoniker": "ServiceACAD\\DocumentService.cs",
               "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\DocumentService.cs",
               "RelativeToolTip": "ServiceACAD\\DocumentService.cs",
-              "ViewState": "AgIAAEAAAAAAAAAAAAAAAEQAAAAIAAAAAAAAAA==",
+              "ViewState": "AgIAAEwAAAAAAAAAAAAAAFAAAAAIAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-04-20T10:40:33.144Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 9,
+              "DocumentIndex": 10,
               "Title": "TestWorker.cs",
               "DocumentMoniker": "C:\\Users\\CFDDN\\AppData\\Local\\Temp\\.vsdbgsrc\\5b87d42f7c5ee1f59f67598c0b99d31debe4a5b47b6a0de129cc5f1de1de97aa\\TestWorker.cs",
               "ToolTip": "C:\\Users\\CFDDN\\AppData\\Local\\Temp\\.vsdbgsrc\\5b87d42f7c5ee1f59f67598c0b99d31debe4a5b47b6a0de129cc5f1de1de97aa\\TestWorker.cs [Read Only]",
@@ -294,7 +294,7 @@
               "RelativeDocumentMoniker": "ServiceACAD\\IEditorService.cs",
               "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\IEditorService.cs",
               "RelativeToolTip": "ServiceACAD\\IEditorService.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAYAAAAFAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABAAAAAFAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-04-21T12:36:00.851Z",
               "EditorCaption": ""
@@ -320,7 +320,7 @@
               "RelativeDocumentMoniker": "ServiceACAD\\CadServiceManager.cs",
               "ToolTip": "D:\\leaveblackgithub\\DDNCadAddins\\src\\ServiceACAD\\CadServiceManager.cs",
               "RelativeToolTip": "ServiceACAD\\CadServiceManager.cs",
-              "ViewState": "AgIAAGgAAAAAAAAAAAASwHUAAAArAAAAAAAAAA==",
+              "ViewState": "AgIAAIgAAAAAAAAAAAASwJUAAAArAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-04-21T02:19:16.813Z",
               "EditorCaption": ""

@@ -10,6 +10,12 @@ obj/
 *.suo
 *.cache
 *.pdb
+*.db
+**/CopilotIndices/**
+**/v17/**
+*.backup.json
+*.json
+*.vsidx
 
 # 包文件夹
 packages/

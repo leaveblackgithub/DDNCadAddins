@@ -15,13 +15,21 @@ namespace ServiceACAD
         public DocumentService(Document document = null)
         {
             CadDoc = document == null ? Application.DocumentManager.MdiActiveDocument : document;
+<<<<<<< HEAD
             ServiceEd = new EditorService(CadDoc.Editor);
+=======
+            ServiceEd=new EditorService(CadDoc.Editor);
+>>>>>>> 1f1ac48d411f700a4cb10cdc8df145885fa85ebd
         }
-
+        
         public Document CadDoc { get; }
         public Database CadDb => CadDoc.Database;
+<<<<<<< HEAD
         public IEditorService ServiceEd { get; }
 
+=======
+        public IEditorService ServiceEd {get; }
+>>>>>>> 1f1ac48d411f700a4cb10cdc8df145885fa85ebd
         public OpResult<ObjectId[]> Isolate(ObjectId objectId, params ObjectId[] additionalObjectIds)
         {
             try
@@ -43,7 +51,11 @@ namespace ServiceACAD
 
                 // 执行隔离操作
                 ExecuteInTransaction(serviceTrans => serviceTrans.IsolateObjects(objectsToIsolate));
+<<<<<<< HEAD
 
+=======
+                
+>>>>>>> 1f1ac48d411f700a4cb10cdc8df145885fa85ebd
                 return OpResult<ObjectId[]>.Success(objectsToIsolate.ToArray());
             }
             catch (Exception ex)
