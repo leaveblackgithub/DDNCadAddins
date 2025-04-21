@@ -12,18 +12,6 @@ namespace AddinsACAD.ServiceTests
     [Apartment(ApartmentState.STA)]
     public class TransactionExtensionTest
     {
-        [Test]
-        public void TestGetModelSpaceForWrite()
-        {
-            void Action1(IDocumentService serviceDoc, Transaction tr)
-            {
-                using (var modelSpace = tr.GetModelSpace(serviceDoc.CadDb, OpenMode.ForWrite))
-                    Assert.NotNull(modelSpace);
-            }
-
-            ;
-            TestUtils.ExecuteInTransactions("", Action1);
-        }
                 [Test]
         public void TestGetModelSpaceForWrite2()
         {
@@ -34,32 +22,11 @@ namespace AddinsACAD.ServiceTests
             }
 
             ;
-            CadServiceManager._.ActiveServiceDoc.ExecuteInTransactions("", Action1);
+            CadServiceManager._.ExecuteInTransactions("", Action1);
         }
 
 
-        [Test]
-        public void TestGetModelSpaceChildObjs()
-        {
-            void Action1(IDocumentService serviceDoc, Transaction tr)
-            {
-                try
-                {
-                    var getChildObjects =
-                        tr.GetChildObjectsFrModelspace(serviceDoc.CadDb, obj => obj is BlockReference);
 
-                    Assert.AreEqual(getChildObjects.Count, 7);
-
-                }
-                catch (Exception e)
-                {
-                    Debug.WriteLine(e);
-                }
-
-            }
-
-            TestUtils.ExecuteInTransactions("xclip", Action1);
-        }
         [Test]
         public void TestGetModelSpaceChildObjs2()
         {
@@ -80,7 +47,7 @@ namespace AddinsACAD.ServiceTests
 
             }
 
-            CadServiceManager._.ActiveServiceDoc.ExecuteInTransactions("xclip", Action1);
+            CadServiceManager._.ExecuteInTransactions("xclip", Action1);
         }
 
         // [Test]

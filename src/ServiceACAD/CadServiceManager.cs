@@ -14,9 +14,9 @@ namespace ServiceACAD
         private static CadServiceManager _instance;
 
         /// <summary>
-        /// 获取DocumentServiceManager的单例实例
+        /// 获取当前活动文档的DocumentService
         /// </summary>
-        public static CadServiceManager _
+        public static CadServiceManager instance
         {
             get
             {
@@ -33,7 +33,8 @@ namespace ServiceACAD
                 return _instance;
             }
         }
-
+        
+        public static IDocumentService _=> instance.ActiveServiceDoc;
         private CadServiceManager()
         {
             // 注册文档激活事件，以便在文档切换时更新服务
@@ -45,13 +46,12 @@ namespace ServiceACAD
 
         // 上次使用的文档引用，用于检测文档变化
         private Document _lastActiveDocument;
-        public Database CadDb=>ActiveServiceDoc.CadDb;
 
         /// <summary>
         /// 获取当前活动文档的DocumentService
         /// </summary>
         /// <returns>当前活动文档的DocumentService实例</returns>
-        public IDocumentService ActiveServiceDoc
+        private IDocumentService ActiveServiceDoc
         {
             get
             {

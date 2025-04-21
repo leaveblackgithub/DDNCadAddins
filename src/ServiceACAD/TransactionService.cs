@@ -33,7 +33,8 @@ namespace ServiceACAD
         {
             try
             {
-                return CadTrans.AppendEntityToModelSpace(CadServiceManager._.CadDb, entity);
+                var objectId = AppendEntityToBlockTableRecord(GetModelSpace(OpenMode.ForWrite), entity);
+                return objectId;
             }
             catch (Exception ex)
             {
@@ -52,7 +53,9 @@ namespace ServiceACAD
         {
             try
             {
-                return CadTrans.AppendEntityToBlockTableRecord(blockTableRecord, entity);
+                var objectId = blockTableRecord.AppendEntity(entity);
+                CadTrans.AddNewlyCreatedDBObject(entity, true);
+                return objectId;
             }
             catch (Exception ex)
             {
@@ -70,7 +73,7 @@ namespace ServiceACAD
         {
             try
             {
-                return CadTrans.GetModelSpace(CadServiceManager._.CadDb, openMode);
+                return GetBlockTableRecord(BlockTableRecord.ModelSpace, openMode);
             }
             catch (Exception ex)
             {
@@ -87,7 +90,7 @@ namespace ServiceACAD
         {
             try
             {
-                return CadTrans.GetBlockTable(CadServiceManager._.CadDb);
+                return (BlockTable)CadTrans.GetObject(CadServiceManager._.CadDb.BlockTableId, OpenMode.ForRead);
             }
             catch (Exception ex)
             {
@@ -105,7 +108,8 @@ namespace ServiceACAD
         {
             try
             {
-                return CadTrans.GetBlockTableRecordId(CadServiceManager._.CadDb, name);
+                var blockTable = GetBlockTable();
+                return blockTable[name];
             }
             catch (Exception ex)
             {
@@ -124,7 +128,7 @@ namespace ServiceACAD
         {
             try
             {
-                return CadTrans.GetBlockTableRecord(CadServiceManager._.CadDb, name, openMode);
+                return (BlockTableRecord)CadTrans.GetObject(GetBlockTableRecordId(name), openMode);
             }
             catch (Exception ex)
             {
@@ -143,7 +147,28 @@ namespace ServiceACAD
         {
             try
             {
-                return CadTrans.GetChildObjects(CadServiceManager._.CadDb, blockTableRecord, filter) ?? new List<ObjectId>();
+                ICollection<ObjectId> ret;
+                try
+                {
+                    var childIds = new List<ObjectId>();
+                    foreach (var objectId in blockTableRecord)
+                    {
+                        var dbObject = CadTrans.GetObject(objectId, OpenMode.ForRead) as DBObject;
+                        if (dbObject != null && (filter == null || filter(dbObject)))
+                        {
+                            childIds.Add(objectId);
+                        }
+                    }
+
+                    ret = childIds;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(ex.Message);
+                    ret = null;
+                }
+
+                return ret ?? new List<ObjectId>();
             }
             catch (Exception ex)
             {
@@ -161,7 +186,7 @@ namespace ServiceACAD
         {
             try
             {
-                return CadTrans.GetChildObjectsFrModelspace(CadServiceManager._.CadDb, filter) ?? new List<ObjectId>();
+                return GetChildObjects(GetModelSpace(OpenMode.ForRead), filter);
             }
             catch (Exception ex)
             {

@@ -24,30 +24,26 @@ namespace AddinsACAD
             //Use a new drawing
             long lineId = 0;
 
-            void Action1(IDocumentService serviceDoc, Transaction tr)
+            void Action1(ITransactionService tr)
             {
                 var line = new Line(new Point3d(0, 0, 0), new Point3d(100, 100, 100));
 
-                var objectId = tr.AppendEntityToModelSpace(serviceDoc.CadDoc.Database, line);
+                var objectId = tr.AppendEntityToModelSpace(line);
 
                 lineId = objectId.Handle.Value;
             }
 
-            void Action2(IDocumentService serviceDoc, Transaction tr)
+            void Action2(ITransactionService tr)
             {
                 //Check in another transaction if the line was created
-
-                ObjectId objectId;
-                using (var db = serviceDoc.CadDb)
-                {
-                    if (!db.TryGetObjectId(new Handle(lineId), out objectId))
+                
+                    if (!CadServiceManager._.CadDb.TryGetObjectId(new Handle(lineId), out _))
                     {
                         Assert.Fail("Line didn't created");
                     }
-                }
             }
 
-            TestUtils.ExecuteInTransactions("",Action1, Action2);
+            CadServiceManager._.ExecuteInTransactions("",Action1, Action2);
         }
         //测试成功但是看不到
         // [Test]
