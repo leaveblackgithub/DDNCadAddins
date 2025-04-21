@@ -35,6 +35,7 @@ Features:
     </Compile>
     <Compile Include="BlockService.cs" />
     <Compile Include="DocumentService.cs" />
+    <Compile Include="DocumentServiceManager.cs" />
     <Compile Include="IBlockService.cs" />
     <Compile Include="IDocumentService.cs" />
     <Compile Include="OpResult.cs" />

@@ -49,16 +49,16 @@ namespace TestRunnerACAD
 
         public static void ExecuteInTransactions(string drawingTitle="",params Action<IDocumentService, Transaction>[] testActions)
         {
-            var cadDoc = Application.DocumentManager.MdiActiveDocument;
-                var serviceDoc = new DocumentService(cadDoc);
+            //var cadDoc = Application.DocumentManager.MdiActiveDocument;
+            var serviceDoc = CadServiceManager._.ActiveServiceDoc;//new DocumentService(cadDoc);
                 serviceDoc.ExecuteInTransactions(drawingTitle,testActions);
         }
 
         public static void ExecuteInDoc(Action<IDocumentService> testAction, string drawingTitle = "")
         {
-            var cadDoc = Application.DocumentManager.MdiActiveDocument;
-            
-                var serviceDoc = new DocumentService(cadDoc);
+            // var cadDoc = Application.DocumentManager.MdiActiveDocument;
+
+            var serviceDoc = CadServiceManager._.ActiveServiceDoc;//new DocumentService(cadDoc);
                 serviceDoc.ExecuteInDoc(testAction,drawingTitle);
             
         }

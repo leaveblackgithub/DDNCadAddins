@@ -1,6 +1,7 @@
 using System.Reflection;
 using AddinsACAD;
 using Autodesk.AutoCAD.Runtime;
+using ServiceACAD;
 using TestRunnerACAD;
 
 [assembly: CommandClass(typeof(RunTestsCommand))]
@@ -18,6 +19,7 @@ namespace AddinsACAD
             var assembly = Assembly.GetExecutingAssembly();
             // 在App环境中，运行所有测试
             TestUtils.Run(assembly);//,"AddinsACAD.ServiceTests");
+            CadServiceManager._.Dispose();
         }
     }
 }
