@@ -21,7 +21,28 @@ namespace ServiceACAD
         public Database CadDb => CadDoc.Database;
 
         public Editor CadEd=> CadDoc.Editor;
-
+        public void ExecuteInTransaction(Action<ITransactionService> testAction)
+        {
+            using (CadDoc.LockDocument())
+            using (var tr = CadDb.TransactionManager.StartTransaction())
+            {
+                var transactionService = new TransactionService(tr);
+                testAction(transactionService);
+                tr.Commit();
+            }
+        }
+        public void ExecuteInTransactions(string drawingTitle,params Action<ITransactionService>[] testActions)
+        {
+            if (!TitleEquals(drawingTitle))
+            {
+                Assert.Ignore($"\nThe test is ignored since active drawing is not required {drawingTitle}");
+                return;
+            }
+            foreach (var testAction in testActions)
+            {
+                ExecuteInTransaction(testAction);
+            }
+        }
         public void ExecuteInTransactions(string drawingTitle,ICollection<Action<IDocumentService, Transaction>> testActions)
         {
 

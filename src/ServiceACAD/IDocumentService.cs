@@ -15,5 +15,7 @@ namespace ServiceACAD
         void ExecuteInTransactions(string drawingTitle,ICollection<Action<IDocumentService, Transaction>> testActions);
         
         void ExecuteInDoc(Action<IDocumentService> testAction,string drawingTitle);
+
+        void ExecuteInTransactions(string drawingTitle,params Action<ITransactionService>[] testActions);
     }
 }

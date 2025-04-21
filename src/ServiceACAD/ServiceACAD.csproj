@@ -35,12 +35,14 @@ Features:
     </Compile>
     <Compile Include="BlockService.cs" />
     <Compile Include="DocumentService.cs" />
-    <Compile Include="DocumentServiceManager.cs" />
+    <Compile Include="CadServiceManager.cs" />
     <Compile Include="IBlockService.cs" />
     <Compile Include="IDocumentService.cs" />
+    <Compile Include="ITransactionService.cs" />
     <Compile Include="OpResult.cs" />
     <Compile Include="TransactionExtension.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TransactionService.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

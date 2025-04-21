@@ -1,5 +1,6 @@
 using System;
 using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace ServiceACAD
@@ -44,6 +45,7 @@ namespace ServiceACAD
 
         // 上次使用的文档引用，用于检测文档变化
         private Document _lastActiveDocument;
+        public Database CadDb=>ActiveServiceDoc.CadDb;
 
         /// <summary>
         /// 获取当前活动文档的DocumentService

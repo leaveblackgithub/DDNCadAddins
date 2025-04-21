@@ -24,6 +24,18 @@ namespace AddinsACAD.ServiceTests
             ;
             TestUtils.ExecuteInTransactions("", Action1);
         }
+                [Test]
+        public void TestGetModelSpaceForWrite2()
+        {
+            void Action1(ITransactionService tr)
+            {
+                using (var modelSpace = tr.GetModelSpace( OpenMode.ForWrite))
+                    Assert.NotNull(modelSpace);
+            }
+
+            ;
+            CadServiceManager._.ActiveServiceDoc.ExecuteInTransactions("", Action1);
+        }
 
 
         [Test]
@@ -47,6 +59,28 @@ namespace AddinsACAD.ServiceTests
             }
 
             TestUtils.ExecuteInTransactions("xclip", Action1);
+        }
+        [Test]
+        public void TestGetModelSpaceChildObjs2()
+        {
+            void Action1(ITransactionService tr)
+            {
+                try
+                {
+                    var getChildObjects =
+                        tr.GetChildObjectsFromModelspace(obj => obj is BlockReference);
+
+                    Assert.AreEqual(getChildObjects.Count, 7);
+
+                }
+                catch (Exception e)
+                {
+                    Debug.WriteLine(e);
+                }
+
+            }
+
+            CadServiceManager._.ActiveServiceDoc.ExecuteInTransactions("xclip", Action1);
         }
 
         // [Test]
