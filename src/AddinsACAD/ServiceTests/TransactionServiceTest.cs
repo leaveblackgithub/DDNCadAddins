@@ -10,14 +10,14 @@ namespace AddinsACAD.ServiceTests
 {
     [TestFixture]
     [Apartment(ApartmentState.STA)]
-    public class TransactionExtensionTest
+    public class TransactionServiceTest
     {
                 [Test]
         public void TestGetModelSpaceForWrite2()
         {
             void Action1(ITransactionService tr)
             {
-                using (var modelSpace = tr.GetModelSpace( OpenMode.ForWrite))
+                var modelSpace = tr.GetModelSpace(OpenMode.ForWrite);
                     Assert.NotNull(modelSpace);
             }
 
@@ -50,18 +50,18 @@ namespace AddinsACAD.ServiceTests
             CadServiceManager._.ExecuteInTransactions("xclip", Action1);
         }
 
-        // [Test]
-        // public void TestGetBlockRef23432()
-        // {
-        //     void Action1(IDocumentService serviceDoc, Transaction tr)
-        //     {
-        //         var blkRefIds = tr.GetChildObjectsFrModelspace(serviceDoc.CadDb,
-        //             obj => obj is BlockReference && ((BlockReference)obj).Name == "23432");
-        //         Assert.Equals(blkRefIds.Count, 1);
-        //
-        //     }
-        //
-        //     TestUtils.ExecuteInTransactions("xclip", Action1);
-        // }
+        [Test]
+        public void TestGetBlockRef23432()
+        {
+            void Action1(  ITransactionService tr)
+            {
+                var blkRefIds = tr.GetChildObjectsFromModelspace
+                    (obj => obj is BlockReference && ((BlockReference)obj).Name == "23432");
+                Assert.AreEqual(blkRefIds.Count, 6);
+        
+            }
+        
+            CadServiceManager._.ExecuteInTransactions("xclip", Action1);
+        }
     }
 }

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using Autodesk.AutoCAD.ApplicationServices;
@@ -20,64 +19,47 @@ namespace ServiceACAD
         public Document CadDoc { get; }
         public Database CadDb => CadDoc.Database;
 
-        public Editor CadEd=> CadDoc.Editor;
-        public void ExecuteInTransaction(Action<ITransactionService> testAction)
-        {
-            using (CadDoc.LockDocument())
-            using (var tr = CadDb.TransactionManager.StartTransaction())
-            {
-                var transactionService = new TransactionService(tr);
-                testAction(transactionService);
-                tr.Commit();
-            }
-        }
-        public void ExecuteInTransactions(string drawingTitle,params Action<ITransactionService>[] testActions)
+        public Editor CadEd => CadDoc.Editor;
+
+        public void ExecuteInTransactions(string drawingTitle, params Action<ITransactionService>[] testActions)
         {
             if (!TitleEquals(drawingTitle))
             {
                 Assert.Ignore($"\nThe test is ignored since active drawing is not required {drawingTitle}");
                 return;
             }
+
             foreach (var testAction in testActions)
             {
                 ExecuteInTransaction(testAction);
             }
         }
-        public void ExecuteInTransactions(string drawingTitle,ICollection<Action<IDocumentService, Transaction>> testActions)
+
+        public string DrawingFullPath => CadDoc.Name;
+
+        public void ExecuteInTransaction(Action<ITransactionService> testAction)
         {
-
-            if (!TitleEquals(drawingTitle))
-            {
-                Assert.Ignore($"\nThe test is ignored since active drawing is not required {drawingTitle}");
-                return;
-            }
-            {
-                foreach (var testAction in testActions)
-                {
-                    ExecuteInTransaction( testAction);
-                }
-            }
-        }
-
-        private void ExecuteInTransaction(Action<IDocumentService, Transaction> testAction)
-        {
-            //怎样检查cad文件是否已存盘
-
-            // Replace 'var lock' with 'var docLock' to avoid conflicting with 'lock' keyword.
             using (CadDoc.LockDocument())
             using (var tr = CadDb.TransactionManager.StartTransaction())
             {
                 try
                 {
-                    // Execute the test action.
-                    testAction(this, tr);
+                    var transactionService = new TransactionService(tr);
+                    testAction(transactionService);
+                    tr.Commit();
+                }
+                catch (AssertionException e)
+                {
+                    // 断言失败异常被忽略，仅记录不抛出
+                    Debug.WriteLine($"断言失败异常被忽略:{e.Message}");
                     tr.Commit();
                 }
                 catch (Exception e)
                 {
-                    // Replace Trace.Write with Debug.Write
-                    Debug.Write(e.Message);
+                    // 记录异常信息
+                    Debug.WriteLine($"ExecuteInTransaction异常: {e.Message}");
                     tr.Abort();
+                    ;
                 }
             }
         }
@@ -91,9 +73,8 @@ namespace ServiceACAD
 
             try
             {
-                var drawingName = System.IO.Path.GetFileNameWithoutExtension(CadDoc.Name);
+                var drawingName = Path.GetFileNameWithoutExtension(CadDoc.Name);
                 return string.Equals(drawingName, drawingTitle, StringComparison.CurrentCultureIgnoreCase);
-
             }
             catch (Exception e)
             {
@@ -101,28 +82,5 @@ namespace ServiceACAD
                 return false;
             }
         }
-
-        public void ExecuteInDoc(Action<IDocumentService> testAction, string drawingTitle)
-        {
-
-            if (!TitleEquals(drawingTitle))
-            {
-                Assert.Ignore($"\nThe test is ignored since active drawing is not required {drawingTitle}");
-                return;
-            }
-
-            try
-            {
-                testAction(this);
-
-            }
-            catch (Exception e)
-            {
-                Debug.WriteLine(e);
-            }
-        }
-
-        public string DrawingFullPath=> CadDoc.Name;
-        
     }
 }

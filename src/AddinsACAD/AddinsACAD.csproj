@@ -38,7 +38,7 @@ Features:
     <Compile Include="RunTestsCommand.cs" />
     <Compile Include="ServiceTests\BlockServiceTests.cs" />
     <Compile Include="ServiceTests\DocumentServiceTest.cs" />
-    <Compile Include="ServiceTests\TransactionExtensionTest.cs" />
+    <Compile Include="ServiceTests\TransactionServiceTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
