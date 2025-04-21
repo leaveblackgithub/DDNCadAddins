@@ -1,20 +1,31 @@
-using System;
 using Autodesk.AutoCAD.ApplicationServices;
-using Autodesk.AutoCAD.DatabaseServices;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace ServiceACAD
 {
     /// <summary>
-    /// 文档服务管理器，负责创建和提供全局的DocumentService引用
+    ///     文档服务管理器，负责创建和提供全局的DocumentService引用
     /// </summary>
     public class CadServiceManager
     {
         private static readonly object _lockObj = new object();
         private static CadServiceManager _instance;
 
+        // 当前活动文档的DocumentService
+        private IDocumentService _currentDocumentService;
+
+
+        // 上次使用的文档引用，用于检测文档变化
+        private Document _lastActiveDocument;
+
+        private CadServiceManager()
+        {
+            // 注册文档激活事件，以便在文档切换时更新服务
+            Application.DocumentManager.DocumentActivated += DocumentManager_DocumentActivated;
+        }
+
         /// <summary>
-        /// 获取当前活动文档的DocumentService
+        ///     获取当前活动文档的DocumentService
         /// </summary>
         public static CadServiceManager instance
         {
@@ -30,25 +41,24 @@ namespace ServiceACAD
                         }
                     }
                 }
+
                 return _instance;
             }
         }
-        
-        public static IDocumentService _=> instance.ActiveServiceDoc;
-        private CadServiceManager()
-        {
-            // 注册文档激活事件，以便在文档切换时更新服务
-            Application.DocumentManager.DocumentActivated += DocumentManager_DocumentActivated;
-        }
 
-        // 当前活动文档的DocumentService
-        private IDocumentService _currentDocumentService;
-
-        // 上次使用的文档引用，用于检测文档变化
-        private Document _lastActiveDocument;
+        public static IDocumentService _ => instance.ActiveServiceDoc;
 
         /// <summary>
-        /// 获取当前活动文档的DocumentService
+        ///     获取当前活动文档的EditorService
+        /// </summary>
+        public static IEditorService ServiceEd => instance.ActiveServiceDoc.ServiceEd;
+
+        /// <summary>
+        ///     获取当前活动文档的EditorService
+        /// </summary>
+        /// <returns>当前活动文档的EditorService实例</returns>
+        /// <summary>
+        ///     获取当前活动文档的DocumentService
         /// </summary>
         /// <returns>当前活动文档的DocumentService实例</returns>
         private IDocumentService ActiveServiceDoc
@@ -59,7 +69,9 @@ namespace ServiceACAD
 
                 // 如果当前没有活动文档，返回null
                 if (currentDocument == null)
+                {
                     return null;
+                }
 
                 // 检查文档是否发生变化或服务尚未创建
                 if (_currentDocumentService == null || _lastActiveDocument != currentDocument)
@@ -98,7 +110,7 @@ namespace ServiceACAD
         // }
 
         /// <summary>
-        /// 文档激活事件处理程序
+        ///     文档激活事件处理程序
         /// </summary>
         private void DocumentManager_DocumentActivated(object sender, DocumentCollectionEventArgs e)
         {
@@ -108,11 +120,8 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        /// 释放资源
+        ///     释放资源
         /// </summary>
-        public void Dispose()
-        {
-            Application.DocumentManager.DocumentActivated -= DocumentManager_DocumentActivated;
-        }
+        public void Dispose() => Application.DocumentManager.DocumentActivated -= DocumentManager_DocumentActivated;
     }
-} 
+}

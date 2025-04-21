@@ -1,17 +1,15 @@
 using System;
-using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
-using Autodesk.AutoCAD.EditorInput;
 
 namespace ServiceACAD
 {
     public interface IDocumentService
     {
-        Document CadDoc { get; }
         Database CadDb { get; }
-        Editor CadEd { get; }
         string DrawingFullPath { get; }
+        IEditorService ServiceEd { get; }
 
-        void ExecuteInTransactions(string drawingTitle,params Action<ITransactionService>[] testActions);
+        void ExecuteInTransactions(string drawingTitle, params Action<ITransactionService>[] testActions);
+        OpResult<ObjectId[]> Isolate(ObjectId objectId, params ObjectId[] additionalObjectIds);
     }
 }

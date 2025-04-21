@@ -18,7 +18,7 @@ namespace AddinsACAD
             // documentService.CadEd.WriteMessage("\nTest");
             var assembly = Assembly.GetExecutingAssembly();
             // 在App环境中，运行所有测试
-            TestUtils.Run(assembly);//,"AddinsACAD.ServiceTests");
+            TestUtils.Run(assembly); //,"AddinsACAD.ServiceTests");
             CadServiceManager.instance.Dispose();
         }
     }

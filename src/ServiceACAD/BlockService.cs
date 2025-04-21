@@ -6,39 +6,51 @@ namespace ServiceACAD
     {
         public BlockService(BlockReference blkRef)
         {
-            CadBlkRef = blkRef;}
+            CadBlkRef = blkRef;
+        }
+
         public BlockReference CadBlkRef { get; set; }
 
         public bool IsXclipped()
         {
             if (CadBlkRef == null)
+            {
                 return false;
-                
+            }
+
             // 检查块参照是否有X裁剪
             // 在AutoCAD .NET API中，通过检查扩展字典中是否包含"ACAD_FILTER"字典和"SPATIAL"项来判断
-            
+
             // 检查是否存在扩展字典
             if (CadBlkRef.ExtensionDictionary == ObjectId.Null)
+            {
                 return false;
-                
-            using (Transaction tr = CadBlkRef.Database.TransactionManager.StartTransaction())
+            }
+
+            using (var tr = CadBlkRef.Database.TransactionManager.StartTransaction())
             {
                 try
                 {
                     // 打开扩展字典
-                    DBDictionary extDict = tr.GetObject(CadBlkRef.ExtensionDictionary, OpenMode.ForRead) as DBDictionary;
+                    var extDict = tr.GetObject(CadBlkRef.ExtensionDictionary, OpenMode.ForRead) as DBDictionary;
                     if (extDict == null)
+                    {
                         return false;
-                        
+                    }
+
                     // 检查是否包含ACAD_FILTER字典
                     if (!extDict.Contains("ACAD_FILTER"))
+                    {
                         return false;
-                        
+                    }
+
                     // 打开ACAD_FILTER字典
-                    DBDictionary filterDict = tr.GetObject(extDict.GetAt("ACAD_FILTER"), OpenMode.ForRead) as DBDictionary;
+                    var filterDict = tr.GetObject(extDict.GetAt("ACAD_FILTER"), OpenMode.ForRead) as DBDictionary;
                     if (filterDict == null)
+                    {
                         return false;
-                        
+                    }
+
                     // 检查是否包含SPATIAL项，如果包含则表示有X裁剪
                     return filterDict.Contains("SPATIAL");
                 }

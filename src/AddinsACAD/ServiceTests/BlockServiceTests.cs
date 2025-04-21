@@ -1,5 +1,7 @@
 using System.Threading;
+using Autodesk.AutoCAD.DatabaseServices;
 using NUnit.Framework;
+using ServiceACAD;
 
 namespace AddinsACAD.ServiceTests
 {
@@ -8,10 +10,15 @@ namespace AddinsACAD.ServiceTests
     public class BlockServiceTests
     {
         [Test]
-        public void GetBlockRef()
+        public void TestIsXclipped()
         {
-
-            Assert.True(true);
+            void Action1(ITransactionService transactionService)
+            {
+                var blkId = CommonTestMethods.GetBlkRefIdsOf23432(transactionService)[0];
+                var blk=transactionService.GetObject<BlockReference>(blkId);
+                var blkService = new BlockService(blk);
+                Assert.IsTrue(blkService.IsXclipped());
+            }
         }
     }
 }

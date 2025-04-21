@@ -1,8 +1,5 @@
-using System.IO;
 using System.Threading;
 using NUnit.Framework;
-using ServiceACAD;
-using TestRunnerACAD;
 
 namespace AddinsACAD.ServiceTests
 {

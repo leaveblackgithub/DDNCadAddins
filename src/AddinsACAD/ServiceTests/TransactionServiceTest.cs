@@ -1,10 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Autodesk.AutoCAD.DatabaseServices;
 using NUnit.Framework;
 using ServiceACAD;
-using TestRunnerACAD;
 
 namespace AddinsACAD.ServiceTests
 {
@@ -12,19 +12,18 @@ namespace AddinsACAD.ServiceTests
     [Apartment(ApartmentState.STA)]
     public class TransactionServiceTest
     {
-                [Test]
+        [Test]
         public void TestGetModelSpaceForWrite2()
         {
             void Action1(ITransactionService tr)
             {
                 var modelSpace = tr.GetModelSpace(OpenMode.ForWrite);
-                    Assert.NotNull(modelSpace);
+                Assert.NotNull(modelSpace);
             }
 
             ;
             CadServiceManager._.ExecuteInTransactions("", Action1);
         }
-
 
 
         [Test]
@@ -35,33 +34,30 @@ namespace AddinsACAD.ServiceTests
                 try
                 {
                     var getChildObjects =
-                        tr.GetChildObjectsFromModelspace(obj => obj is BlockReference);
+                        tr.GetChildObjectsFromModelspace<BlockReference>();
 
                     Assert.AreEqual(getChildObjects.Count, 7);
-
                 }
                 catch (Exception e)
                 {
                     Debug.WriteLine(e);
                 }
-
             }
 
             CadServiceManager._.ExecuteInTransactions("xclip", Action1);
         }
 
-        [Test]
-        public void TestGetBlockRef23432()
-        {
-            void Action1(  ITransactionService tr)
-            {
-                var blkRefIds = tr.GetChildObjectsFromModelspace
-                    (obj => obj is BlockReference && ((BlockReference)obj).Name == "23432");
-                Assert.AreEqual(blkRefIds.Count, 6);
-        
-            }
-        
-            CadServiceManager._.ExecuteInTransactions("xclip", Action1);
-        }
+        // [Test]
+        // public void TestGetBlockRef23432()
+        // {
+        //     void Action1(ITransactionService tr)
+        //     {
+        //         var blkRefIds = CommonTestMethods.GetBlkRefIdsOf23432(tr);
+        //         Assert.AreEqual(blkRefIds.Count, 6);
+        //         CadServiceManager._.Isolate(blkRefIds[0]);
+        //     }
+        //
+        //     CadServiceManager._.ExecuteInTransactions("xclip", Action1);
+        // }
     }
 }

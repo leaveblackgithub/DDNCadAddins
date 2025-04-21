@@ -3,7 +3,6 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using NUnit.Framework;
 using ServiceACAD;
-using TestRunnerACAD;
 
 namespace AddinsACAD
 {
@@ -16,7 +15,7 @@ namespace AddinsACAD
 
         [Test]
         public void TestFail() => Assert.Fail("This test should always fail.");
-        
+
 
         [Test]
         public void TestAddLine2()
@@ -36,14 +35,14 @@ namespace AddinsACAD
             void Action2(ITransactionService tr)
             {
                 //Check in another transaction if the line was created
-                
-                    if (!CadServiceManager._.CadDb.TryGetObjectId(new Handle(lineId), out _))
-                    {
-                        Assert.Fail("Line didn't created");
-                    }
+
+                if (!CadServiceManager._.CadDb.TryGetObjectId(new Handle(lineId), out _))
+                {
+                    Assert.Fail("Line didn't created");
+                }
             }
 
-            CadServiceManager._.ExecuteInTransactions("",Action1, Action2);
+            CadServiceManager._.ExecuteInTransactions("", Action1, Action2);
         }
         //测试成功但是看不到
         // [Test]
@@ -58,8 +57,5 @@ namespace AddinsACAD
         //     }
         //     TestUtils.ExecuteInCad(Action1);
         // }
-
     }
 }
-
-

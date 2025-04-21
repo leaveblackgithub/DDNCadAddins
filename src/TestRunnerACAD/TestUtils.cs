@@ -1,17 +1,12 @@
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
 using System.Reflection;
-using System.Windows.Forms;
-using NUnit.Framework;
 using NUnitLite;
-using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace TestRunnerACAD
 {
     public static class TestUtils
     {
-        public static void Run(Assembly testAssembly,string include="", string exclude = "")
+        public static void Run(Assembly testAssembly, string include = "", string exclude = "")
         {
             // 创建ReportGenerator实例
             var reportGenerator = new ReportGenerator();
@@ -25,10 +20,11 @@ namespace TestRunnerACAD
             {
                 "--trace=verbose", "--result=" + xmlReportPath
             };
-            if(!string.IsNullOrEmpty(include))
+            if (!string.IsNullOrEmpty(include))
             {
                 nunitArgs.Add($"--where=namespace=='{include}'");
             }
+
             // 运行测试
             if (!string.IsNullOrEmpty(exclude))
             {
@@ -43,6 +39,5 @@ namespace TestRunnerACAD
             reportGenerator.CreateHtmlReport();
             reportGenerator.OpenHtmlReport();
         }
-        
     }
 }
