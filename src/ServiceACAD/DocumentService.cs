@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
@@ -14,12 +16,43 @@ namespace ServiceACAD
         public DocumentService(Document document = null)
         {
             CadDoc = document == null ? Application.DocumentManager.MdiActiveDocument : document;
+            ServiceEd=new EditorService(CadDoc.Editor);
         }
-
+        
         public Document CadDoc { get; }
         public Database CadDb => CadDoc.Database;
+        public IEditorService ServiceEd {get; }
+        public OpResult<ObjectId[]> Isolate(ObjectId objectId, params ObjectId[] additionalObjectIds)
+        {
+            try
+            {
+                // 合并所有需要隔离的ObjectId
+                var objectsToIsolate = new List<ObjectId> { objectId };
+                if (additionalObjectIds != null && additionalObjectIds.Length > 0)
+                {
+                    objectsToIsolate.AddRange(additionalObjectIds);
+                }
 
-        public Editor CadEd => CadDoc.Editor;
+                // 过滤无效的ObjectId
+                objectsToIsolate = objectsToIsolate.Where(id => id.IsValid).ToList();
+
+                if (objectsToIsolate.Count == 0)
+                {
+                    return OpResult<ObjectId[]>.Fail("没有有效的对象可隔离");
+                }
+
+                // 执行隔离操作
+                ExecuteInTransaction(serviceTrans => serviceTrans.IsolateObjects(objectsToIsolate));
+                
+                return OpResult<ObjectId[]>.Success(objectsToIsolate.ToArray());
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"隔离对象失败: {ex.Message}");
+                return OpResult<ObjectId[]>.Fail($"隔离对象失败: {ex.Message}");
+            }
+        }
+
 
         public void ExecuteInTransactions(string drawingTitle, params Action<ITransactionService>[] testActions)
         {

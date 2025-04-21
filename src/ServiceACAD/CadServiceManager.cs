@@ -35,6 +35,12 @@ namespace ServiceACAD
         }
         
         public static IDocumentService _=> instance.ActiveServiceDoc;
+        
+        /// <summary>
+        /// 获取当前活动文档的EditorService
+        /// </summary>
+        public static IEditorService ServiceEd => instance.ActiveServiceDoc.ServiceEd;
+
         private CadServiceManager()
         {
             // 注册文档激活事件，以便在文档切换时更新服务
@@ -43,9 +49,16 @@ namespace ServiceACAD
 
         // 当前活动文档的DocumentService
         private IDocumentService _currentDocumentService;
+        
 
         // 上次使用的文档引用，用于检测文档变化
         private Document _lastActiveDocument;
+
+        /// <summary>
+        /// 获取当前活动文档的EditorService
+        /// </summary>
+        /// <returns>当前活动文档的EditorService实例</returns>
+
 
         /// <summary>
         /// 获取当前活动文档的DocumentService

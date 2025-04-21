@@ -36,8 +36,10 @@ Features:
     <Compile Include="BlockService.cs" />
     <Compile Include="DocumentService.cs" />
     <Compile Include="CadServiceManager.cs" />
+    <Compile Include="EditorService.cs" />
     <Compile Include="IBlockService.cs" />
     <Compile Include="IDocumentService.cs" />
+    <Compile Include="IEditorService.cs" />
     <Compile Include="ITransactionService.cs" />
     <Compile Include="OpResult.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

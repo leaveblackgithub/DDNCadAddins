@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Autodesk.AutoCAD.DatabaseServices;
 
 namespace ServiceACAD
@@ -143,18 +144,18 @@ namespace ServiceACAD
         /// <param name="blockTableRecord">块表记录</param>
         /// <param name="filter">过滤器</param>
         /// <returns>子对象ID集合</returns>
-        public ICollection<ObjectId> GetChildObjects(BlockTableRecord blockTableRecord, Func<DBObject, bool> filter = null)
+        public List<ObjectId> GetChildObjects<T>(BlockTableRecord blockTableRecord, Func<T, bool> filter = null)where T:DBObject
         {
             try
             {
-                ICollection<ObjectId> ret;
+                List<ObjectId> ret;
                 try
                 {
                     var childIds = new List<ObjectId>();
                     foreach (var objectId in blockTableRecord)
                     {
                         var dbObject = CadTrans.GetObject(objectId, OpenMode.ForRead) as DBObject;
-                        if (dbObject != null && (filter == null || filter(dbObject)))
+                        if (dbObject != null && dbObject is T && (filter == null || filter((T)dbObject)))
                         {
                             childIds.Add(objectId);
                         }
@@ -182,17 +183,57 @@ namespace ServiceACAD
         /// </summary>
         /// <param name="filter">过滤器</param>
         /// <returns>子对象ID集合</returns>
-        public ICollection<ObjectId> GetChildObjectsFromModelspace(Func<DBObject, bool> filter = null)
+        public List<ObjectId> GetChildObjectsFromModelspace<T>(Func<T, bool> filter = null) where T: DBObject
         {
             try
             {
-                return GetChildObjects(GetModelSpace(OpenMode.ForRead), filter);
+                return GetChildObjects<T>(GetModelSpace(OpenMode.ForRead), filter);
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"从模型空间获取子对象失败: {ex.Message}");
                 return new List<ObjectId>();
             }
+        }
+
+        public void IsolateObjects(ICollection<ObjectId> objectIdsToIsolate)
+        {
+            // 获取所有模型空间对象
+            var allObjects = GetChildObjectsFromModelspace<DBObject>();
+
+            // 确定需要隐藏的对象（所有对象减去需要隔离的对象）
+            var objectsToHide = allObjects.Where(id => !objectIdsToIsolate.Contains(id)).ToList();
+
+            // 设置需要隐藏的对象为不可见
+            foreach (var id in objectsToHide)
+            {
+                if (!id.IsValid)
+                {
+                    continue;
+                }
+
+                var entity = CadTrans.GetObject(id, OpenMode.ForWrite) as Entity;
+                if (entity != null)
+                {
+                    entity.Visible = false;
+                }
+            }
+
+            // 确保需要隔离的对象可见
+            foreach (var id in objectIdsToIsolate)
+            {
+                if (!id.IsValid)
+                {
+                    continue;
+                }
+
+                var entity = CadTrans.GetObject(id, OpenMode.ForWrite) as Entity;
+                if (entity != null)
+                {
+                    entity.Visible = true;
+                }
+            }
+
         }
     }
 } 

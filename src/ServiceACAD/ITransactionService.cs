@@ -58,18 +58,21 @@ namespace ServiceACAD
         BlockTableRecord GetBlockTableRecord(string name, OpenMode openMode = OpenMode.ForRead);
 
         /// <summary>
-        /// 获取块表记录的子对象
+        /// 获取块表记录的子对象ICollection<ObjectId>
         /// </summary>
         /// <param name="blockTableRecord">块表记录</param>
         /// <param name="filter">过滤器</param>
         /// <returns>子对象ID集合</returns>
-        ICollection<ObjectId> GetChildObjects(BlockTableRecord blockTableRecord, Func<DBObject, bool> filter = null);
+        List<ObjectId> GetChildObjects<T>(BlockTableRecord blockTableRecord, Func<T, bool> filter = null)
+            where T : DBObject;
 
         /// <summary>
         /// 从模型空间获取子对象
         /// </summary>
         /// <param name="filter">过滤器</param>
         /// <returns>子对象ID集合</returns>
-        ICollection<ObjectId> GetChildObjectsFromModelspace(Func<DBObject, bool> filter = null);
+        List<ObjectId> GetChildObjectsFromModelspace<T>(Func<T, bool> filter = null) where T : DBObject;
+
+        void IsolateObjects(ICollection<ObjectId> objectIdsToIsolate);
     }
 } 

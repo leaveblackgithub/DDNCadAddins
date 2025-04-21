@@ -35,7 +35,7 @@ namespace AddinsACAD.ServiceTests
                 try
                 {
                     var getChildObjects =
-                        tr.GetChildObjectsFromModelspace(obj => obj is BlockReference);
+                        tr.GetChildObjectsFromModelspace<BlockReference>();
 
                     Assert.AreEqual(getChildObjects.Count, 7);
 
@@ -55,10 +55,10 @@ namespace AddinsACAD.ServiceTests
         {
             void Action1(  ITransactionService tr)
             {
-                var blkRefIds = tr.GetChildObjectsFromModelspace
-                    (obj => obj is BlockReference && ((BlockReference)obj).Name == "23432");
+                var blkRefIds = tr.GetChildObjectsFromModelspace<BlockReference>(
+                    (blkRef => blkRef.Name == "23432"));
                 Assert.AreEqual(blkRefIds.Count, 6);
-        
+                CadServiceManager._.Isolate(blkRefIds[0]);
             }
         
             CadServiceManager._.ExecuteInTransactions("xclip", Action1);
