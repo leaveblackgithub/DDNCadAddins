@@ -18,12 +18,18 @@ namespace ServiceACAD
         public TransactionService(Transaction transaction)
         {
             CadTrans = transaction;
+            BlockServiceDict = new Dictionary<ObjectId, IBlockService>();
         }
 
         /// <summary>
         ///     事务对象
         /// </summary>
         public Transaction CadTrans { get; }
+
+        /// <summary>
+        ///     块服务缓存字典
+        /// </summary>
+        public IDictionary<ObjectId, IBlockService> BlockServiceDict { get; }
 
         /// <summary>
         ///     获取数据库对象
@@ -41,6 +47,44 @@ namespace ServiceACAD
             catch (Exception ex)
             {
                 Debug.WriteLine($"获取对象失败: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        ///     获取块服务
+        /// </summary>
+        /// <param name="objectId">块引用ID</param>
+        /// <returns>块服务实例</returns>
+        public IBlockService GetBlockService(ObjectId objectId)
+        {
+            try
+            {
+                // 检查是否已存在缓存的块服务
+                if (BlockServiceDict.ContainsKey(objectId))
+                {
+                    return BlockServiceDict[objectId];
+                }
+
+                // 获取块引用对象
+                var blockRef = GetObject<BlockReference>(objectId, OpenMode.ForRead);
+                if (blockRef == null)
+                {
+                    Debug.WriteLine($"获取块引用失败，ObjectId: {objectId}");
+                    return null;
+                }
+
+                // 创建块服务实例
+                var blockService = new BlockService(this, blockRef);
+                
+                // 添加到缓存字典
+                BlockServiceDict[objectId] = blockService;
+                
+                return blockService;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"获取块服务失败: {ex.Message}");
                 return null;
             }
         }

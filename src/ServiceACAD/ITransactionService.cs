@@ -15,6 +15,11 @@ namespace ServiceACAD
         Transaction CadTrans { get; }
 
         /// <summary>
+        ///     块服务缓存字典
+        /// </summary>
+        IDictionary<ObjectId, IBlockService> BlockServiceDict { get; }
+
+        /// <summary>
         ///     获取数据库对象
         /// </summary>
         /// <typeparam name="T">对象类型</typeparam>
@@ -22,6 +27,13 @@ namespace ServiceACAD
         /// <param name="openMode">打开模式</param>
         /// <returns>数据库对象</returns>
         T GetObject<T>(ObjectId objectId, OpenMode openMode=OpenMode.ForRead) where T : DBObject;
+
+        /// <summary>
+        ///     获取块服务
+        /// </summary>
+        /// <param name="objectId">块引用ID</param>
+        /// <returns>块服务实例</returns>
+        IBlockService GetBlockService(ObjectId objectId);
 
         /// <summary>
         ///     向模型空间添加实体
