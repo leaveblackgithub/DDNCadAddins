@@ -17,6 +17,11 @@ obj/
 *.json
 *.vsidx
 
+# 特定的Visual Studio配置文件
+src/.vs/DDNCadAddins/v17/.suo
+src/.vs/DDNCadAddins/v17/DocumentLayout.backup.json
+src/.vs/DDNCadAddins/v17/DocumentLayout.json
+
 # 包文件夹
 packages/
 
