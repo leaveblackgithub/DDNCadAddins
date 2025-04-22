@@ -61,9 +61,9 @@ namespace ServiceACAD
             try
             {
                 // 检查是否已存在缓存的块服务
-                if (BlockServiceDict.ContainsKey(objectId))
+                if (BlockServiceDict.TryGetValue(objectId, out var serviceBlk))
                 {
-                    return BlockServiceDict[objectId];
+                    return serviceBlk;
                 }
 
                 // 获取块引用对象

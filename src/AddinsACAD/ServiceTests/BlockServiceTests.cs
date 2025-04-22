@@ -15,8 +15,7 @@ namespace AddinsACAD.ServiceTests
             void Action1(ITransactionService transactionService)
             {
                 var blkId = CommonTestMethods.GetBlkRefIdsOf23432(transactionService)[0];
-                var blk=transactionService.GetObject<BlockReference>(blkId);
-                var blkService = new BlockService(blk);
+                var blkService = transactionService.GetBlockService(blkId);
                 Assert.IsTrue(blkService.IsXclipped());
             }
         }

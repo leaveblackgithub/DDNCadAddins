@@ -47,17 +47,17 @@ namespace AddinsACAD.ServiceTests
             CadServiceManager._.ExecuteInTransactions("xclip", Action1);
         }
 
-        // [Test]
-        // public void TestGetBlockRef23432()
-        // {
-        //     void Action1(ITransactionService tr)
-        //     {
-        //         var blkRefIds = CommonTestMethods.GetBlkRefIdsOf23432(tr);
-        //         Assert.AreEqual(blkRefIds.Count, 6);
-        //         CadServiceManager._.Isolate(blkRefIds[0]);
-        //     }
-        //
-        //     CadServiceManager._.ExecuteInTransactions("xclip", Action1);
-        // }
+        [Test]
+        public void TestGetBlockRef23432()
+        {
+            void Action1(ITransactionService tr)
+            {
+                var blkRefIds = CommonTestMethods.GetBlkRefIdsOf23432(tr);
+                Assert.AreEqual(blkRefIds.Count, 6);
+                // CadServiceManager._.Isolate(blkRefIds[0]);
+            }
+        
+            CadServiceManager._.ExecuteInTransactions("xclip", Action1);
+        }
     }
 }
