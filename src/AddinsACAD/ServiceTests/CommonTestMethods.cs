@@ -12,5 +12,11 @@ namespace AddinsACAD.ServiceTests
                 blkRef => blkRef.Name == "23432");
             return blkRefIds;
         }
+        public static IBlockService GetFirstBlkServiceOf23432(ITransactionService tr)
+        {
+            var blkRefIds = GetBlkRefIdsOf23432(tr);
+            var blkService = tr.GetBlockService(blkRefIds[0]);
+            return blkService;
+        }
     }
 }

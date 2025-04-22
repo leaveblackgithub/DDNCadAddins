@@ -67,5 +67,20 @@ namespace ServiceACAD
                 }
             }
         }
+
+        /// <summary>
+        /// 检查块参照是否包含属性
+        /// </summary>
+        /// <returns>如果块参照包含属性返回true，否则返回false</returns>
+        public bool HasAttributes()
+        {
+            if (CadBlkRef == null)
+            {
+                return false;
+            }
+
+            // 检查块参照是否有属性
+            return CadBlkRef.AttributeCollection.Count > 0;
+        }
     }
 }
