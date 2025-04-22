@@ -38,7 +38,7 @@ namespace ServiceACAD
         /// <param name="objectId">对象ID</param>
         /// <param name="openMode">打开模式</param>
         /// <returns>数据库对象</returns>
-        public T GetObject<T>(ObjectId objectId, OpenMode openMode=OpenMode.ForRead) where T : DBObject
+        public T GetObject<T>(ObjectId objectId, OpenMode openMode = OpenMode.ForRead) where T : DBObject
         {
             try
             {
@@ -60,6 +60,11 @@ namespace ServiceACAD
         {
             try
             {
+                if (!objectId.IsValid)
+                {
+                    return null;
+                }
+
                 // 检查是否已存在缓存的块服务
                 if (BlockServiceDict.TryGetValue(objectId, out var serviceBlk))
                 {
@@ -67,7 +72,7 @@ namespace ServiceACAD
                 }
 
                 // 获取块引用对象
-                var blockRef = GetObject<BlockReference>(objectId, OpenMode.ForRead);
+                var blockRef = GetObject<BlockReference>(objectId);
                 if (blockRef == null)
                 {
                     Debug.WriteLine($"获取块引用失败，ObjectId: {objectId}");
@@ -76,10 +81,10 @@ namespace ServiceACAD
 
                 // 创建块服务实例
                 var blockService = new BlockService(this, blockRef);
-                
+
                 // 添加到缓存字典
                 BlockServiceDict[objectId] = blockService;
-                
+
                 return blockService;
             }
             catch (Exception ex)
@@ -112,12 +117,22 @@ namespace ServiceACAD
         ///     向块表记录添加实体
         /// </summary>
         /// <param name="blockTableRecord">块表记录</param>
+        /// <param name="entity">要添加的实体</param
+        /// <summary>
+        ///     向块表记录添加实体
+        /// </summary>
+        /// <param name="blockTableRecord">块表记录</param>
         /// <param name="entity">要添加的实体</param>
         /// <returns>添加的实体ID</returns>
         public ObjectId AppendEntityToBlockTableRecord(BlockTableRecord blockTableRecord, Entity entity)
         {
             try
             {
+                if (!blockTableRecord.IsWriteEnabled)
+                {
+                    blockTableRecord.UpgradeOpen();
+                }
+
                 var objectId = blockTableRecord.AppendEntity(entity);
                 CadTrans.AddNewlyCreatedDBObject(entity, true);
                 return objectId;
@@ -155,7 +170,7 @@ namespace ServiceACAD
         {
             try
             {
-                return GetObject<BlockTable>(CadServiceManager._.CadDb.BlockTableId, OpenMode.ForRead);
+                return GetObject<BlockTable>(CadServiceManager._.CadDb.BlockTableId);
             }
             catch (Exception ex)
             {
@@ -219,7 +234,7 @@ namespace ServiceACAD
                     var childIds = new List<ObjectId>();
                     foreach (var objectId in blockTableRecord)
                     {
-                        var dbObject = GetObject<DBObject>(objectId, OpenMode.ForRead);
+                        var dbObject = GetObject<DBObject>(objectId);
                         if (dbObject != null && dbObject is T && (filter == null || filter((T)dbObject)))
                         {
                             childIds.Add(objectId);
@@ -261,7 +276,25 @@ namespace ServiceACAD
             }
         }
 
-        public void IsolateObjects(ICollection<ObjectId> objectIdsToIsolate)
+        /// <summary>
+        ///     从当前空间获取子对象
+        /// </summary>
+        /// <param name="filter">过滤器</param>
+        /// <returns>子对象ID集合</returns>
+        public List<ObjectId> GetChildObjectsFromCurrentSpace<T>(Func<T, bool> filter = null) where T : DBObject
+        {
+            try
+            {
+                return GetChildObjects(GetCurrentSpace(), filter);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"从当前空间获取子对象失败: {ex.Message}");
+                return new List<ObjectId>();
+            }
+        }
+
+        public void IsolateObjectsOfModelSpace(ICollection<ObjectId> objectIdsToIsolate)
         {
             // 获取所有模型空间对象
             var allObjects = GetChildObjectsFromModelspace<DBObject>();
@@ -297,6 +330,95 @@ namespace ServiceACAD
                 {
                     entity.Visible = true;
                 }
+            }
+        }
+
+        /// <summary>
+        ///     获取当前空间（模型空间或纸空间）
+        /// </summary>
+        /// <param name="openMode">打开模式</param>
+        /// <returns>当前空间块表记录</returns>
+        public BlockTableRecord GetCurrentSpace(OpenMode openMode = OpenMode.ForRead)
+        {
+            try
+            {
+                var database = CadServiceManager._.CadDb;
+                var currentSpaceId = database.CurrentSpaceId;
+                return GetObject<BlockTableRecord>(currentSpaceId, openMode);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"获取当前空间失败: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        ///     向当前空间添加实体
+        /// </summary>
+        /// <param name="entity">要添加的实体</param>
+        /// <returns>添加的实体ID</returns>
+        public ObjectId AppendEntityToCurrentSpace(Entity entity)
+        {
+            try
+            {
+                var objectId = AppendEntityToBlockTableRecord(GetCurrentSpace(OpenMode.ForWrite), entity);
+                return objectId;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"向当前空间添加实体失败: {ex.Message}");
+                return ObjectId.Null;
+            }
+        }
+
+        public List<ObjectId> AppendEntitiesToCurrentSpace(List<Entity> entities) =>
+            AppendEntitiesToBlockTableRecord(GetCurrentSpace(OpenMode.ForWrite), entities);
+
+        public List<ObjectId> AppendEntitiesToBlockTableRecord(BlockTableRecord blockTableRecord,
+            ICollection<Entity> entities)
+        {
+            try
+            {
+                var objectIds = new List<ObjectId>();
+                foreach (var entity in entities)
+                {
+                    var objectId = AppendEntityToBlockTableRecord(blockTableRecord, entity);
+                    objectIds.Add(objectId);
+                }
+
+                return objectIds;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"向块表记录添加实体失败: {ex.Message}");
+                return new List<ObjectId>();
+            }
+        }
+
+        public List<ObjectId> FilterObjects<T>(ICollection<ObjectId> objectIds, Func<T, bool> filter = null)
+            where T : DBObject
+        {
+            try
+            {
+                List<ObjectId> result = new List<ObjectId>();
+                foreach (var objectId in objectIds)
+                {
+                    var dbObject = GetObject<DBObject>(objectId);
+                    if (dbObject == null || !(dbObject is T) || (filter != null && !filter((T)dbObject)))
+                    {
+                        continue;
+                    }
+
+                    result.Add(objectId);
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"过滤对象失败: {ex.Message}");
+                return new List<ObjectId>();
             }
         }
     }

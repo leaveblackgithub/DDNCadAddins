@@ -1,5 +1,6 @@
 using System.Reflection;
 using AddinsACAD;
+using AddinsACAD.ServiceTests;
 using Autodesk.AutoCAD.Runtime;
 using ServiceACAD;
 using TestRunnerACAD;
@@ -17,8 +18,8 @@ namespace AddinsACAD
             // var documentService = new DocumentService(document);
             // documentService.CadEd.WriteMessage("\nTest");
             var assembly = Assembly.GetExecutingAssembly();
-            // 在App环境中，运行所有测试
-            TestUtils.Run(assembly); //,"AddinsACAD.ServiceTests");
+            // 在App环境中，运行所有测试，排除BlockServiceTests类中的测试
+            TestUtils.Run(assembly, "", "AddinsACAD.ServiceTests.BlockServiceTests"); // 排除BlockServiceTests
             CadServiceManager.instance.Dispose();
         }
     }

@@ -42,7 +42,7 @@ namespace ServiceACAD
                 }
 
                 // 执行隔离操作
-                ExecuteInTransaction(serviceTrans => serviceTrans.IsolateObjects(objectsToIsolate));
+                ExecuteInTransaction(serviceTrans => serviceTrans.IsolateObjectsOfModelSpace(objectsToIsolate));
 
                 return OpResult<ObjectId[]>.Success(objectsToIsolate.ToArray());
             }

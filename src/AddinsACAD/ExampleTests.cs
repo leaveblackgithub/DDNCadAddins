@@ -22,40 +22,32 @@ namespace AddinsACAD
         {
             //Use a new drawing
             long lineId = 0;
-
+        
             void Action1(ITransactionService tr)
             {
                 var line = new Line(new Point3d(0, 0, 0), new Point3d(100, 100, 100));
-
+        
                 var objectId = tr.AppendEntityToModelSpace(line);
-
+        
                 lineId = objectId.Handle.Value;
             }
-
+        
             void Action2(ITransactionService tr)
             {
                 //Check in another transaction if the line was created
 
-                if (!CadServiceManager._.CadDb.TryGetObjectId(new Handle(lineId), out _))
+                ObjectId objId;
+                if (!CadServiceManager._.CadDb.TryGetObjectId(new Handle(lineId), out objId))
                 {
                     Assert.Fail("Line didn't created");
+                    return;
                 }
+                var line = tr.GetObject<Line>(objId);
+                // line.Erase();
             }
-
+        
             CadServiceManager._.ExecuteInTransactions("", Action1, Action2);
         }
-        //测试成功但是看不到
-        // [Test]
-        // public void TestEditorWrite()
-        // {
-        //     void Action1(IDocumentService serviceDoc)
-        //     {
-        //         // Check if the editor is not null
-        //         Assert.IsNotNull(serviceDoc.CadDoc.Editor);
-        //         // Write a message to the command line
-        //         serviceDoc.CadEd.WriteMessage("\nHello from TestEditorWrite!");
-        //     }
-        //     TestUtils.ExecuteInCad(Action1);
-        // }
+        
     }
 }

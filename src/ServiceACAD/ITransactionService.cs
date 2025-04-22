@@ -12,7 +12,7 @@ namespace ServiceACAD
         /// <summary>
         ///     事务对象
         /// </summary>
-        Transaction CadTrans { get; }
+        // Transaction CadTrans { get; }
 
         /// <summary>
         ///     块服务缓存字典
@@ -58,6 +58,20 @@ namespace ServiceACAD
         BlockTableRecord GetModelSpace(OpenMode openMode = OpenMode.ForRead);
 
         /// <summary>
+        ///     获取当前空间（模型空间或纸空间）
+        /// </summary>
+        /// <param name="openMode">打开模式</param>
+        /// <returns>当前空间块表记录</returns>
+        BlockTableRecord GetCurrentSpace(OpenMode openMode = OpenMode.ForRead);
+
+        /// <summary>
+        ///     向当前空间添加实体
+        /// </summary>
+        /// <param name="entity">要添加的实体</param>
+        /// <returns>添加的实体ID</returns>
+        ObjectId AppendEntityToCurrentSpace(Entity entity);
+
+        /// <summary>
         ///     获取块表
         /// </summary>
         /// <returns>块表</returns>
@@ -94,6 +108,19 @@ namespace ServiceACAD
         /// <returns>子对象ID集合</returns>
         List<ObjectId> GetChildObjectsFromModelspace<T>(Func<T, bool> filter = null) where T : DBObject;
 
-        void IsolateObjects(ICollection<ObjectId> objectIdsToIsolate);
+        /// <summary>
+        ///     从当前空间获取子对象
+        /// </summary>
+        /// <param name="filter">过滤器</param>
+        /// <returns>子对象ID集合</returns>
+        List<ObjectId> GetChildObjectsFromCurrentSpace<T>(Func<T, bool> filter = null) where T : DBObject;
+
+        void IsolateObjectsOfModelSpace(ICollection<ObjectId> objectIdsToIsolate);
+        List<ObjectId> AppendEntitiesToCurrentSpace(List<Entity> entities);
+
+        List<ObjectId> AppendEntitiesToBlockTableRecord(BlockTableRecord blockTableRecord,
+            ICollection<Entity> entities);
+
+        List<ObjectId> FilterObjects<T>(ICollection<ObjectId> objectIds,Func<T, bool> filter=null) where T : DBObject;
     }
 }

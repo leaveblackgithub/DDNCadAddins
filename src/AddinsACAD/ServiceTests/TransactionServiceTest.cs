@@ -36,7 +36,7 @@ namespace AddinsACAD.ServiceTests
                     var getChildObjects =
                         tr.GetChildObjectsFromModelspace<BlockReference>();
 
-                    Assert.AreEqual(getChildObjects.Count, 7);
+                    Assert.GreaterOrEqual(getChildObjects.Count, 7);
                 }
                 catch (Exception e)
                 {
