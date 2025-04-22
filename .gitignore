@@ -29,3 +29,5 @@ packages/
 *.tmp
 *.bak
 *.log 
+src/.vs/DDNCadAddins/CopilotIndices/17.14.535.60214/CodeChunks.db
+src/.vs/DDNCadAddins/CopilotIndices/17.14.535.60214/SemanticSymbols.db
