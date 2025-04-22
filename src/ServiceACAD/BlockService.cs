@@ -4,12 +4,15 @@ namespace ServiceACAD
 {
     public class BlockService : IBlockService
     {
-        public BlockService(BlockReference blkRef)
+        public BlockService(ITransactionService serviceTrans, BlockReference blkRef)
         {
+            ServiceTrans=serviceTrans;
             CadBlkRef = blkRef;
         }
 
-        public BlockReference CadBlkRef { get; set; }
+        public ITransactionService ServiceTrans { get; }
+
+        public BlockReference CadBlkRef { get; }
 
         public bool IsXclipped()
         {
