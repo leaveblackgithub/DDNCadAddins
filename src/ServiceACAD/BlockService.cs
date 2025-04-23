@@ -1,8 +1,8 @@
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace ServiceACAD
 {
@@ -10,7 +10,7 @@ namespace ServiceACAD
     {
         public BlockService(ITransactionService serviceTrans, BlockReference blkRef)
         {
-            ServiceTrans=serviceTrans;
+            ServiceTrans = serviceTrans;
             CadBlkRef = blkRef;
         }
 
@@ -73,7 +73,7 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        /// 检查块参照是否包含属性
+        ///     检查块参照是否包含属性
         /// </summary>
         /// <returns>如果块参照包含属性返回true，否则返回false</returns>
         public bool HasAttributes()
@@ -88,41 +88,39 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        /// 爆炸块参照并将其属性转换为文本
+        ///     爆炸块参照并将其属性转换为文本
         /// </summary>
         /// <returns>如果爆炸成功返回true，否则返回false</returns>
         public OpResult<List<ObjectId>> ExplodeWithAttributes()
         {
-
-
             if (CadBlkRef == null)
             {
-                return OpResult<List<ObjectId>>.Fail($"CadBlkRef is null");
+                return OpResult<List<ObjectId>>.Fail("CadBlkRef is null");
             }
 
             if (!HasAttributes())
             {
-                return OpResult<List<ObjectId>>.Fail($"块参照不包含属性");
+                return OpResult<List<ObjectId>>.Fail("块参照不包含属性");
             }
 
             try
             {
                 // 以写方式获取块参照
-                if(!CadBlkRef.IsWriteEnabled)
+                if (!CadBlkRef.IsWriteEnabled)
                 {
                     CadBlkRef.UpgradeOpen();
                 }
-                
+
                 // 创建一个集合，用于收集需要添加到模型空间的实体
-                List<Entity> entitiesToAdd = new List<Entity>();
+                var entitiesToAdd = new List<Entity>();
 
                 // 处理所有属性引用，转换为文本
-                List<DBText> textList = ProcessAttributeReferences(CadBlkRef);
+                var textList = ProcessAttributeReferences(CadBlkRef);
                 if (textList.Count == 0)
                 {
-                    return OpResult<List<ObjectId>>.Fail($"未能从块参照中提取属性");
+                    return OpResult<List<ObjectId>>.Fail("未能从块参照中提取属性");
                 }
-                
+
                 // 将文本添加到实体列表
                 entitiesToAdd.AddRange(textList);
 
@@ -130,13 +128,13 @@ namespace ServiceACAD
                 ProcessExplodedEntities(CadBlkRef, entitiesToAdd);
 
                 // 记录添加到当前空间前实体数量
-                int entitiesCount = entitiesToAdd.Count;
+                var entitiesCount = entitiesToAdd.Count;
 
                 // 将所有实体添加到当前空间
                 var addedEntities = ServiceTrans.AppendEntitiesToCurrentSpace(entitiesToAdd);
                 if (addedEntities.Count == 0)
                 {
-                    return OpResult<List<ObjectId>>.Fail($"未能将实体添加到当前空间");
+                    return OpResult<List<ObjectId>>.Fail("未能将实体添加到当前空间");
                 }
 
                 // 删除原块参照
@@ -151,23 +149,22 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        /// 处理块参照的属性引用，将其转换为文本对象
+        ///     处理块参照的属性引用，将其转换为文本对象
         /// </summary>
         /// <param name="blockRef">块参照</param>
         /// <returns>转换后的文本对象列表</returns>
         private List<DBText> ProcessAttributeReferences(BlockReference blockRef)
         {
-            List<DBText> textList = new List<DBText>();
-            
+            var textList = new List<DBText>();
+
             try
             {
-                
                 if (blockRef.AttributeCollection.Count == 0)
                 {
                     return textList;
                 }
-                
-                
+
+
                 foreach (ObjectId attId in blockRef.AttributeCollection)
                 {
                     try
@@ -176,80 +173,179 @@ namespace ServiceACAD
                         {
                             continue;
                         }
-                        
-                        AttributeReference attRef = ServiceTrans.GetObject<AttributeReference>(attId, OpenMode.ForRead);
+
+                        var attRef = ServiceTrans.GetObject<AttributeReference>(attId);
                         if (attRef == null)
                         {
                             Debug.WriteLine("\nCan't get attRef");
                             continue;
                         }
-                        
+
                         if (attRef.Invisible)
                         {
                             continue;
                         }
-                        
+
 
                         // 创建DBText并添加到列表
-                        DBText text = ConvertAttributeToText(attRef);
+                        var text = ConvertAttributeToText(attRef);
                         textList.Add(text);
                     }
                     catch (Exception ex)
                     {
-                            Debug.WriteLine($"\n警告: 处理属性引用失败: {ex.Message}");
+                        Debug.WriteLine($"\n警告: 处理属性引用失败: {ex.Message}");
                     }
                 }
-                
-
             }
             catch (Exception ex)
             {
-                    Debug.WriteLine($"\n警告: 处理属性引用集合失败: {ex.Message}");
+                Debug.WriteLine($"\n警告: 处理属性引用集合失败: {ex.Message}");
             }
-            
+
             return textList;
         }
 
 
         /// <summary>
-        /// 将单个属性引用转换为文本对象
+        ///     将单个属性引用转换为文本对象
         /// </summary>
         /// <param name="attRef">属性引用</param>
         /// <returns>转换后的文本对象</returns>
         private DBText ConvertAttributeToText(AttributeReference attRef)
         {
-            // 创建文本对象
-            DBText text = new DBText();
-            
-            // 复制属性
-            text.Position = attRef.Position;
-            text.TextString = attRef.TextString;
-            text.Height = attRef.Height;
-            text.WidthFactor = attRef.WidthFactor;
-            text.Rotation = attRef.Rotation;
-            text.TextStyleId = attRef.TextStyleId;
-            text.Layer = attRef.Layer;
-            text.LineWeight = attRef.LineWeight;
-            text.Linetype = attRef.Linetype;
-            text.LinetypeScale = attRef.LinetypeScale;
-            text.Visible = attRef.Visible;
-            text.ColorIndex = attRef.ColorIndex;
-
-            // 处理对齐方式
-            text.HorizontalMode = attRef.HorizontalMode;
-            text.VerticalMode = attRef.VerticalMode;
-            
-            if (attRef.Justify != AttachmentPoint.BaseLeft)
+            if (attRef == null)
             {
-                text.Justify = attRef.Justify;
-                text.AlignmentPoint = attRef.AlignmentPoint;
+                Debug.WriteLine("\n警告: 属性引用为空");
+                return null;
             }
 
-            return text;
+            // 创建文本对象
+            var text = new DBText();
+
+            try
+            {
+                // 复制基本属性
+                text.Position = attRef.Position;
+                text.TextString = attRef.TextString;
+                text.Height = attRef.Height;
+                text.WidthFactor = attRef.WidthFactor;
+                text.Rotation = attRef.Rotation;
+                text.TextStyleId = attRef.TextStyleId;
+                text.Visible = attRef.Visible;
+
+                // 处理对齐方式
+                text.HorizontalMode = attRef.HorizontalMode;
+                text.VerticalMode = attRef.VerticalMode;
+
+                if (attRef.Justify != AttachmentPoint.BaseLeft)
+                {
+                    text.Justify = attRef.Justify;
+                    text.AlignmentPoint = attRef.AlignmentPoint;
+                }
+
+                // 使用ProcessEntityProperties方法处理图层和属性
+                ProcessEntityProperties(text, attRef);
+
+                return text;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"\n警告: 转换属性到文本时发生异常: {ex.Message}");
+                text?.Dispose();
+                return null;
+            }
         }
 
         /// <summary>
-        /// 处理爆炸后的实体，将非属性定义的实体添加到实体列表
+        ///     处理实体的图层和属性设置
+        /// </summary>
+        /// <param name="targetEntity">要修改的实体</param>
+        /// <param name="referenceEntity">参考实体</param>
+        private void ProcessEntityProperties(Entity targetEntity, Entity referenceEntity)
+        {
+            if (targetEntity == null || referenceEntity == null)
+            {
+                return;
+            }
+
+            try
+            {
+                // 处理0图层的对象
+                var nameLayer = "Layer";
+                if (HasProperty(referenceEntity, nameLayer) && HasProperty(targetEntity, nameLayer) &&
+                    (referenceEntity is AttributeReference || targetEntity.Layer == "0"))
+                {
+                    targetEntity.Layer = referenceEntity.Layer;
+                }
+
+                // 处理BYBLOCK颜色
+                var nameColor = "ColorIndex";
+                if (HasProperty(referenceEntity, nameColor) && HasProperty(targetEntity, nameColor) &&
+                    (referenceEntity is AttributeReference || targetEntity.ColorIndex == 0))
+                {
+                    targetEntity.ColorIndex = referenceEntity.ColorIndex;
+                }
+
+                // 处理BYBLOCK线型
+                var nameLinetype = "Linetype";
+                if (HasProperty(referenceEntity, nameLinetype) && HasProperty(targetEntity, nameLinetype) &&
+                    (referenceEntity is AttributeReference || targetEntity.Linetype == "BYBLOCK"))
+
+                {
+                    targetEntity.LinetypeId = referenceEntity.LinetypeId;
+                }
+
+
+                // 处理BYBLOCK线型比例
+                var nameLtScale = "LinetypeScale";
+                if (HasProperty(referenceEntity, nameLtScale) && HasProperty(targetEntity, nameLtScale) &&
+                    (referenceEntity is AttributeReference || targetEntity.LinetypeScale == 1.0))
+
+                {
+                    targetEntity.LinetypeScale = CadBlkRef.LinetypeScale;
+                }
+
+
+                // 处理BYBLOCK线宽
+                if (HasProperty(referenceEntity, "LineWeight") && HasProperty(targetEntity, "LineWeight") &&
+                    (referenceEntity is AttributeReference || targetEntity.LineWeight == LineWeight.ByBlock))
+
+                {
+                    targetEntity.LineWeight = referenceEntity.LineWeight;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"\n警告: 处理实体属性时发生异常: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        ///     检查对象是否具有指定属性
+        /// </summary>
+        /// <param name="obj">要检查的对象</param>
+        /// <param name="propertyName">属性名称</param>
+        /// <returns>如果对象具有该属性返回true，否则返回false</returns>
+        private bool HasProperty(object obj, string propertyName)
+        {
+            if (obj == null || string.IsNullOrEmpty(propertyName))
+            {
+                return false;
+            }
+
+            try
+            {
+                var property = obj.GetType().GetProperty(propertyName);
+                return property != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        ///     处理爆炸后的实体，将非属性定义的实体添加到实体列表
         /// </summary>
         /// <param name="blockRef">块参照</param>
         /// <param name="entitiesToAdd">实体收集列表</param>
@@ -257,13 +353,12 @@ namespace ServiceACAD
         {
             try
             {
-                DBObjectCollection explodedEntities = new DBObjectCollection();
+                var explodedEntities = new DBObjectCollection();
                 blockRef.Explode(explodedEntities);
-                
 
-                int entityCount = 0;
-                int attributeDefCount = 0;
-                
+                var entityCount = 0;
+                var attributeDefCount = 0;
+
                 foreach (DBObject obj in explodedEntities)
                 {
                     try
@@ -272,7 +367,7 @@ namespace ServiceACAD
                         {
                             continue;
                         }
-                        
+
                         if (obj is AttributeDefinition)
                         {
                             // 丢弃属性定义
@@ -281,13 +376,15 @@ namespace ServiceACAD
                         }
                         else if (obj is Entity entity)
                         {
+                            // 处理实体的图层和属性
+                            ProcessEntityProperties(entity, blockRef);
                             entitiesToAdd.Add(entity);
                             entityCount++;
                         }
                         else
                         {
                             Debug.WriteLine($"\n警告: 遇到未处理的对象类型 {obj.GetType().Name}");
-                            
+
                             if (obj is DBObject dbObj && !dbObj.IsDisposed)
                             {
                                 dbObj.Dispose();
@@ -296,15 +393,147 @@ namespace ServiceACAD
                     }
                     catch (Exception ex)
                     {
-                       Debug.WriteLine($"\n警告: 处理爆炸实体时发生异常: {ex.Message}");
+                        Debug.WriteLine($"\n警告: 处理爆炸实体时发生异常: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-               Debug.WriteLine($"\n警告: 执行块参照爆炸时发生异常: {ex.Message}");
-                    Debug.WriteLine($"\n{ex.StackTrace}");
+                Debug.WriteLine($"\n警告: 执行块参照爆炸时发生异常: {ex.Message}");
+                Debug.WriteLine($"\n{ex.StackTrace}");
             }
+        }
+
+        /// <summary>
+        /// 创建用于测试爆炸命令的测试块
+        /// </summary>
+        /// <returns>创建的测试块的ObjectId</returns>
+        public ObjectId CreateTestBlockForExplodeCommand()
+        {
+            if (CadBlkRef == null)
+            {
+                return ObjectId.Null;
+            }
+
+            try
+            {
+                // 获取当前数据库和事务
+                var db = CadBlkRef.Database;
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    // 创建新的块表记录
+                    var bt = tr.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                    var btr = new BlockTableRecord();
+                    btr.Name = "TestBlockForExplode";
+
+                    // 添加块表记录到块表
+                    bt.UpgradeOpen();
+                    var blockId = bt.Add(btr);
+                    tr.AddNewlyCreatedDBObject(btr, true);
+
+                    // 创建测试对象
+                    CreateTestEntities(btr, tr);
+
+                    // 提交事务
+                    tr.Commit();
+                    return blockId;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"\n警告: 创建测试块时发生异常: {ex.Message}");
+                return ObjectId.Null;
+            }
+        }
+
+        /// <summary>
+        /// 在块表记录中创建测试实体
+        /// </summary>
+        /// <param name="btr">块表记录</param>
+        /// <param name="tr">事务</param>
+        private void CreateTestEntities(BlockTableRecord btr, Transaction tr)
+        {
+            // 创建图层
+            var layerTable = tr.GetObject(btr.Database.LayerTableId, OpenMode.ForRead) as LayerTable;
+            var testLayer = new LayerTableRecord();
+            testLayer.Name = "TestLayer";
+            layerTable.UpgradeOpen();
+            var layerId = layerTable.Add(testLayer);
+            tr.AddNewlyCreatedDBObject(testLayer, true);
+
+            // 创建线型
+            var ltTable = tr.GetObject(btr.Database.LinetypeTableId, OpenMode.ForRead) as LinetypeTable;
+            var testLinetype = new LinetypeTableRecord();
+            testLinetype.Name = "TestLinetype";
+            ltTable.UpgradeOpen();
+            var linetypeId = ltTable.Add(testLinetype);
+            tr.AddNewlyCreatedDBObject(testLinetype, true);
+
+            // 1. 直线1：0图层，BYBLOCK颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
+            var line1 = new Line(new Point3d(0, 0, 0), new Point3d(10, 0, 0));
+            line1.Layer = "0";
+            line1.ColorIndex = 0; // BYBLOCK
+            line1.Linetype = "BYBLOCK";
+            line1.LinetypeScale = 1.0;
+            line1.LineWeight = LineWeight.ByBlock;
+            btr.AppendEntity(line1);
+            tr.AddNewlyCreatedDBObject(line1, true);
+
+            // 2. 直线2：非0图层，特定颜色，特定线型，自定义线型比例，特定线宽
+            var line2 = new Line(new Point3d(0, 10, 0), new Point3d(10, 10, 0));
+            line2.Layer = "TestLayer";
+            line2.ColorIndex = 1; // 红色
+            line2.Linetype = "TestLinetype";
+            line2.LinetypeScale = 2.0;
+            line2.LineWeight = LineWeight.LineWeight050;
+            btr.AppendEntity(line2);
+            tr.AddNewlyCreatedDBObject(line2, true);
+
+            // 3. 圆1：0图层，BYLAYER颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
+            var circle1 = new Circle(new Point3d(20, 0, 0), Vector3d.ZAxis, 5);
+            circle1.Layer = "0";
+            circle1.ColorIndex = 256; // BYLAYER
+            circle1.Linetype = "BYBLOCK";
+            circle1.LinetypeScale = 1.0;
+            circle1.LineWeight = LineWeight.ByBlock;
+            btr.AppendEntity(circle1);
+            tr.AddNewlyCreatedDBObject(circle1, true);
+
+            // 4. 圆2：非0图层，BYBLOCK颜色，特定线型，自定义线型比例，特定线宽
+            var circle2 = new Circle(new Point3d(20, 10, 0), Vector3d.ZAxis, 5);
+            circle2.Layer = "TestLayer";
+            circle2.ColorIndex = 0; // BYBLOCK
+            circle2.Linetype = "TestLinetype";
+            circle2.LinetypeScale = 0.5;
+            circle2.LineWeight = LineWeight.LineWeight030;
+            btr.AppendEntity(circle2);
+            tr.AddNewlyCreatedDBObject(circle2, true);
+
+            // 5. 文本1：0图层，特定颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
+            var text1 = new DBText();
+            text1.Position = new Point3d(30, 0, 0);
+            text1.TextString = "Text1";
+            text1.Height = 2.5;
+            text1.Layer = "0";
+            text1.ColorIndex = 3; // 绿色
+            text1.Linetype = "BYBLOCK";
+            text1.LinetypeScale = 1.0;
+            text1.LineWeight = LineWeight.ByBlock;
+            btr.AppendEntity(text1);
+            tr.AddNewlyCreatedDBObject(text1, true);
+
+            // 6. 文本2：非0图层，BYBLOCK颜色，特定线型，自定义线型比例，特定线宽
+            var text2 = new DBText();
+            text2.Position = new Point3d(30, 10, 0);
+            text2.TextString = "Text2";
+            text2.Height = 2.5;
+            text2.Layer = "TestLayer";
+            text2.ColorIndex = 0; // BYBLOCK
+            text2.Linetype = "TestLinetype";
+            text2.LinetypeScale = 1.5;
+            text2.LineWeight = LineWeight.LineWeight070;
+            btr.AppendEntity(text2);
+            tr.AddNewlyCreatedDBObject(text2, true);
         }
 
         // /// <summary>
