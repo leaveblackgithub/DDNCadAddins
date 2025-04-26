@@ -40,7 +40,7 @@ namespace AddinsACAD.ServiceTests
                 }
                 catch (Exception e)
                 {
-                    Debug.WriteLine(e);
+                    Logger._.Error("测试过程中发生错误", e);
                 }
             }
 

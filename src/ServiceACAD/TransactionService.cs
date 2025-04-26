@@ -13,18 +13,14 @@ namespace ServiceACAD
     /// </summary>
     public class TransactionService : ITransactionService
     {
-        private readonly ILogger _logger;
-
         /// <summary>
         ///     构造函数
         /// </summary>
         /// <param name="transaction">事务对象</param>
-        /// <param name="logger">日志记录器</param>
-        public TransactionService(Transaction transaction, ILogger logger)
+        public TransactionService(Transaction transaction)
         {
             CadTrans = transaction;
             BlockServiceDict = new Dictionary<ObjectId, IBlockService>();
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         /// <summary>
@@ -52,7 +48,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"获取对象失败: {ex.Message}");
+                Logger._.Error($"获取对象失败: {ex.Message}");
                 return null;
             }
         }
@@ -81,7 +77,7 @@ namespace ServiceACAD
                 var blockRef = GetObject<BlockReference>(objectId);
                 if (blockRef == null)
                 {
-                    Debug.WriteLine($"获取块引用失败，ObjectId: {objectId}");
+                    Logger._.Error($"获取块引用失败，ObjectId: {objectId}");
                     return null;
                 }
 
@@ -95,7 +91,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"获取块服务失败: {ex.Message}");
+                Logger._.Error($"获取块服务失败: {ex.Message}");
                 return null;
             }
         }
@@ -114,7 +110,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"向模型空间添加实体失败: {ex.Message}");
+                Logger._.Error($"向模型空间添加实体失败: {ex.Message}");
                 return ObjectId.Null;
             }
         }
@@ -145,7 +141,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"向块表记录添加实体失败: {ex.Message}");
+                Logger._.Error($"向块表记录添加实体失败: {ex.Message}");
                 return ObjectId.Null;
             }
         }
@@ -163,7 +159,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"获取模型空间失败: {ex.Message}");
+                Logger._.Error($"获取模型空间失败: {ex.Message}");
                 return null;
             }
         }
@@ -182,7 +178,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"获取块表记录ID失败: {ex.Message}");
+                Logger._.Error($"获取块表记录ID失败: {ex.Message}");
                 return ObjectId.Null;
             }
         }
@@ -201,7 +197,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"获取块表记录失败: {ex.Message}");
+                Logger._.Error($"获取块表记录失败: {ex.Message}");
                 return null;
             }
         }
@@ -234,7 +230,7 @@ namespace ServiceACAD
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine(ex.Message);
+                    Logger._.Error(ex.Message);
                     ret = null;
                 }
 
@@ -242,7 +238,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"获取子对象失败: {ex.Message}");
+                Logger._.Error($"获取子对象失败: {ex.Message}");
                 return new List<ObjectId>();
             }
         }
@@ -260,7 +256,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"从模型空间获取子对象失败: {ex.Message}");
+                Logger._.Error($"从模型空间获取子对象失败: {ex.Message}");
                 return new List<ObjectId>();
             }
         }
@@ -278,7 +274,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"从当前空间获取子对象失败: {ex.Message}");
+                Logger._.Error($"从当前空间获取子对象失败: {ex.Message}");
                 return new List<ObjectId>();
             }
         }
@@ -337,7 +333,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"获取当前空间失败: {ex.Message}");
+                Logger._.Error($"获取当前空间失败: {ex.Message}");
                 return null;
             }
         }
@@ -356,7 +352,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"向当前空间添加实体失败: {ex.Message}");
+                Logger._.Error($"向当前空间添加实体失败: {ex.Message}");
                 return ObjectId.Null;
             }
         }
@@ -380,7 +376,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"向块表记录添加实体失败: {ex.Message}");
+                Logger._.Error($"向块表记录添加实体失败: {ex.Message}");
                 return new List<ObjectId>();
             }
         }
@@ -406,7 +402,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"过滤对象失败: {ex.Message}");
+                Logger._.Error($"过滤对象失败: {ex.Message}");
                 return new List<ObjectId>();
             }
         }
@@ -427,9 +423,8 @@ namespace ServiceACAD
                     btr = GetBlockTableRecord(blockName);
                     if (btr != null)
                     {
-                        Debug.WriteLine("图块{name}定义已存在！");
+                        Logger._.Warn($"图块{blockName}定义已存在！");
                         return ObjectId.Null;
-                        ;
                     }
                 }
                 else
@@ -518,20 +513,20 @@ namespace ServiceACAD
                 var lineTypeTable = GetLineTypeTable(OpenMode.ForWrite);
                 if (lineTypeTable == null)
                 {
-                    _logger.Error("获取线型表失败");
+                    Logger._.Error("获取线型表失败");
                     return null;
                 }
 
                 if (string.IsNullOrEmpty(lineTypeName))
                 {
-                    _logger.Error("LineType Name is null or empty.");
+                    Logger._.Error("LineType Name is null or empty.");
                     return null;
                 }
 
                 // 检查线型是否已存在
                 if (lineTypeTable.Has(lineTypeName))
                 {
-                    _logger.Warn($"线型 {lineTypeName} 已存在");
+                    Logger._.Warn($"线型 {lineTypeName} 已存在");
                     return null;
                 }
 
@@ -548,12 +543,12 @@ namespace ServiceACAD
                 var lineTypeId = lineTypeTable.Add(lineType);
                 CadTrans.AddNewlyCreatedDBObject(lineType, true);
 
-                _logger.Info($"成功创建线型: {lineTypeName}");
+                Logger._.Info($"成功创建线型: {lineTypeName}");
                 return lineType;
             }
             catch (Exception ex)
             {
-                _logger.Error($"创建线型失败: {ex.Message}", ex);
+                Logger._.Error($"创建线型失败: {ex.Message}", ex);
                 return null;
             }
         }
@@ -571,19 +566,19 @@ namespace ServiceACAD
                 var layerTable = GetLayerTable();
                 if (layerTable == null)
                 {
-                    _logger.Error("获取图层表失败");
+                    Logger._.Error("获取图层表失败");
                     return null;
                 }
 
                 // 检查图层是否存在
                 if (string.IsNullOrEmpty(layerName))
                 {
-                    _logger.Warn("Use current layer as default");
+                    Logger._.Warn("Use current layer as default");
                     layerName = GetCurrentLayerName();
                 }
                 else if (!layerTable.Has(layerName))
                 {
-                    _logger.Debug($"图层 {layerName} 不存在，自动创建图层");
+                    Logger._.Debug($"图层 {layerName} 不存在，自动创建图层");
                     return CreateNewLayer(layerName);
                 }
 
@@ -593,7 +588,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                _logger.Error($"获取图层失败: {ex.Message}", ex);
+                Logger._.Error($"获取图层失败: {ex.Message}", ex);
                 return layerName != GetCurrentLayerName() ? GetLayer(GetCurrentLayerName(), openMode) : null;
             }
         }
@@ -611,19 +606,19 @@ namespace ServiceACAD
                 var lineTypeTable = GetLineTypeTable();
                 if (lineTypeTable == null)
                 {
-                    _logger.Error("获取线型表失败");
+                    Logger._.Error("获取线型表失败");
                     return null;
                 }
 
                 if (string.IsNullOrEmpty(lineTypeName))
                 {
-                    _logger.Warn("Use Continuous as default lineType");
+                    Logger._.Warn("Use Continuous as default lineType");
                     lineTypeName = CadServiceManager.LineTypeContinuous;
                 }
                 // 检查线型是否存在
                 else if (!lineTypeTable.Has(lineTypeName))
                 {
-                    _logger.Debug($"线型 {lineTypeName} 不存在，自动创建线型");
+                    Logger._.Debug($"线型 {lineTypeName} 不存在，自动创建线型");
                     return CreateNewLineType(lineTypeName);
                 }
 
@@ -633,7 +628,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                _logger.Error($"获取线型失败: {ex.Message}", ex);
+                Logger._.Error($"获取线型失败: {ex.Message}", ex);
                 return lineTypeName != CadServiceManager.LineTypeContinuous
                     ? GetLineType(CadServiceManager.LineTypeContinuous, openMode)
                     : null;
@@ -734,7 +729,7 @@ namespace ServiceACAD
                 var layerTable = GetLayerTable(OpenMode.ForWrite);
                 if (layerTable == null)
                 {
-                    _logger.Error("获取图层表失败");
+                    Logger._.Error("获取图层表失败");
                     return null;
                 }
 
@@ -744,7 +739,7 @@ namespace ServiceACAD
                 }
                 else if (layerTable.Has(layerName))
                 {
-                    _logger.Warn($"图层 {layerName} 已存在");
+                    Logger._.Warn($"图层 {layerName} 已存在");
                     return null;
                 }
 
@@ -763,12 +758,12 @@ namespace ServiceACAD
                 var layerId = layerTable.Add(layer);
                 CadTrans.AddNewlyCreatedDBObject(layer, true);
 
-                _logger.Info($"成功创建图层: {layerName}");
+                Logger._.Info($"成功创建图层: {layerName}");
                 return layer;
             }
             catch (Exception ex)
             {
-                _logger.Error($"创建图层失败: {ex.Message}", ex);
+                Logger._.Error($"创建图层失败: {ex.Message}", ex);
                 return null;
             }
         }

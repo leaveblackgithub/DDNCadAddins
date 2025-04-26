@@ -8,6 +8,14 @@ namespace ServiceACAD
     /// </summary>
     public class Logger : ILogger
     {
+        private static readonly Lazy<Logger> _instance = new Lazy<Logger>(() => new Logger());
+        
+        public static Logger _ => _instance.Value;
+
+        private Logger()
+        {
+        }
+
         /// <summary>
         ///     记录调试信息
         /// </summary>

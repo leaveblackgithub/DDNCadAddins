@@ -2,6 +2,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using System.Collections.Generic;
 using ServiceACAD;
+using log4net;
 
 namespace AddinsAcad.ServiceTests
 {
@@ -12,6 +13,7 @@ namespace AddinsAcad.ServiceTests
     {
         private const string NameTestLayer = "TestLayer";
         private const string NameTestLinetype = "TestLinetype";
+        private static readonly ILog _logger = LogManager.GetLogger(typeof(BlockServiceTestUtils));
 
         /// <summary>
         /// 创建用于测试爆炸命令的测试块
@@ -34,9 +36,9 @@ namespace AddinsAcad.ServiceTests
                     serviceTrans.GetValidLineTypeName(NameTestLinetype));
                 return blkRefId;
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"\n警告: 创建测试块时发生异常: {ex.Message}");
+                _logger.Error($"\n警告: 创建测试块时发生异常: {ex.Message}");
                 return ObjectId.Null;
             }
         }

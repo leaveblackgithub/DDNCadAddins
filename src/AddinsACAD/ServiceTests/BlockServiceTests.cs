@@ -99,7 +99,7 @@ namespace AddinsACAD.ServiceTests
                 }
                 catch (AssertionException assertionException)
                 {
-                    Debug.WriteLine($"\n{assertionException.Message}");
+                    Logger._.Error($"\n{assertionException.Message}");
                     return;
                 }
                 catch (Exception ex)

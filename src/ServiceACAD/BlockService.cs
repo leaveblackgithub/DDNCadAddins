@@ -178,7 +178,7 @@ namespace ServiceACAD
                         var attRef = ServiceTrans.GetObject<AttributeReference>(attId);
                         if (attRef == null)
                         {
-                            Debug.WriteLine("\nCan't get attRef");
+                            Logger._.Warn("\nCan't get attRef");
                             continue;
                         }
 
@@ -194,13 +194,13 @@ namespace ServiceACAD
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"\n警告: 处理属性引用失败: {ex.Message}");
+                        Logger._.Warn($"\n警告: 处理属性引用失败: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"\n警告: 处理属性引用集合失败: {ex.Message}");
+                Logger._.Warn($"\n警告: 处理属性引用集合失败: {ex.Message}");
             }
 
             return textList;
@@ -216,7 +216,7 @@ namespace ServiceACAD
         {
             if (attRef == null)
             {
-                Debug.WriteLine("\n警告: 属性引用为空");
+                Logger._.Warn("\n警告: 属性引用为空");
                 return null;
             }
 
@@ -251,7 +251,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"\n警告: 转换属性到文本时发生异常: {ex.Message}");
+                Logger._.Warn($"\n警告: 转换属性到文本时发生异常: {ex.Message}");
                 text?.Dispose();
                 return null;
             }
@@ -317,7 +317,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"\n警告: 处理实体属性时发生异常: {ex.Message}");
+                Logger._.Warn($"\n警告: 处理实体属性时发生异常: {ex.Message}");
             }
         }
 
@@ -384,7 +384,7 @@ namespace ServiceACAD
                         }
                         else
                         {
-                            Debug.WriteLine($"\n警告: 遇到未处理的对象类型 {obj.GetType().Name}");
+                            Logger._.Warn($"\n警告: 遇到未处理的对象类型 {obj.GetType().Name}");
 
                             if (obj is DBObject dbObj && !dbObj.IsDisposed)
                             {
@@ -394,14 +394,14 @@ namespace ServiceACAD
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"\n警告: 处理爆炸实体时发生异常: {ex.Message}");
+                        Logger._.Warn($"\n警告: 处理爆炸实体时发生异常: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"\n警告: 执行块参照爆炸时发生异常: {ex.Message}");
-                Debug.WriteLine($"\n{ex.StackTrace}");
+                Logger._.Warn($"\n警告: 执行块参照爆炸时发生异常: {ex.Message}");
+                Logger._.Error($"\n{ex.StackTrace}");
             }
         }
 
@@ -418,7 +418,7 @@ namespace ServiceACAD
         {
             if (string.IsNullOrEmpty(name))
             {
-                Debug.WriteLine("块名称不能为空");
+                Logger._.Warn("块名称不能为空");
                 return ObjectId.Null;
             }
 
@@ -428,7 +428,7 @@ namespace ServiceACAD
                 var btr = ServiceTrans.GetBlockTableRecord(name);
                 if (btr == null)
                 {
-                    Debug.WriteLine($"块 {name} 不存在");
+                    Logger._.Warn($"块 {name} 不存在");
                     return ObjectId.Null;
                 }
 
@@ -445,7 +445,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"创建块参照失败: {ex.Message}");
+                Logger._.Error($"创建块参照失败: {ex.Message}");
                 return ObjectId.Null;
             }
         }

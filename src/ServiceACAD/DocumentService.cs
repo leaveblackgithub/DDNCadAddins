@@ -13,11 +13,10 @@ namespace ServiceACAD
 {
     public class DocumentService : IDocumentService
     {
-        private readonly ILogger _logger;
-
-        public DocumentService(ILogger logger)
+        public DocumentService()
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            CadDoc = Application.DocumentManager.MdiActiveDocument;
+            ServiceEd = new EditorService(CadDoc.Editor);
         }
 
         public DocumentService(Document document = null)
@@ -56,7 +55,7 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"隔离对象失败: {ex.Message}");
+                Logger._.Error($"隔离对象失败: {ex.Message}");
                 return OpResult<ObjectId[]>.Fail($"隔离对象失败: {ex.Message}");
             }
         }
@@ -85,20 +84,19 @@ namespace ServiceACAD
             {
                 try
                 {
-                    var transactionService = new TransactionService(tr, _logger);
+                    var transactionService = new TransactionService(tr);
                     testAction(transactionService);
                     tr.Commit();
                 }
                 catch (AssertionException e)
                 {
                     // 断言失败异常被忽略，仅记录不抛出
-                    _logger.Warn($"断言失败异常被忽略: {e.Message}");
+                    Logger._.Warn($"断言失败异常被忽略: {e.Message}");
                     tr.Commit();
                 }
                 catch (Exception e)
                 {
-                    // 记录异常信息
-                    _logger.Error($"ExecuteInTransaction异常: {e.Message}", e);
+                    Logger._.Error("处理文档时发生错误", e);
                     tr.Abort();
                 }
             }
