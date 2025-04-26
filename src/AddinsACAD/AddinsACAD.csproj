@@ -33,9 +33,10 @@ Features:
     <Compile Include="$(SolutionDir)CommonAssemblyInfo.cs">
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
+    <Compile Include="TestCommands\CreateTestBlockForExplodeCommand.cs" />
     <Compile Include="ExampleTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="RunTestsCommand.cs" />
+    <Compile Include="TestCommands\RunTestsCommand.cs" />
     <Compile Include="ServiceTests\BlockServiceTestUtils.cs" />
     <Compile Include="ServiceTests\BlockServiceTests.cs" />
     <Compile Include="ServiceTests\CommonTestMethods.cs" />

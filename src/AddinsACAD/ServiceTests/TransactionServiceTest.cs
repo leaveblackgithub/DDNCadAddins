@@ -63,18 +63,26 @@ namespace AddinsACAD.ServiceTests
         [Test]
         public void TestCreateNewLayer()
         {
-            string layerName = "TestLayer_" + Guid.NewGuid().ToString("N");
             
             void Action1(ITransactionService tr)
             {
-                var result = tr.CreateNewLayer(layerName);
-                Assert.IsTrue(result.IsSuccess);
-                Assert.IsNotNull(result.Value);
-                
-                // 验证图层是否创建成功
-                var layer = tr.GetLayer(layerName);
-                Assert.IsNotNull(layer);
-                Assert.AreEqual(layerName, layer.Name);
+
+                var layerName1 = CommonTestMethods.GetTestLayerName();
+                var newLayer1 = tr.CreateNewLayer(layerName1);
+                Assert.IsNotNull(newLayer1);
+                Assert.AreEqual(layerName1, newLayer1.Name);
+                var newLayer2 = tr.CreateNewLayer(layerName1);
+                Assert.IsNull(newLayer2);
+                var layerName2 = CommonTestMethods.GetTestLayerName();
+
+                var lineTypeName = CommonTestMethods.GetTestLineTypeName();
+                var colorIndex = CadServiceManager.ColorIndexMagenta;
+                var newLayer3 = tr.CreateNewLayer(layerName2, colorIndex,
+                    lineTypeName);
+                Assert.IsNotNull(newLayer3);
+                Assert.AreEqual(newLayer3.Name,layerName2);
+                Assert.AreEqual(newLayer3.Color.ColorIndex,colorIndex);
+                Assert.AreEqual(newLayer3.LinetypeObjectId.ToString(),tr.GetLineType(lineTypeName).Id.ToString());
             }
 
             CadServiceManager._.ExecuteInTransactions("", Action1);
@@ -83,21 +91,18 @@ namespace AddinsACAD.ServiceTests
         [Test]
         public void TestCreateNewLineType()
         {
-            string lineTypeName = "TestLineType_" + Guid.NewGuid().ToString("N");
+            string lineTypeName = CommonTestMethods.GetTestLineTypeName();
             
             void Action1(ITransactionService tr)
             {
-                var result = tr.CreateNewLineType(lineTypeName);
-                Assert.IsTrue(result.IsSuccess);
-                Assert.IsNotNull(result.Value);
-                
-                // 验证线型是否创建成功
-                var lineType = tr.GetLineType(lineTypeName);
-                Assert.IsNotNull(lineType);
-                Assert.AreEqual(lineTypeName, lineType.Name);
+                var newLineType1 = tr.CreateNewLineType(lineTypeName);
+                Assert.IsNotNull(newLineType1);
+                Assert.AreEqual(lineTypeName, newLineType1.Name);
+                var newLineType2 = tr.CreateNewLineType(lineTypeName);
+                Assert.IsNull(newLineType2);
             }
-
             CadServiceManager._.ExecuteInTransactions("", Action1);
         }
+
     }
 }

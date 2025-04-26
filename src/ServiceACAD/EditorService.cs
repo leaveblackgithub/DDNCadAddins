@@ -13,5 +13,6 @@ namespace ServiceACAD
         }
 
         public Editor CadEd { get; set; }
+        public void WriteMessage(string message) => CadEd.WriteMessage(message);
     }
 }

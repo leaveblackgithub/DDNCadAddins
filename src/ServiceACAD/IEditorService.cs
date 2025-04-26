@@ -5,5 +5,6 @@ namespace ServiceACAD
     /// </summary>
     public interface IEditorService
     {
+        void WriteMessage(string message);
     }
 }

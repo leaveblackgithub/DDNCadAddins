@@ -1,13 +1,12 @@
 using System.Reflection;
-using AddinsACAD;
-using AddinsACAD.ServiceTests;
+using AddinsACAD.TestCommands;
 using Autodesk.AutoCAD.Runtime;
 using ServiceACAD;
 using TestRunnerACAD;
 
 [assembly: CommandClass(typeof(RunTestsCommand))]
 
-namespace AddinsACAD
+namespace AddinsACAD.TestCommands
 {
     public class RunTestsCommand
     {
