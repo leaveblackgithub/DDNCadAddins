@@ -356,7 +356,8 @@ namespace ServiceACAD
                 return ObjectId.Null;
             }
         }
-
+ 
+        /// <summary
         public List<ObjectId> AppendEntitiesToCurrentSpace(List<Entity> entities) =>
             AppendEntitiesToBlockTableRecord(GetCurrentSpace(OpenMode.ForWrite), entities);
 
@@ -444,6 +445,7 @@ namespace ServiceACAD
 
                 // 将实体添加到块表记录
                 AppendEntitiesToBlockTableRecord(btr, entities);
+                CadTrans.AddNewlyCreatedDBObject(btr,true);
 
                 return blockId;
             }
