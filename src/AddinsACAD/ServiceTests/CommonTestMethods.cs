@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
 using ServiceACAD;
@@ -18,5 +19,8 @@ namespace AddinsACAD.ServiceTests
             var blkService = tr.GetBlockService(blkRefIds[0]);
             return blkService;
         }
+
+        public static string GetTestLayerName() => "TestLayer_" + Guid.NewGuid().ToString("N");
+        public static string GetTestLineTypeName() => "TestLineType_" + Guid.NewGuid().ToString("N");
     }
 }
