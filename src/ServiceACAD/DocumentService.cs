@@ -7,11 +7,19 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using NUnit.Framework;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
+using Autodesk.AutoCAD.EditorInput;
 
 namespace ServiceACAD
 {
     public class DocumentService : IDocumentService
     {
+        private readonly ILogger _logger;
+
+        public DocumentService(ILogger logger)
+        {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+
         public DocumentService(Document document = null)
         {
             CadDoc = document == null ? Application.DocumentManager.MdiActiveDocument : document;
@@ -77,22 +85,21 @@ namespace ServiceACAD
             {
                 try
                 {
-                    var transactionService = new TransactionService(tr);
+                    var transactionService = new TransactionService(tr, _logger);
                     testAction(transactionService);
                     tr.Commit();
                 }
                 catch (AssertionException e)
                 {
                     // 断言失败异常被忽略，仅记录不抛出
-                    Debug.WriteLine($"断言失败异常被忽略:{e.Message}");
+                    _logger.Warn($"断言失败异常被忽略: {e.Message}");
                     tr.Commit();
                 }
                 catch (Exception e)
                 {
                     // 记录异常信息
-                    Debug.WriteLine($"ExecuteInTransaction异常: {e.Message}");
+                    _logger.Error($"ExecuteInTransaction异常: {e.Message}", e);
                     tr.Abort();
-                    ;
                 }
             }
         }

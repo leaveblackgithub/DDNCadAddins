@@ -1,3 +1,4 @@
+using System;
 using Autodesk.AutoCAD.ApplicationServices;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
@@ -8,6 +9,20 @@ namespace ServiceACAD
     /// </summary>
     public class CadServiceManager
     {
+        public const string Layer0 = "0";
+        public const short ColorIndexByBlock = 0;
+        public const string NameByBlock = "BYBLOCK";
+        public const short ColorIndexByLayer = 256;
+        public const short ColorIndexGreen = 3;
+        public const short ColorIndexWhite = 7;
+        public const short ColorIndexRed = 1; 
+        public const short ColorIndexYellow = 2;
+        public const short ColorIndexBlue = 6;
+        public const short ColorIndexMagenta = 5;
+        public const short ColorIndexCyan = 4;
+
+        public const string LineTypeContinuous = "Continuous";
+        // 单例模式的锁对象
         private static readonly object _lockObj = new object();
         private static CadServiceManager _instance;
 
@@ -119,5 +134,7 @@ namespace ServiceACAD
         ///     释放资源
         /// </summary>
         public void Dispose() => Application.DocumentManager.DocumentActivated -= DocumentManager_DocumentActivated;
+
+        public static string GetDefaultName() => DateTime.UtcNow.ToShortTimeString();
     }
 }

@@ -59,5 +59,45 @@ namespace AddinsACAD.ServiceTests
         
             CadServiceManager._.ExecuteInTransactions("xclip", Action1);
         }
+
+        [Test]
+        public void TestCreateNewLayer()
+        {
+            string layerName = "TestLayer_" + Guid.NewGuid().ToString("N");
+            
+            void Action1(ITransactionService tr)
+            {
+                var result = tr.CreateNewLayer(layerName);
+                Assert.IsTrue(result.IsSuccess);
+                Assert.IsNotNull(result.Value);
+                
+                // 验证图层是否创建成功
+                var layer = tr.GetLayer(layerName);
+                Assert.IsNotNull(layer);
+                Assert.AreEqual(layerName, layer.Name);
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action1);
+        }
+
+        [Test]
+        public void TestCreateNewLineType()
+        {
+            string lineTypeName = "TestLineType_" + Guid.NewGuid().ToString("N");
+            
+            void Action1(ITransactionService tr)
+            {
+                var result = tr.CreateNewLineType(lineTypeName);
+                Assert.IsTrue(result.IsSuccess);
+                Assert.IsNotNull(result.Value);
+                
+                // 验证线型是否创建成功
+                var lineType = tr.GetLineType(lineTypeName);
+                Assert.IsNotNull(lineType);
+                Assert.AreEqual(lineTypeName, lineType.Name);
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action1);
+        }
     }
 }

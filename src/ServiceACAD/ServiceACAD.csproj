@@ -40,7 +40,9 @@ Features:
     <Compile Include="IBlockService.cs" />
     <Compile Include="IDocumentService.cs" />
     <Compile Include="IEditorService.cs" />
+    <Compile Include="ILogger.cs" />
     <Compile Include="ITransactionService.cs" />
+    <Compile Include="Logger.cs" />
     <Compile Include="OpResult.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TransactionService.cs" />

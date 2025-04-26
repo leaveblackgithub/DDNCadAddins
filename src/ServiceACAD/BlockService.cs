@@ -3,6 +3,7 @@ using Autodesk.AutoCAD.Geometry;
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;
+using Autodesk.AutoCAD.Colors;
 
 namespace ServiceACAD
 {
@@ -405,97 +406,48 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        /// 创建用于测试爆炸命令的测试块
+        /// 在当前空间创建块参照
         /// </summary>
-        /// <returns>创建的测试块的ObjectId</returns>
-        public ObjectId CreateTestBlockForExplodeCommand()
+        /// <param name="name">块名称</param>
+        /// <param name="insertPt">插入点</param>
+        /// <param name="layerName">图层名称</param>
+        /// <param name="color">颜色</param>
+        /// <param name="linetype">线型</param>
+        /// <returns>创建成功的块参照ObjectId，失败返回ObjectId.Null</returns>
+        public ObjectId CreateBlockRefInCurrentSpace(string name, Point3d insertPt, string layerName, Color color, string linetype)
         {
-            if (CadBlkRef == null)
+            if (string.IsNullOrEmpty(name))
             {
+                Debug.WriteLine("块名称不能为空");
                 return ObjectId.Null;
             }
 
             try
             {
-                // 创建测试实体
-                var entities = new List<Entity>();
-                CreateTestEntities(entities);
+                // 获取块表记录
+                var btr = ServiceTrans.GetBlockTableRecord(name);
+                if (btr == null)
+                {
+                    Debug.WriteLine($"块 {name} 不存在");
+                    return ObjectId.Null;
+                }
 
-                // 使用事务服务创建块
-                return ServiceTrans.CreateBlock(entities, "TestBlockForExplode");
+                // 创建块参照
+                var blkRef = new BlockReference(insertPt, btr.ObjectId)
+                {
+                    Layer = layerName,
+                    Color = color,
+                    Linetype = linetype
+                };
+
+                // 将块参照添加到当前空间
+                return ServiceTrans.AppendEntityToCurrentSpace(blkRef);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"\n警告: 创建测试块时发生异常: {ex.Message}");
+                Debug.WriteLine($"创建块参照失败: {ex.Message}");
                 return ObjectId.Null;
             }
-        }
-
-        /// <summary>
-        /// 创建测试实体
-        /// </summary>
-        /// <param name="entities">实体列表</param>
-        private void CreateTestEntities(List<Entity> entities)
-        {
-            // 1. 直线1：0图层，BYBLOCK颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
-            var line1 = new Line(new Point3d(0, 0, 0), new Point3d(10, 0, 0));
-            line1.Layer = "0";
-            line1.ColorIndex = 0; // BYBLOCK
-            line1.Linetype = "BYBLOCK";
-            line1.LinetypeScale = 1.0;
-            line1.LineWeight = LineWeight.ByBlock;
-            entities.Add(line1);
-
-            // 2. 直线2：非0图层，特定颜色，特定线型，自定义线型比例，特定线宽
-            var line2 = new Line(new Point3d(0, 10, 0), new Point3d(10, 10, 0));
-            line2.Layer = "TestLayer";
-            line2.ColorIndex = 1; // 红色
-            line2.Linetype = "TestLinetype";
-            line2.LinetypeScale = 2.0;
-            line2.LineWeight = LineWeight.LineWeight050;
-            entities.Add(line2);
-
-            // 3. 圆1：0图层，BYLAYER颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
-            var circle1 = new Circle(new Point3d(20, 0, 0), Vector3d.ZAxis, 5);
-            circle1.Layer = "0";
-            circle1.ColorIndex = 256; // BYLAYER
-            circle1.Linetype = "BYBLOCK";
-            circle1.LinetypeScale = 1.0;
-            circle1.LineWeight = LineWeight.ByBlock;
-            entities.Add(circle1);
-
-            // 4. 圆2：非0图层，BYBLOCK颜色，特定线型，自定义线型比例，特定线宽
-            var circle2 = new Circle(new Point3d(20, 10, 0), Vector3d.ZAxis, 5);
-            circle2.Layer = "TestLayer";
-            circle2.ColorIndex = 0; // BYBLOCK
-            circle2.Linetype = "TestLinetype";
-            circle2.LinetypeScale = 0.5;
-            circle2.LineWeight = LineWeight.LineWeight030;
-            entities.Add(circle2);
-
-            // 5. 文本1：0图层，特定颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
-            var text1 = new DBText();
-            text1.Position = new Point3d(30, 0, 0);
-            text1.TextString = "Text1";
-            text1.Height = 2.5;
-            text1.Layer = "0";
-            text1.ColorIndex = 3; // 绿色
-            text1.Linetype = "BYBLOCK";
-            text1.LinetypeScale = 1.0;
-            text1.LineWeight = LineWeight.ByBlock;
-            entities.Add(text1);
-
-            // 6. 文本2：非0图层，BYBLOCK颜色，特定线型，自定义线型比例，特定线宽
-            var text2 = new DBText();
-            text2.Position = new Point3d(30, 10, 0);
-            text2.TextString = "Text2";
-            text2.Height = 2.5;
-            text2.Layer = "TestLayer";
-            text2.ColorIndex = 0; // BYBLOCK
-            text2.Linetype = "TestLinetype";
-            text2.LinetypeScale = 1.5;
-            text2.LineWeight = LineWeight.LineWeight070;
-            entities.Add(text2);
         }
 
         // /// <summary>
