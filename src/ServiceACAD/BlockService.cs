@@ -244,7 +244,7 @@ namespace ServiceACAD
                 }
 
                 // 使用ProcessEntityProperties方法处理图层和属性
-                ProcessEntityProperties(text, attRef);
+                SetChildPropsAsBlk(text, attRef);
 
                 return text;
             }
@@ -261,7 +261,7 @@ namespace ServiceACAD
         /// </summary>
         /// <param name="targetEntity">要修改的实体</param>
         /// <param name="referenceEntity">参考实体</param>
-        private void ProcessEntityProperties(Entity targetEntity, Entity referenceEntity)
+        private void SetChildPropsAsBlk(Entity targetEntity, Entity referenceEntity)
         {
             if (targetEntity == null || referenceEntity == null)
             {
@@ -326,7 +326,7 @@ namespace ServiceACAD
         /// <param name="obj">要检查的对象</param>
         /// <param name="propertyName">属性名称</param>
         /// <returns>如果对象具有该属性返回true，否则返回false</returns>
-        private bool HasProperty(object obj, string propertyName)
+        public bool HasProperty(object obj, string propertyName)
         {
             if (obj == null || string.IsNullOrEmpty(propertyName))
             {
@@ -377,7 +377,7 @@ namespace ServiceACAD
                         else if (obj is Entity entity)
                         {
                             // 处理实体的图层和属性
-                            ProcessEntityProperties(entity, blockRef);
+                            SetChildPropsAsBlk(entity, blockRef);
                             entitiesToAdd.Add(entity);
                             entityCount++;
                         }
@@ -417,27 +417,12 @@ namespace ServiceACAD
 
             try
             {
-                // 获取当前数据库和事务
-                var db = CadBlkRef.Database;
-                using (var tr = db.TransactionManager.StartTransaction())
-                {
-                    // 创建新的块表记录
-                    var bt = tr.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
-                    var btr = new BlockTableRecord();
-                    btr.Name = "TestBlockForExplode";
+                // 创建测试实体
+                var entities = new List<Entity>();
+                CreateTestEntities(entities);
 
-                    // 添加块表记录到块表
-                    bt.UpgradeOpen();
-                    var blockId = bt.Add(btr);
-                    tr.AddNewlyCreatedDBObject(btr, true);
-
-                    // 创建测试对象
-                    CreateTestEntities(btr, tr);
-
-                    // 提交事务
-                    tr.Commit();
-                    return blockId;
-                }
+                // 使用事务服务创建块
+                return ServiceTrans.CreateBlock(entities, "TestBlockForExplode");
             }
             catch (Exception ex)
             {
@@ -447,28 +432,11 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        /// 在块表记录中创建测试实体
+        /// 创建测试实体
         /// </summary>
-        /// <param name="btr">块表记录</param>
-        /// <param name="tr">事务</param>
-        private void CreateTestEntities(BlockTableRecord btr, Transaction tr)
+        /// <param name="entities">实体列表</param>
+        private void CreateTestEntities(List<Entity> entities)
         {
-            // 创建图层
-            var layerTable = tr.GetObject(btr.Database.LayerTableId, OpenMode.ForRead) as LayerTable;
-            var testLayer = new LayerTableRecord();
-            testLayer.Name = "TestLayer";
-            layerTable.UpgradeOpen();
-            var layerId = layerTable.Add(testLayer);
-            tr.AddNewlyCreatedDBObject(testLayer, true);
-
-            // 创建线型
-            var ltTable = tr.GetObject(btr.Database.LinetypeTableId, OpenMode.ForRead) as LinetypeTable;
-            var testLinetype = new LinetypeTableRecord();
-            testLinetype.Name = "TestLinetype";
-            ltTable.UpgradeOpen();
-            var linetypeId = ltTable.Add(testLinetype);
-            tr.AddNewlyCreatedDBObject(testLinetype, true);
-
             // 1. 直线1：0图层，BYBLOCK颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
             var line1 = new Line(new Point3d(0, 0, 0), new Point3d(10, 0, 0));
             line1.Layer = "0";
@@ -476,8 +444,7 @@ namespace ServiceACAD
             line1.Linetype = "BYBLOCK";
             line1.LinetypeScale = 1.0;
             line1.LineWeight = LineWeight.ByBlock;
-            btr.AppendEntity(line1);
-            tr.AddNewlyCreatedDBObject(line1, true);
+            entities.Add(line1);
 
             // 2. 直线2：非0图层，特定颜色，特定线型，自定义线型比例，特定线宽
             var line2 = new Line(new Point3d(0, 10, 0), new Point3d(10, 10, 0));
@@ -486,8 +453,7 @@ namespace ServiceACAD
             line2.Linetype = "TestLinetype";
             line2.LinetypeScale = 2.0;
             line2.LineWeight = LineWeight.LineWeight050;
-            btr.AppendEntity(line2);
-            tr.AddNewlyCreatedDBObject(line2, true);
+            entities.Add(line2);
 
             // 3. 圆1：0图层，BYLAYER颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
             var circle1 = new Circle(new Point3d(20, 0, 0), Vector3d.ZAxis, 5);
@@ -496,8 +462,7 @@ namespace ServiceACAD
             circle1.Linetype = "BYBLOCK";
             circle1.LinetypeScale = 1.0;
             circle1.LineWeight = LineWeight.ByBlock;
-            btr.AppendEntity(circle1);
-            tr.AddNewlyCreatedDBObject(circle1, true);
+            entities.Add(circle1);
 
             // 4. 圆2：非0图层，BYBLOCK颜色，特定线型，自定义线型比例，特定线宽
             var circle2 = new Circle(new Point3d(20, 10, 0), Vector3d.ZAxis, 5);
@@ -506,8 +471,7 @@ namespace ServiceACAD
             circle2.Linetype = "TestLinetype";
             circle2.LinetypeScale = 0.5;
             circle2.LineWeight = LineWeight.LineWeight030;
-            btr.AppendEntity(circle2);
-            tr.AddNewlyCreatedDBObject(circle2, true);
+            entities.Add(circle2);
 
             // 5. 文本1：0图层，特定颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
             var text1 = new DBText();
@@ -519,8 +483,7 @@ namespace ServiceACAD
             text1.Linetype = "BYBLOCK";
             text1.LinetypeScale = 1.0;
             text1.LineWeight = LineWeight.ByBlock;
-            btr.AppendEntity(text1);
-            tr.AddNewlyCreatedDBObject(text1, true);
+            entities.Add(text1);
 
             // 6. 文本2：非0图层，BYBLOCK颜色，特定线型，自定义线型比例，特定线宽
             var text2 = new DBText();
@@ -532,8 +495,7 @@ namespace ServiceACAD
             text2.Linetype = "TestLinetype";
             text2.LinetypeScale = 1.5;
             text2.LineWeight = LineWeight.LineWeight070;
-            btr.AppendEntity(text2);
-            tr.AddNewlyCreatedDBObject(text2, true);
+            entities.Add(text2);
         }
 
         // /// <summary>

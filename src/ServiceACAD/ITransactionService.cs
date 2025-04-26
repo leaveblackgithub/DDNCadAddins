@@ -122,5 +122,13 @@ namespace ServiceACAD
             ICollection<Entity> entities);
 
         List<ObjectId> FilterObjects<T>(ICollection<ObjectId> objectIds,Func<T, bool> filter=null) where T : DBObject;
+
+        /// <summary>
+        ///     创建块定义
+        /// </summary>
+        /// <param name="entities">要包含在块中的实体集合</param>
+        /// <param name="blockName">块名称</param>
+        /// <returns>创建的块的ObjectId</returns>
+        ObjectId CreateBlock(ICollection<Entity> entities, string blockName = "");
     }
 }

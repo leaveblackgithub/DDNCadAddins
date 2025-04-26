@@ -421,5 +421,47 @@ namespace ServiceACAD
                 return new List<ObjectId>();
             }
         }
+
+        /// <summary>
+        ///     创建块定义
+        /// </summary>
+        /// <param name="entities">要包含在块中的实体集合</param>
+        /// <param name="blockName">块名称</param>
+        /// <returns>创建的块的ObjectId</returns>
+        public ObjectId CreateBlock(ICollection<Entity> entities, string blockName = "")
+        {
+            try
+            {
+                // 获取块表
+                var bt = GetBlockTable();
+                if (bt == null)
+                {
+                    Debug.WriteLine($"获取块表失败");
+                    return ObjectId.Null;
+                }
+
+                // 创建块表记录
+                var btr = new BlockTableRecord();
+                btr.Name = string.IsNullOrEmpty(blockName)?DateTime.UtcNow.ToShortTimeString():blockName;
+                
+
+                // 添加块表记录到块表
+                bt.UpgradeOpen();
+                var blockId = bt.Add(btr);
+
+                // 将实体添加到块表记录
+                foreach (var entity in entities)
+                {
+                    AppendEntityToBlockTableRecord(btr, entity);
+                }
+
+                return blockId;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"创建块失败: {ex.Message}");
+                return ObjectId.Null;
+            }
+        }
     }
 }
