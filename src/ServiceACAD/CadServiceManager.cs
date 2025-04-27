@@ -11,7 +11,7 @@ namespace ServiceACAD
     {
         public const string Layer0 = "0";
         public const short ColorIndexByBlock = 0;
-        public const string NameByBlock = "BYBLOCK";
+        public const string StrByBlock = "BYBLOCK";
         public const short ColorIndexByLayer = 256;
         public const short ColorIndexGreen = 3;
         public const short ColorIndexWhite = 7;
@@ -20,6 +20,17 @@ namespace ServiceACAD
         public const short ColorIndexBlue = 6;
         public const short ColorIndexMagenta = 5;
         public const short ColorIndexCyan = 4;
+        public const string StrLayer = "Layer";
+        public const string StrLinetype = "Linetype";
+        public const string StrLineWeight = "LineWeight";
+        public const string StrColorIndex = "ColorIndex";
+        public const string StrByLayer = "BYLAYER";
+        public const string StrTextString = "TextString";
+        public const string StrTag = "Tag";
+        public const string StrPrompt = "Prompt";
+        public const string StrPosition = "Position";
+        public const string StrTextStyleId = "TextStyleId";
+        public const string StrHeight = "Height";
 
         public const string LineTypeContinuous = "Continuous";
         // 单例模式的锁对象

@@ -199,5 +199,19 @@ namespace ServiceACAD
         /// <param name="lineTypeName">线型名称</param>
         /// <returns>线型对象，如果不存在则返回null</returns>
         LinetypeTableRecord GetLineType(string lineTypeName, OpenMode openMode = OpenMode.ForRead);
+
+        void AddNewlyCreatedDBObject(DBObject obj, bool add);
+        
+
+        /// <summary>
+        /// 为块参照添加多个属性并赋值
+        /// </summary>
+        /// <param name="transactionService">事务服务</param>
+        /// <param name="blockReference">块参照对象</param>
+        /// <param name="attributeValues">属性Tag和对应的值字典</param>
+        /// <returns>是否成功添加属性</returns>
+        bool AddAttributesToBlockReference(ObjectId blkDefId,
+            ObjectId blkRefId,
+            Dictionary<string, Dictionary<string, object>> attributeValues);
     }
 }

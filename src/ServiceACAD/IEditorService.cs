@@ -6,5 +6,6 @@ namespace ServiceACAD
     public interface IEditorService
     {
         void WriteMessage(string message);
+        void Update();
     }
 }

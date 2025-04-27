@@ -3,6 +3,7 @@ using Autodesk.AutoCAD.Geometry;
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;
+using System.Reflection;
 using Autodesk.AutoCAD.Colors;
 
 namespace ServiceACAD
@@ -260,11 +261,11 @@ namespace ServiceACAD
         /// <summary>
         ///     处理实体的图层和属性设置
         /// </summary>
-        /// <param name="targetEntity">要修改的实体</param>
-        /// <param name="referenceEntity">参考实体</param>
-        private void SetChildPropsAsBlk(Entity targetEntity, Entity referenceEntity)
+        /// <param name="entTo">要修改的实体</param>
+        /// <param name="entFr">参考实体</param>
+        private void SetChildPropsAsBlk(Entity entTo, Entity entFr)
         {
-            if (targetEntity == null || referenceEntity == null)
+            if (entTo == null || entFr == null)
             {
                 return;
             }
@@ -272,48 +273,40 @@ namespace ServiceACAD
             try
             {
                 // 处理0图层的对象
-                var nameLayer = "Layer";
-                if (HasProperty(referenceEntity, nameLayer) && HasProperty(targetEntity, nameLayer) &&
-                    (referenceEntity is AttributeReference || targetEntity.Layer == "0"))
-                {
-                    targetEntity.Layer = referenceEntity.Layer;
-                }
+                // var nameLayer = "Layer";
+                // if (HasProperty(entFr, nameLayer) && HasProperty(entTo, nameLayer) &&
+                //     (entFr is AttributeReference || entTo.Layer == "0"))
+                // {
+                //     entTo.Layer = entFr.Layer;
+                // }
 
+                MatchProp(entTo, entFr, CadServiceManager.StrLayer, CadServiceManager.Layer0);
                 // 处理BYBLOCK颜色
-                var nameColor = "ColorIndex";
-                if (HasProperty(referenceEntity, nameColor) && HasProperty(targetEntity, nameColor) &&
-                    (referenceEntity is AttributeReference || targetEntity.ColorIndex == 0))
-                {
-                    targetEntity.ColorIndex = referenceEntity.ColorIndex;
-                }
-
+                // var nameColor = "ColorIndex";
+                // if (HasProperty(entFr, nameColor) && HasProperty(entTo, nameColor) &&
+                //     (entFr is AttributeReference || entTo.ColorIndex == 0))
+                // {
+                //     entTo.ColorIndex = entFr.ColorIndex;
+                // }
+                MatchProp(entTo, entFr, CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexByBlock);
                 // 处理BYBLOCK线型
-                var nameLinetype = "Linetype";
-                if (HasProperty(referenceEntity, nameLinetype) && HasProperty(targetEntity, nameLinetype) &&
-                    (referenceEntity is AttributeReference || targetEntity.Linetype == "BYBLOCK"))
-
-                {
-                    targetEntity.LinetypeId = referenceEntity.LinetypeId;
-                }
-
-
-                // 处理BYBLOCK线型比例
-                var nameLtScale = "LinetypeScale";
-                if (HasProperty(referenceEntity, nameLtScale) && HasProperty(targetEntity, nameLtScale) &&
-                    (referenceEntity is AttributeReference || targetEntity.LinetypeScale == 1.0))
-
-                {
-                    targetEntity.LinetypeScale = CadBlkRef.LinetypeScale;
-                }
-
+                // var nameLinetype = "Linetype";
+                // if (HasProperty(entFr, nameLinetype) && HasProperty(entTo, nameLinetype) &&
+                //     (entFr is AttributeReference || entTo.Linetype == "BYBLOCK"))
+                //
+                // {
+                //     entTo.LinetypeId = entFr.LinetypeId;
+                // }
+                MatchProp(entTo, entFr, CadServiceManager.StrLinetype, CadServiceManager.StrByBlock);
 
                 // 处理BYBLOCK线宽
-                if (HasProperty(referenceEntity, "LineWeight") && HasProperty(targetEntity, "LineWeight") &&
-                    (referenceEntity is AttributeReference || targetEntity.LineWeight == LineWeight.ByBlock))
-
-                {
-                    targetEntity.LineWeight = referenceEntity.LineWeight;
-                }
+                // if (HasProperty(entFr, "LineWeight") && HasProperty(entTo, "LineWeight") &&
+                //     (entFr is AttributeReference || entTo.LineWeight == LineWeight.ByBlock))
+                //
+                // {
+                //     entTo.LineWeight = entFr.LineWeight;
+                // }
+                MatchProp(entTo, entFr, CadServiceManager.StrLineWeight, LineWeight.ByBlock);
             }
             catch (Exception ex)
             {
@@ -321,29 +314,13 @@ namespace ServiceACAD
             }
         }
 
-        /// <summary>
-        ///     检查对象是否具有指定属性
-        /// </summary>
-        /// <param name="obj">要检查的对象</param>
-        /// <param name="propertyName">属性名称</param>
-        /// <returns>如果对象具有该属性返回true，否则返回false</returns>
-        public bool HasProperty(object obj, string propertyName)
-        {
-            if (obj == null || string.IsNullOrEmpty(propertyName))
+        public OpResult<object> MatchProp(Entity entTo, Entity entFr, string propName, object valueToFix) =>
+            ServiceACAD.PropertyUtils.MatchPropValues(entFr, entTo, propName, (entT, entF) =>
             {
-                return false;
-            }
-
-            try
-            {
-                var property = obj.GetType().GetProperty(propertyName);
-                return property != null;
-            }
-            catch
-            {
-                return false;
-            }
-        }
+                var getValueTo = PropertyUtils.GetPropertyValue(entT, propName);
+                return !(entF is AttributeReference) ||
+                       (getValueTo.IsSuccess & getValueTo.Data.Equals(valueToFix));
+            });
 
         /// <summary>
         ///     处理爆炸后的实体，将非属性定义的实体添加到实体列表

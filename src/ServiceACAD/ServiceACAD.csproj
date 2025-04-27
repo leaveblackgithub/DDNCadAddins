@@ -44,6 +44,7 @@ Features:
     <Compile Include="ITransactionService.cs" />
     <Compile Include="Logger.cs" />
     <Compile Include="OpResult.cs" />
+    <Compile Include="PropertyUtils.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TransactionService.cs" />
   </ItemGroup>

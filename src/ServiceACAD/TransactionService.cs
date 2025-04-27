@@ -34,6 +34,65 @@ namespace ServiceACAD
         public IDictionary<ObjectId, IBlockService> BlockServiceDict { get; }
 
         /// <summary>
+        /// 为块参照添加多个属性并赋值
+        /// </summary>
+        /// <param name="transactionService">事务服务</param>
+        /// <param name="blockReference">块参照对象</param>
+        /// <param name="attributeValues">属性Tag和对应的值字典</param>
+        /// <returns>是否成功添加属性</returns>
+        public bool AddAttributesToBlockReference(ObjectId blkDefId,
+            ObjectId blkRefId,
+            Dictionary<string, Dictionary<string, object>> attributeValues)
+        {
+            try
+            {
+                var blockReference = GetObject<BlockReference>(blkRefId, OpenMode.ForWrite);
+                var blockDef = GetObject<BlockTableRecord>(blkDefId);
+                if (blockDef == null)
+                {
+                    Logger._.Error("块定义对象无效");
+                    return false;
+                }
+                if (blockReference == null )
+                {
+                    Logger._.Error("块参照对象无效");
+                    return false;
+                }
+
+                foreach (var attValue in attributeValues)
+                {
+                    string tag = attValue.Key;
+                    Dictionary<string, object> props = attValue.Value;
+                    // 获取属性定义
+                    var attDefs = GetChildObjects<AttributeDefinition>(blockDef, (att => att.Tag == tag));
+                    if (attDefs.Count != 1)
+                    {
+                        Logger._.Error($"获取属性{tag}定义失败");
+                        continue;
+
+                    }
+
+                    var attDefId = attDefs[0];
+                    var attDef = GetObject<AttributeDefinition>(attDefId);
+                    var attRef=new AttributeReference();
+                    attRef.SetAttributeFromBlock(attDef, blockReference.BlockTransform);
+                    foreach (var prop in props)
+                    {
+                        PropertyUtils.SetPropertyValue(attRef, prop.Key, prop.Value);
+                    }
+                    blockReference.AttributeCollection.AppendAttribute(attRef);
+                    AddNewlyCreatedDBObject(attRef, true);
+                }
+                return true;
+                
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"添加块属性时发生异常: {ex.Message}");
+                return false;
+            }
+        }
+        /// <summary>
         ///     获取数据库对象
         /// </summary>
         /// <typeparam name="T">对象类型</typeparam>
@@ -136,7 +195,7 @@ namespace ServiceACAD
                 }
 
                 var objectId = blockTableRecord.AppendEntity(entity);
-                CadTrans.AddNewlyCreatedDBObject(entity, true);
+                AddNewlyCreatedDBObject(entity, true);
                 return objectId;
             }
             catch (Exception ex)
@@ -445,7 +504,7 @@ namespace ServiceACAD
 
                 // 将实体添加到块表记录
                 AppendEntitiesToBlockTableRecord(btr, entities);
-                CadTrans.AddNewlyCreatedDBObject(btr,true);
+                AddNewlyCreatedDBObject(btr,true);
 
                 return blockId;
             }
@@ -487,11 +546,29 @@ namespace ServiceACAD
 
                 // 将块参照添加到当前空间
                 AppendEntityToCurrentSpace(blkRef);
+                var blkDef = GetObject<BlockTableRecord>(blkDefId);
+                var attDefIds = GetChildObjects<AttributeDefinition>(blkDef);
+                if (attDefIds.Count == 0) return blkRef.Id;
+                foreach (var attDefId in attDefIds)
+                {
+                    var attDef = GetObject<AttributeDefinition>(attDefId);
+                    var attRef = new AttributeReference()
+                    {
+                        Tag = attDef.Tag,
+                        TextString = attDef.TextString,
+                        Position = attDef.Position.TransformBy(blkRef.BlockTransform),
+                        Rotation = attDef.Rotation
+                    };
+                    blkRef.AttributeCollection.AppendAttribute(attRef);
+                    AddNewlyCreatedDBObject(attRef, true);
+                }
+
+                // CadServiceManager._.ServiceEd.Update();
                 return blkRef.Id;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"创建块参照失败: {ex.Message}");
+                Logger._.Error($"创建块参照失败: {ex.Message}");
                 return ObjectId.Null;
             }
         }
@@ -543,7 +620,7 @@ namespace ServiceACAD
 
                 // 将新线型添加到线型表
                 var lineTypeId = lineTypeTable.Add(lineType);
-                CadTrans.AddNewlyCreatedDBObject(lineType, true);
+                AddNewlyCreatedDBObject(lineType, true);
 
                 Logger._.Info($"成功创建线型: {lineTypeName}");
                 return lineType;
@@ -636,6 +713,8 @@ namespace ServiceACAD
                     : null;
             }
         }
+
+        public void AddNewlyCreatedDBObject(DBObject obj, bool add) => CadTrans.AddNewlyCreatedDBObject(obj, add);
 
         public LinetypeTable GetLineTypeTable(OpenMode openMode = OpenMode.ForRead) =>
             GetObject<LinetypeTable>(CadServiceManager._.CadDb.LinetypeTableId, openMode);
@@ -758,7 +837,7 @@ namespace ServiceACAD
                     LineWeight = LineWeight.LineWeight000
                 };
                 var layerId = layerTable.Add(layer);
-                CadTrans.AddNewlyCreatedDBObject(layer, true);
+                AddNewlyCreatedDBObject(layer, true);
 
                 Logger._.Info($"成功创建图层: {layerName}");
                 return layer;
