@@ -12,6 +12,126 @@ namespace AddinsAcad.ServiceTests
     {
         private const string NameTestLayer = "TestLayer";
         private const string NameTestLinetype = "TestLinetype";
+        private const string EntityIdKey = "TestEntityId";
+
+        /// <summary>
+        /// 测试实体信息字典，键为实体标识符，值为实体属性信息
+        /// </summary>
+        public static readonly Dictionary<string, Dictionary<string, object>> TestEntityInfoDict = new Dictionary<string, Dictionary<string, object>>
+        {
+            {
+                "LINE_1_BYBLOCK", new Dictionary<string, object>
+                {
+                    {"Type", "Line"},
+                    {"StartPoint", new Point3d(0, 0, 0)},
+                    {"EndPoint", new Point3d(10, 0, 0)},
+                    {"Layer", CadServiceManager.Layer0},
+                    {"ColorIndex", CadServiceManager.ColorIndexByBlock},
+                    {"Linetype", CadServiceManager.StrByBlock},
+                    {"LinetypeScale", 1.0},
+                    {"LineWeight", LineWeight.ByBlock}
+                }
+            },
+            {
+                "LINE_2_RED", new Dictionary<string, object>
+                {
+                    {"Type", "Line"},
+                    {"StartPoint", new Point3d(0, 10, 0)},
+                    {"EndPoint", new Point3d(10, 10, 0)},
+                    {"Layer", NameTestLayer},
+                    {"ColorIndex", CadServiceManager.ColorIndexRed},
+                    {"Linetype", NameTestLinetype},
+                    {"LinetypeScale", 2.0},
+                    {"LineWeight", LineWeight.LineWeight050}
+                }
+            },
+            {
+                "CIRCLE_1_BYLAYER", new Dictionary<string, object>
+                {
+                    {"Type", "Circle"},
+                    {"Center", new Point3d(20, 0, 0)},
+                    {"Radius", 5.0},
+                    {"Layer", CadServiceManager.Layer0},
+                    {"ColorIndex", CadServiceManager.ColorIndexByLayer},
+                    {"Linetype", CadServiceManager.StrByBlock},
+                    {"LinetypeScale", 1.0},
+                    {"LineWeight", LineWeight.ByBlock}
+                }
+            },
+            {
+                "CIRCLE_2_BYBLOCK", new Dictionary<string, object>
+                {
+                    {"Type", "Circle"},
+                    {"Center", new Point3d(20, 10, 0)},
+                    {"Radius", 5.0},
+                    {"Layer", NameTestLayer},
+                    {"ColorIndex", CadServiceManager.ColorIndexByBlock},
+                    {"Linetype", NameTestLinetype},
+                    {"LinetypeScale", 0.5},
+                    {"LineWeight", LineWeight.LineWeight030}
+                }
+            },
+            {
+                "TEXT_1_GREEN", new Dictionary<string, object>
+                {
+                    {"Type", "DBText"},
+                    {"Position", new Point3d(30, 0, 0)},
+                    {"TextString", "Text1"},
+                    {"Height", 2.5},
+                    {"Layer", CadServiceManager.Layer0},
+                    {"ColorIndex", CadServiceManager.ColorIndexGreen},
+                    {"Linetype", CadServiceManager.StrByBlock},
+                    {"LinetypeScale", 1.0},
+                    {"LineWeight", LineWeight.ByBlock}
+                }
+            },
+            {
+                "TEXT_2_BYBLOCK", new Dictionary<string, object>
+                {
+                    {"Type", "DBText"},
+                    {"Position", new Point3d(30, 10, 0)},
+                    {"TextString", "Text2"},
+                    {"Height", 2.5},
+                    {"Layer", NameTestLayer},
+                    {"ColorIndex", CadServiceManager.ColorIndexByBlock},
+                    {"Linetype", NameTestLinetype},
+                    {"LinetypeScale", 1.5},
+                    {"LineWeight", LineWeight.LineWeight070}
+                }
+            },
+            {
+                "ATTRIBUTE_1_GREEN", new Dictionary<string, object>
+                {
+                    {"Type", "AttributeDefinition"},
+                    {"Position", new Point3d(40, 0, 0)},
+                    {"TextString", "属性值1"},
+                    {"Tag", "ATTR1"},
+                    {"Prompt", "默认值1"},
+                    {"Height", 2.5},
+                    {"Layer", CadServiceManager.Layer0},
+                    {"ColorIndex", CadServiceManager.ColorIndexGreen},
+                    {"Linetype", CadServiceManager.StrByBlock},
+                    {"LinetypeScale", 1.0},
+                    {"LineWeight", LineWeight.ByBlock}
+                }
+            },
+            {
+                "ATTRIBUTE_2_BYBLOCK", new Dictionary<string, object>
+                {
+                    {"Type", "AttributeDefinition"},
+                    {"Position", new Point3d(40, 10, 0)},
+                    {"TextString", "属性值2"},
+                    {"Tag", "ATTR2"},
+                    {"Prompt", "默认值2"},
+                    {"Height", 5.0},
+                    {"Layer", NameTestLayer},
+                    {"ColorIndex", CadServiceManager.ColorIndexByBlock},
+                    {"Linetype", NameTestLinetype},
+                    {"LinetypeScale", 1.0},
+                    {"LineWeight", LineWeight.ByBlock}
+                }
+            }
+        };
 
         /// <summary>
         /// 创建用于测试爆炸命令的测试块
@@ -48,85 +168,29 @@ namespace AddinsAcad.ServiceTests
         private static List<Entity> CreateTestEntities(ITransactionService transactionService)
         {
             var entities = new List<Entity>();
-            // 1. 直线1：0图层，BYBLOCK颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
-            var line1 = new Line(new Point3d(0, 0, 0), new Point3d(10, 0, 0));
-            line1.Layer = CadServiceManager.Layer0;
-            line1.ColorIndex = CadServiceManager.ColorIndexByBlock; // BYBLOCK
-            line1.Linetype = CadServiceManager.StrByBlock;
-            line1.LinetypeScale = 1.0;
-            line1.LineWeight = LineWeight.ByBlock;
-            entities.Add(line1);
-
-            // 2. 直线2：非0图层，特定颜色，特定线型，自定义线型比例，特定线宽
-            var line2 = new Line(new Point3d(0, 10, 0), new Point3d(10, 10, 0));
-
-            line2.Layer = transactionService.GetValidLayerName(NameTestLayer);
-            line2.ColorIndex = CadServiceManager.ColorIndexRed; // 红色
-            line2.Linetype = transactionService.GetValidLineTypeName(NameTestLinetype);
-            line2.LinetypeScale = 2.0;
-            line2.LineWeight = LineWeight.LineWeight050;
-            entities.Add(line2);
-
-            // 3. 圆1：0图层，BYLAYER颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
-            var circle1 = new Circle(new Point3d(20, 0, 0), Vector3d.ZAxis, 5);
-            circle1.Layer = CadServiceManager.Layer0;
-            circle1.ColorIndex = CadServiceManager.ColorIndexByLayer; // BYLAYER
-            circle1.Linetype = CadServiceManager.StrByBlock;
-            circle1.LinetypeScale = 1.0;
-            circle1.LineWeight = LineWeight.ByBlock;
-            entities.Add(circle1);
-
-            // 4. 圆2：非0图层，BYBLOCK颜色，特定线型，自定义线型比例，特定线宽
-            var circle2 = new Circle(new Point3d(20, 10, 0), Vector3d.ZAxis, 5);
-            circle2.Layer = transactionService.GetValidLayerName(NameTestLayer);
-            circle2.ColorIndex = CadServiceManager.ColorIndexByBlock; // BYBLOCK
-            circle2.Linetype = transactionService.GetValidLineTypeName(NameTestLinetype);
-            circle2.LinetypeScale = 0.5;
-            circle2.LineWeight = LineWeight.LineWeight030;
-            entities.Add(circle2);
-
-            // 5. 文本1：0图层，特定颜色，BYBLOCK线型，默认线型比例，BYBLOCK线宽
-            var text1 = new DBText();
-            text1.Position = new Point3d(30, 0, 0);
-            text1.TextString = "Text1";
-            text1.Height = 2.5;
-            text1.Layer = CadServiceManager.Layer0;
-            text1.ColorIndex = CadServiceManager.ColorIndexGreen; // 绿色
-            text1.Linetype = CadServiceManager.StrByBlock;
-            text1.LinetypeScale = 1.0;
-            text1.LineWeight = LineWeight.ByBlock;
-            entities.Add(text1);
-
-            // 6. 文本2：非0图层，BYBLOCK颜色，特定线型，自定义线型比例，特定线宽
-            var text2 = new DBText();
-            text2.Position = new Point3d(30, 10, 0);
-            text2.TextString = "Text2";
-            text2.Height = 2.5;
-            text2.Layer = transactionService.GetValidLayerName(NameTestLayer);
-            text2.ColorIndex = CadServiceManager.ColorIndexByBlock; // BYBLOCK
-            text2.Linetype = transactionService.GetValidLineTypeName(NameTestLinetype);
-            text2.LinetypeScale = 1.5;
-            text2.LineWeight = LineWeight.LineWeight070;
-            entities.Add(text2);
-
-            var tag1 = "ATTR1";
-            var attr1 = new AttributeDefinition(new Point3d(40, 0, 0), "属性值1", tag1, "默认值1", ObjectId.Null)
+            
+            // 使用信息字典创建所有测试实体
+            foreach (var entityEntry in TestEntityInfoDict)
             {
-                Height=2.5,
-                Layer=CadServiceManager.Layer0,
-                ColorIndex=CadServiceManager.ColorIndexGreen,
-                Linetype=CadServiceManager.StrByBlock
-            };
-            entities.Add(attr1);
-            var tag2 = "ATTR2";
-            var attr2 = new AttributeDefinition(new Point3d(40, 10, 0), "属性值2", tag2, "默认值2", ObjectId.Null)
-            {
-                Height=5,
-                Layer=transactionService.GetValidLayerName(NameTestLayer),
-                ColorIndex=CadServiceManager.ColorIndexByBlock,
-                Linetype=transactionService.GetValidLineTypeName(NameTestLinetype)
-            };
-            entities.Add(attr2);
+                string entityId = entityEntry.Key;
+                var properties = entityEntry.Value;
+                
+                // 获取实体类型
+                if (!properties.TryGetValue("Type", out object typeObj))
+                    continue;
+                    
+                string typeName = typeObj.ToString();
+                
+                // 创建实体
+                var entity = transactionService.CreateEntityByTypeAndProperties(typeName, properties);
+                if (entity != null)
+                {
+                    entities.Add(entity);
+                    // 添加自定义标识
+                    transactionService.AddCustomIdentity(entity, EntityIdKey, entityId);
+                }
+            }
+            
             return entities;
         }
 

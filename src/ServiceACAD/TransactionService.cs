@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
@@ -32,6 +33,295 @@ namespace ServiceACAD
         ///     块服务缓存字典
         /// </summary>
         public IDictionary<ObjectId, IBlockService> BlockServiceDict { get; }
+
+        /// <summary>
+        ///     根据类型名称和属性字典创建实体
+        /// </summary>
+        /// <param name="typeName">实体类型名称</param>
+        /// <param name="properties">属性字典</param>
+        /// <returns>创建的实体对象，如果创建失败则返回null</returns>
+        public Entity CreateEntityByTypeAndProperties(string typeName, Dictionary<string, object> properties)
+        {
+            try
+            {
+                // 在AutoCAD数据库服务命名空间中查找类型
+                Type entityType = null;
+                
+                // 尝试在Autodesk.AutoCAD.DatabaseServices命名空间中查找
+                entityType = typeof(Autodesk.AutoCAD.DatabaseServices.Entity).Assembly.GetType($"Autodesk.AutoCAD.DatabaseServices.{typeName}");
+                
+                if (entityType == null)
+                {
+                    Logger._.Error($"找不到实体类型: {typeName}");
+                    return null;
+                }
+                
+                // 特殊处理几种需要特定构造参数的类型
+                Entity entity = null;
+                if (typeName == "Line" && properties.ContainsKey("StartPoint") && properties.ContainsKey("EndPoint"))
+                {
+                    var startPoint = (Point3d)properties["StartPoint"];
+                    var endPoint = (Point3d)properties["EndPoint"];
+                    entity = new Line(startPoint, endPoint);
+                }
+                else if (typeName == "Circle" && properties.ContainsKey("Center") && properties.ContainsKey("Radius"))
+                {
+                    var center = (Point3d)properties["Center"];
+                    var radius = Convert.ToDouble(properties["Radius"]);
+                    entity = new Circle(center, Vector3d.ZAxis, radius);
+                }
+                else if (typeName == "AttributeDefinition" && 
+                         properties.ContainsKey("Position") && 
+                         properties.ContainsKey("TextString") && 
+                         properties.ContainsKey("Tag") && 
+                         properties.ContainsKey("Prompt"))
+                {
+                    var position = (Point3d)properties["Position"];
+                    var textString = properties["TextString"].ToString();
+                    var tag = properties["Tag"].ToString();
+                    var prompt = properties["Prompt"].ToString();
+                    entity = new AttributeDefinition(position, textString, tag, prompt, ObjectId.Null);
+                }
+                else
+                {
+                    // 使用默认构造函数创建实例
+                    entity = (Entity)Activator.CreateInstance(entityType);
+                }
+                
+                if (entity == null)
+                {
+                    Logger._.Error($"无法创建实体类型: {typeName}");
+                    return null;
+                }
+                
+                // 使用反射设置属性
+                foreach (var prop in properties)
+                {
+                    string propertyName = prop.Key;
+                    object propertyValue = prop.Value;
+                    
+                    // 跳过用于创建对象的特殊属性
+                    if (propertyName == "Type" || 
+                        (typeName == "Line" && (propertyName == "StartPoint" || propertyName == "EndPoint")) ||
+                        (typeName == "Circle" && (propertyName == "Center" || propertyName == "Radius")) ||
+                        (typeName == "AttributeDefinition" && (propertyName == "Position" || propertyName == "TextString" || 
+                                                              propertyName == "Tag" || propertyName == "Prompt")))
+                    {
+                        continue;
+                    }
+                    
+                    try
+                    {
+                        // 获取属性信息
+                        PropertyInfo propInfo = entityType.GetProperty(propertyName);
+                        
+                        if (propInfo != null && propInfo.CanWrite)
+                        {
+                            // 转换属性值为正确的类型
+                            object convertedValue = ConvertPropertyValue(propertyValue, propInfo.PropertyType);
+                            
+                            // 设置属性值
+                            propInfo.SetValue(entity, convertedValue, null);
+                        }
+                        else
+                        {
+                            Logger._.Warn($"属性不存在或不可写: {propertyName}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger._.Warn($"设置属性 {propertyName} 失败: {ex.Message}");
+                    }
+                }
+                
+                return entity;
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"创建实体失败: {ex.Message}");
+                return null;
+            }
+        }
+        
+        /// <summary>
+        /// 转换属性值为目标类型
+        /// </summary>
+        /// <param name="value">原始值</param>
+        /// <param name="targetType">目标类型</param>
+        /// <returns>转换后的值</returns>
+        private object ConvertPropertyValue(object value, Type targetType)
+        {
+            if (value == null)
+                return null;
+                
+            if (targetType.IsAssignableFrom(value.GetType()))
+                return value;
+                
+            if (targetType == typeof(short) || targetType == typeof(Int16))
+                return Convert.ToInt16(value);
+                
+            if (targetType == typeof(int) || targetType == typeof(Int32))
+                return Convert.ToInt32(value);
+                
+            if (targetType == typeof(double))
+                return Convert.ToDouble(value);
+                
+            if (targetType == typeof(string))
+                return value.ToString();
+                
+            if (targetType == typeof(bool))
+                return Convert.ToBoolean(value);
+                
+            if (targetType.IsEnum && value is int)
+                return Enum.ToObject(targetType, value);
+                
+            if (targetType == typeof(LineWeight) && value is int)
+                return (LineWeight)(int)value;
+                
+            // 其他类型转换...
+            
+            Logger._.Warn($"无法将 {value.GetType().Name} 转换为 {targetType.Name}");
+            return null;
+        }
+        
+        /// <summary>
+        /// 设置实体的通用属性
+        /// </summary>
+        /// <param name="entity">要设置属性的实体</param>
+        /// <param name="properties">属性字典</param>
+        private void SetCommonProperties(Entity entity, Dictionary<string, object> properties)
+        {
+            if (entity == null || properties == null)
+                return;
+                
+            if (properties.TryGetValue("Layer", out object layerObj))
+            {
+                entity.Layer = layerObj.ToString();
+            }
+            
+            if (properties.TryGetValue("ColorIndex", out object colorObj))
+            {
+                if (colorObj is short shortColor)
+                {
+                    entity.ColorIndex = shortColor;
+                }
+                else
+                {
+                    entity.ColorIndex = Convert.ToInt16(colorObj);
+                }
+            }
+            
+            if (properties.TryGetValue("Linetype", out object linetypeObj))
+            {
+                entity.Linetype = linetypeObj.ToString();
+            }
+            
+            if (properties.TryGetValue("LinetypeScale", out object linetypeScaleObj))
+            {
+                entity.LinetypeScale = Convert.ToDouble(linetypeScaleObj);
+            }
+            
+            if (properties.TryGetValue("LineWeight", out object lineWeightObj))
+            {
+                if (lineWeightObj is LineWeight lineWeight)
+                {
+                    entity.LineWeight = lineWeight;
+                }
+                else if (lineWeightObj is int intWeight)
+                {
+                    entity.LineWeight = (LineWeight)intWeight;
+                }
+            }
+        }
+
+        /// <summary>
+        ///     为实体添加自定义标识
+        /// </summary>
+        /// <param name="entity">要添加标识的实体</param>
+        /// <param name="identityKey">标识键名</param>
+        /// <param name="identityValue">标识值</param>
+        /// <returns>是否添加成功</returns>
+        public bool AddCustomIdentity(Entity entity, string identityKey, string identityValue)
+        {
+            try
+            {
+                if (entity == null || string.IsNullOrEmpty(identityKey))
+                    return false;
+
+                // 如果实体没有扩展词典，则创建一个
+                if (entity.ExtensionDictionary == ObjectId.Null)
+                    entity.CreateExtensionDictionary();
+
+                // 获取扩展词典
+                using (var extDict = CadTrans.GetObject(entity.ExtensionDictionary, OpenMode.ForWrite) as DBDictionary)
+                {
+                    // 创建Xrecord来存储数据
+                    using (var xrec = new Xrecord())
+                    {
+                        // 设置Xrecord数据
+                        xrec.Data = new ResultBuffer(
+                            new TypedValue((int)DxfCode.Text, identityValue)
+                        );
+
+                        // 添加或更新词典中的键值对
+                        if (extDict.Contains(identityKey))
+                            extDict.Remove(identityKey);
+
+                        extDict.SetAt(identityKey, xrec);
+                        CadTrans.AddNewlyCreatedDBObject(xrec, true);
+                        return true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"为实体添加自定义标识时发生异常: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        ///     获取实体的自定义标识
+        /// </summary>
+        /// <param name="entity">要获取标识的实体</param>
+        /// <param name="identityKey">标识键名</param>
+        /// <returns>标识值，如不存在则返回null</returns>
+        public string GetCustomIdentity(Entity entity, string identityKey)
+        {
+            try
+            {
+                if (entity == null || string.IsNullOrEmpty(identityKey) || entity.ExtensionDictionary == ObjectId.Null)
+                    return null;
+
+                // 获取扩展词典
+                using (var extDict = CadTrans.GetObject(entity.ExtensionDictionary, OpenMode.ForRead) as DBDictionary)
+                {
+                    // 检查词典中是否存在该键
+                    if (!extDict.Contains(identityKey))
+                        return null;
+
+                    // 获取Xrecord
+                    using (var xrec = CadTrans.GetObject(extDict.GetAt(identityKey), OpenMode.ForRead) as Xrecord)
+                    {
+                        if (xrec == null || xrec.Data == null)
+                            return null;
+
+                        // 解析Xrecord数据
+                        foreach (TypedValue value in xrec.Data)
+                        {
+                            if (value.TypeCode == (int)DxfCode.Text)
+                                return value.Value as string;
+                        }
+                        return null;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"获取实体自定义标识时发生异常: {ex.Message}");
+                return null;
+            }
+        }
 
         /// <summary>
         /// 为块参照添加多个属性并赋值
@@ -429,6 +719,7 @@ namespace ServiceACAD
                 foreach (var entity in entities)
                 {
                     var objectId = AppendEntityToBlockTableRecord(blockTableRecord, entity);
+                    // AddNewlyCreatedDBObject(entity,true);
                     objectIds.Add(objectId);
                 }
 
