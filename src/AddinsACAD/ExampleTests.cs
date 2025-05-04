@@ -22,16 +22,16 @@ namespace AddinsACAD
         {
             //Use a new drawing
             long lineId = 0;
-        
+
             void Action1(ITransactionService tr)
             {
                 var line = new Line(new Point3d(0, 0, 0), new Point3d(100, 100, 100));
-        
+
                 var objectId = tr.AppendEntityToModelSpace(line);
-        
+
                 lineId = objectId.Handle.Value;
             }
-        
+
             void Action2(ITransactionService tr)
             {
                 //Check in another transaction if the line was created
@@ -42,12 +42,12 @@ namespace AddinsACAD
                     Assert.Fail("Line didn't created");
                     return;
                 }
+
                 var line = tr.GetObject<Line>(objId);
                 // line.Erase();
             }
-        
+
             CadServiceManager._.ExecuteInTransactions("", Action1, Action2);
         }
-        
     }
 }

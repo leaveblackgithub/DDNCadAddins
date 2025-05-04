@@ -1,10 +1,8 @@
+using System;
+using System.Collections.Generic;
+using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
-using System;
-using System.Diagnostics;
-using System.Collections.Generic;
-using System.Reflection;
-using Autodesk.AutoCAD.Colors;
 
 namespace ServiceACAD
 {
@@ -36,41 +34,34 @@ namespace ServiceACAD
                 return false;
             }
 
-            using (var tr = CadBlkRef.Database.TransactionManager.StartTransaction())
+            try
             {
-                try
-                {
-                    // 打开扩展字典
-                    var extDict = tr.GetObject(CadBlkRef.ExtensionDictionary, OpenMode.ForRead) as DBDictionary;
-                    if (extDict == null)
-                    {
-                        return false;
-                    }
-
-                    // 检查是否包含ACAD_FILTER字典
-                    if (!extDict.Contains("ACAD_FILTER"))
-                    {
-                        return false;
-                    }
-
-                    // 打开ACAD_FILTER字典
-                    var filterDict = tr.GetObject(extDict.GetAt("ACAD_FILTER"), OpenMode.ForRead) as DBDictionary;
-                    if (filterDict == null)
-                    {
-                        return false;
-                    }
-
-                    // 检查是否包含SPATIAL项，如果包含则表示有X裁剪
-                    return filterDict.Contains("SPATIAL");
-                }
-                catch
+                // 打开扩展字典
+                var extDict = ServiceTrans.GetObject<DBDictionary>(CadBlkRef.ExtensionDictionary);
+                if (extDict == null)
                 {
                     return false;
                 }
-                finally
+
+                // 检查是否包含ACAD_FILTER字典
+                if (!extDict.Contains("ACAD_FILTER"))
                 {
-                    tr.Commit();
+                    return false;
                 }
+
+                // 打开ACAD_FILTER字典
+                var filterDict = ServiceTrans.GetObject<DBDictionary>(extDict.GetAt("ACAD_FILTER"));
+                if (filterDict == null)
+                {
+                    return false;
+                }
+
+                // 检查是否包含SPATIAL项，如果包含则表示有X裁剪
+                return filterDict.Contains("SPATIAL");
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -100,10 +91,10 @@ namespace ServiceACAD
                 return OpResult<List<ObjectId>>.Fail("CadBlkRef is null");
             }
 
-            if (!HasAttributes())
-            {
-                return OpResult<List<ObjectId>>.Fail("块参照不包含属性");
-            }
+            // if (!HasAttributes())
+            // {
+            //     return OpResult<List<ObjectId>>.Fail("块参照不包含属性");
+            // }
 
             try
             {
@@ -118,19 +109,21 @@ namespace ServiceACAD
 
                 // 处理所有属性引用，转换为文本
                 var textList = ProcessAttributeReferences(CadBlkRef);
-                if (textList.Count == 0)
-                {
-                    return OpResult<List<ObjectId>>.Fail("未能从块参照中提取属性");
-                }
+                // if (textList.Count == 0)
+                // {
+                //     return OpResult<List<ObjectId>>.Fail("未能从块参照中提取属性");
+                // }
 
                 // 将文本添加到实体列表
                 entitiesToAdd.AddRange(textList);
 
-                // 执行爆炸操作（只处理非属性对象）
-                ProcessExplodedEntities(CadBlkRef, entitiesToAdd);
-
-                // 记录添加到当前空间前实体数量
-                var entitiesCount = entitiesToAdd.Count;
+                // 执行爆炸操作
+                var explodedResult=ProcessExplodedEntities(CadBlkRef);
+                if (!explodedResult.IsSuccess)
+                {
+                    return OpResult<List<ObjectId>>.Fail(explodedResult.Message);
+                }
+                entitiesToAdd.AddRange(explodedResult.Data);
 
                 // 将所有实体添加到当前空间
                 var addedEntities = ServiceTrans.AppendEntitiesToCurrentSpace(entitiesToAdd);
@@ -191,6 +184,7 @@ namespace ServiceACAD
 
                         // 创建DBText并添加到列表
                         var text = ConvertAttributeToText(attRef);
+                        SetChildPropsAsBlk(text,CadBlkRef);
                         textList.Add(text);
                     }
                     catch (Exception ex)
@@ -227,26 +221,27 @@ namespace ServiceACAD
             try
             {
                 // 复制基本属性
-                text.Position = attRef.Position;
-                text.TextString = attRef.TextString;
-                text.Height = attRef.Height;
-                text.WidthFactor = attRef.WidthFactor;
-                text.Rotation = attRef.Rotation;
-                text.TextStyleId = attRef.TextStyleId;
-                text.Visible = attRef.Visible;
-
-                // 处理对齐方式
-                text.HorizontalMode = attRef.HorizontalMode;
-                text.VerticalMode = attRef.VerticalMode;
-
-                if (attRef.Justify != AttachmentPoint.BaseLeft)
-                {
-                    text.Justify = attRef.Justify;
-                    text.AlignmentPoint = attRef.AlignmentPoint;
-                }
-
+                // text.Position = attRef.Position;
+                // text.TextString = attRef.TextString;
+                // text.Height = attRef.Height;
+                // text.WidthFactor = attRef.WidthFactor;
+                // text.Rotation = attRef.Rotation;
+                // text.TextStyleId = attRef.TextStyleId;
+                // text.Visible = attRef.Visible;
+                // // text.ColorIndex = attRef.ColorIndex;
+                //
+                // // 处理对齐方式
+                // text.HorizontalMode = attRef.HorizontalMode;
+                // text.VerticalMode = attRef.VerticalMode;
+                //
+                // if (attRef.Justify != AttachmentPoint.BaseLeft)
+                // {
+                //     text.Justify = attRef.Justify;
+                //     text.AlignmentPoint = attRef.AlignmentPoint;
+                // }
+                PropertyUtils.MatchPropValues(text, attRef);
                 // 使用ProcessEntityProperties方法处理图层和属性
-                SetChildPropsAsBlk(text, attRef);
+                // SetChildPropsAsBlk(text, attRef);
 
                 return text;
             }
@@ -261,11 +256,11 @@ namespace ServiceACAD
         /// <summary>
         ///     处理实体的图层和属性设置
         /// </summary>
-        /// <param name="entTo">要修改的实体</param>
-        /// <param name="entFr">参考实体</param>
-        private void SetChildPropsAsBlk(Entity entTo, Entity entFr)
+        /// <param name="entChild">要修改的实体</param>
+        /// <param name="entBlk">参考实体</param>
+        private void SetChildPropsAsBlk(Entity entChild, Entity entBlk)
         {
-            if (entTo == null || entFr == null)
+            if (entChild == null || entBlk == null)
             {
                 return;
             }
@@ -280,7 +275,7 @@ namespace ServiceACAD
                 //     entTo.Layer = entFr.Layer;
                 // }
 
-                MatchProp(entTo, entFr, CadServiceManager.StrLayer, CadServiceManager.Layer0);
+                MatchProp(entChild, entBlk, CadServiceManager.StrLayer, CadServiceManager.Layer0);
                 // 处理BYBLOCK颜色
                 // var nameColor = "ColorIndex";
                 // if (HasProperty(entFr, nameColor) && HasProperty(entTo, nameColor) &&
@@ -288,7 +283,7 @@ namespace ServiceACAD
                 // {
                 //     entTo.ColorIndex = entFr.ColorIndex;
                 // }
-                MatchProp(entTo, entFr, CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexByBlock);
+                MatchProp(entChild, entBlk, CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexByBlock);
                 // 处理BYBLOCK线型
                 // var nameLinetype = "Linetype";
                 // if (HasProperty(entFr, nameLinetype) && HasProperty(entTo, nameLinetype) &&
@@ -297,7 +292,7 @@ namespace ServiceACAD
                 // {
                 //     entTo.LinetypeId = entFr.LinetypeId;
                 // }
-                MatchProp(entTo, entFr, CadServiceManager.StrLinetype, CadServiceManager.StrByBlock);
+                MatchProp(entChild, entBlk, CadServiceManager.StrLinetype, CadServiceManager.StrByBlock);
 
                 // 处理BYBLOCK线宽
                 // if (HasProperty(entFr, "LineWeight") && HasProperty(entTo, "LineWeight") &&
@@ -306,7 +301,7 @@ namespace ServiceACAD
                 // {
                 //     entTo.LineWeight = entFr.LineWeight;
                 // }
-                MatchProp(entTo, entFr, CadServiceManager.StrLineWeight, LineWeight.ByBlock);
+                MatchProp(entChild, entBlk, CadServiceManager.StrLineWeight, LineWeight.ByBlock);
             }
             catch (Exception ex)
             {
@@ -314,12 +309,59 @@ namespace ServiceACAD
             }
         }
 
+        /// <summary>
+        ///     比较两个值是否相等，支持不同类型之间的比较
+        /// </summary>
+        /// <param name="value1">第一个值</param>
+        /// <param name="value2">第二个值</param>
+        /// <returns>如果两个值相等返回true，否则返回false</returns>
+        private static bool ValueEquals(object value1, object value2)
+        {
+            // 处理null值的情况
+            if (value1 == null && value2 == null)
+            {
+                return true;
+            }
+
+            if (value1 == null || value2 == null)
+            {
+                return false;
+            }
+
+            // 如果两个值类型相同，直接比较
+            if (value1.GetType() == value2.GetType())
+            {
+                return value1.Equals(value2);
+            }
+
+            // 处理字符串和数值类型的比较
+            if (value1 is string strValue1 && value2 is string strValue2)
+            {
+                return string.Equals(strValue1, strValue2, StringComparison.OrdinalIgnoreCase);
+            }
+
+            // 尝试将值转换为相同类型后比较
+            try
+            {
+                var convertedValue = Convert.ChangeType(value1, value2.GetType());
+                return convertedValue.Equals(value2);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public OpResult<object> MatchProp(Entity entTo, Entity entFr, string propName, object valueToFix) =>
-            ServiceACAD.PropertyUtils.MatchPropValues(entFr, entTo, propName, (entT, entF) =>
+            PropertyUtils.MatchPropValue(entTo, entFr, propName, (entT, entF) =>
             {
                 var getValueTo = PropertyUtils.GetPropertyValue(entT, propName);
-                return !(entF is AttributeReference) ||
-                       (getValueTo.IsSuccess & getValueTo.Data.Equals(valueToFix));
+                if (!getValueTo.IsSuccess)
+                {
+                    return false;
+                }
+
+                return ValueEquals(getValueTo.Data, valueToFix);
             });
 
         /// <summary>
@@ -327,10 +369,11 @@ namespace ServiceACAD
         /// </summary>
         /// <param name="blockRef">块参照</param>
         /// <param name="entitiesToAdd">实体收集列表</param>
-        private void ProcessExplodedEntities(BlockReference blockRef, List<Entity> entitiesToAdd)
+        private OpResult<List<Entity>> ProcessExplodedEntities(BlockReference blockRef)
         {
             try
             {
+                var entitiesToAdd = new List<Entity>();
                 var explodedEntities = new DBObjectCollection();
                 blockRef.Explode(explodedEntities);
 
@@ -339,51 +382,45 @@ namespace ServiceACAD
 
                 foreach (DBObject obj in explodedEntities)
                 {
-                    try
+                    if (obj == null)
                     {
-                        if (obj == null)
-                        {
-                            continue;
-                        }
-
-                        if (obj is AttributeDefinition)
-                        {
-                            // 丢弃属性定义
-                            obj.Dispose();
-                            attributeDefCount++;
-                        }
-                        else if (obj is Entity entity)
-                        {
-                            // 处理实体的图层和属性
-                            SetChildPropsAsBlk(entity, blockRef);
-                            entitiesToAdd.Add(entity);
-                            entityCount++;
-                        }
-                        else
-                        {
-                            Logger._.Warn($"\n警告: 遇到未处理的对象类型 {obj.GetType().Name}");
-
-                            if (obj is DBObject dbObj && !dbObj.IsDisposed)
-                            {
-                                dbObj.Dispose();
-                            }
-                        }
+                        continue;
                     }
-                    catch (Exception ex)
+
+                    if (obj is AttributeDefinition)
                     {
-                        Logger._.Warn($"\n警告: 处理爆炸实体时发生异常: {ex.Message}");
+                        // 丢弃属性定义
+                        obj.Dispose();
+                        attributeDefCount++;
+                    }
+                    else if (obj is Entity entity)
+                    {
+                        // 处理实体的图层和属性
+                        SetChildPropsAsBlk(entity, blockRef);
+                        entitiesToAdd.Add(entity);
+                        entityCount++;
+                    }
+                    else
+                    {
+                        Logger._.Warn($"\n警告: 遇到未处理的对象类型 {obj.GetType().Name}");
+
+                        if (obj is DBObject dbObj && !dbObj.IsDisposed)
+                        {
+                            dbObj.Dispose();
+                        }
                     }
                 }
+
+                return OpResult<List<Entity>>.Success(entitiesToAdd);
             }
             catch (Exception ex)
             {
-                Logger._.Warn($"\n警告: 执行块参照爆炸时发生异常: {ex.Message}");
-                Logger._.Error($"\n{ex.StackTrace}");
+                return OpResult<List<Entity>>.Fail(ex.Message);
             }
         }
 
         /// <summary>
-        /// 在当前空间创建块参照
+        ///     在当前空间创建块参照
         /// </summary>
         /// <param name="name">块名称</param>
         /// <param name="insertPt">插入点</param>
@@ -391,7 +428,8 @@ namespace ServiceACAD
         /// <param name="color">颜色</param>
         /// <param name="linetype">线型</param>
         /// <returns>创建成功的块参照ObjectId，失败返回ObjectId.Null</returns>
-        public ObjectId CreateBlockRefInCurrentSpace(string name, Point3d insertPt, string layerName, Color color, string linetype)
+        public ObjectId CreateBlockRefInCurrentSpace(string name, Point3d insertPt, string layerName, Color color,
+            string linetype)
         {
             if (string.IsNullOrEmpty(name))
             {

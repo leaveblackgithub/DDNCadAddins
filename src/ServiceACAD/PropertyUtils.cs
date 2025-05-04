@@ -1,5 +1,6 @@
 using System;
-using Autodesk.AutoCAD.DatabaseServices;
+using System.ComponentModel;
+using System.Linq;
 
 namespace ServiceACAD
 {
@@ -115,18 +116,10 @@ namespace ServiceACAD
                 }
 
                 // 检查值类型是否兼容
-                if (value != null && !property.PropertyType.IsAssignableFrom(value.GetType()))
+                if (!CanBeConvertedFrom(property.PropertyType, value.GetType()))
                 {
-                    try
-                    {
-                        // 尝试进行类型转换
-                        value = Convert.ChangeType(value, property.PropertyType);
-                    }
-                    catch
-                    {
-                        return OpResult<object>.Fail(
-                            $"值类型 {value.GetType().Name} 不能转换为属性类型 {property.PropertyType.Name}");
-                    }
+                    return OpResult<object>.Fail(
+                        $"值类型 {value.GetType().Name} 不能转换为属性类型 {property.PropertyType.Name}");
                 }
 
                 // 设置属性值
@@ -140,16 +133,211 @@ namespace ServiceACAD
         }
 
         /// <summary>
+        ///     检查前者类型的属性是否能接受后者类型的赋值
+        /// </summary>
+        /// <param name="propertyType">目标属性的类型</param>
+        /// <param name="valueType">源数据的类型</param>
+        /// <returns>如果可以转换/赋值返回true，否则返回false</returns>
+        /// <remarks>
+        ///     此方法综合检查以下情况：
+        ///     1. 类型相同或直接兼容的情况
+        ///     2. 数值类型的隐式转换（小范围到大范围）
+        ///     3. 可空类型的赋值规则
+        ///     4. 继承关系和接口实现
+        ///     5. 类型转换器支持的转换
+        ///     6. 特殊类型转换（如字符串到枚举、Guid等）
+        /// </remarks>
+        public static bool CanBeConvertedFrom(Type propertyType, Type valueType)
+        {
+            if (propertyType == null || valueType == null)
+            {
+                return false;
+            }
+
+            // 相同类型可直接赋值
+            if (propertyType == valueType)
+            {
+                return true;
+            }
+
+            // 检查null值 - 引用类型属性可以接受null
+            if (valueType == typeof(DBNull) ||
+                (valueType.IsValueType == false && propertyType.IsValueType == false))
+            {
+                return true;
+            }
+
+            // 检查数值类型的隐式转换
+            if (IsNumericType(propertyType) && IsNumericType(valueType))
+            {
+                // 数值类型的扩展转换规则
+                // 小范围类型可以隐式转换为大范围类型
+                if (GetNumericTypeRank(propertyType) >= GetNumericTypeRank(valueType))
+                {
+                    return true;
+                }
+            }
+
+            // 检查可空类型
+            if (propertyType.IsGenericType &&
+                propertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
+            {
+                // 可空类型的底层类型
+                var underlyingType = Nullable.GetUnderlyingType(propertyType);
+                // 如果值类型与可空类型的底层类型匹配，可以赋值
+                if (underlyingType == valueType)
+                {
+                    return true;
+                }
+
+                // 检查可空数值类型的隐式转换
+                if (IsNumericType(underlyingType) && IsNumericType(valueType))
+                {
+                    if (GetNumericTypeRank(underlyingType) >= GetNumericTypeRank(valueType))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            // 检查继承关系（子类可以赋值给父类）
+            if (propertyType.IsAssignableFrom(valueType))
+            {
+                return true;
+            }
+
+            // 检查接口实现
+            if (propertyType.IsInterface && valueType.GetInterfaces().Contains(propertyType))
+            {
+                return true;
+            }
+
+            // 检查是否存在类型转换器或隐式转换操作符
+            try
+            {
+                var converter = TypeDescriptor.GetConverter(valueType);
+                if (converter.CanConvertTo(propertyType))
+                {
+                    return true;
+                }
+
+                converter = TypeDescriptor.GetConverter(propertyType);
+                if (converter.CanConvertFrom(valueType))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // 转换器检查失败，忽略异常
+            }
+
+            // 检查常见的特殊转换情况
+            // string -> Guid
+            if (propertyType == typeof(Guid) && valueType == typeof(string))
+            {
+                return true;
+            }
+
+            // string -> enum
+            if (propertyType.IsEnum && valueType == typeof(string))
+            {
+                return true;
+            }
+
+            // int -> enum
+            if (propertyType.IsEnum && valueType == typeof(int))
+            {
+                return true;
+            }
+
+            // string -> 数值类型
+            if (IsNumericType(propertyType) && valueType == typeof(string))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        ///     检查类型是否为数值类型
+        /// </summary>
+        /// <param name="type">要检查的类型</param>
+        /// <returns>如果是数值类型返回true，否则返回false</returns>
+        private static bool IsNumericType(Type type)
+        {
+            if (type == null)
+            {
+                return false;
+            }
+
+            // 处理可空类型
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+            {
+                return IsNumericType(Nullable.GetUnderlyingType(type));
+            }
+
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Byte:
+                case TypeCode.SByte:
+                case TypeCode.UInt16:
+                case TypeCode.UInt32:
+                case TypeCode.UInt64:
+                case TypeCode.Int16:
+                case TypeCode.Int32:
+                case TypeCode.Int64:
+                case TypeCode.Decimal:
+                case TypeCode.Double:
+                case TypeCode.Single:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        ///     获取数值类型的排序级别，用于判断隐式转换的可行性
+        /// </summary>
+        /// <param name="type">数值类型</param>
+        /// <returns>排序级别，数值越大表示范围越大</returns>
+        private static int GetNumericTypeRank(Type type)
+        {
+            // 处理可空类型
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+            {
+                return GetNumericTypeRank(Nullable.GetUnderlyingType(type));
+            }
+
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Byte: return 1;
+                case TypeCode.SByte: return 2;
+                case TypeCode.Int16: return 3;
+                case TypeCode.UInt16: return 4;
+                case TypeCode.Int32: return 5;
+                case TypeCode.UInt32: return 6;
+                case TypeCode.Int64: return 7;
+                case TypeCode.UInt64: return 8;
+                case TypeCode.Single: return 9;
+                case TypeCode.Double: return 10;
+                case TypeCode.Decimal: return 11;
+                default: return 0;
+            }
+        }
+
+        /// <summary>
         ///     匹配两个实体的属性值
         /// </summary>
         /// <param name="objTo"></param>
         /// <param name="objFr"></param>
         /// <param name="propertyName">属性名称</param>
-        /// <param name="entToFilter"></param>
+        /// <param name="filter"></param>
         /// <param name="valueToFix">需要匹配的默认值</param>
         /// <returns>匹配结果</returns>
-        public static OpResult<object> MatchPropValues(object objTo, object objFr, string propertyName,
-            Func<object, object, bool> entToFilter = null)
+        public static OpResult<object> MatchPropValue(object objTo, object objFr, string propertyName,
+            Func<object, object, bool> filter = null)
         {
             // 参数有效性检查
             if (objFr == null)
@@ -169,7 +357,7 @@ namespace ServiceACAD
 
             try
             {
-                if (entToFilter != null || entToFilter(objTo,objFr))
+                if (filter != null && !filter(objTo, objFr))
                 {
                     return OpResult<object>.Fail("不需要修改属性值");
                 }
@@ -186,17 +374,38 @@ namespace ServiceACAD
                     return valueToResult;
                 }
 
-                if (valueFrResult.Data.GetType() != valueToResult.Data.GetType())
-                {
-                    return OpResult<object>.Fail("属性值类型不一致");
-                }
-
-                return SetPropertyValue(objTo, propertyName, valueToResult.Data);
+                return SetPropertyValue(objTo, propertyName, valueFrResult.Data);
             }
 
             catch (Exception ex)
             {
                 return OpResult<object>.Fail($"匹配属性 {propertyName} 失败: {ex.Message}");
+            }
+        }
+
+        public static OpResult MatchPropValues(object objTo, object objFr,
+            params string[] propertyNamesToIgnore)
+
+        {
+            try
+            {
+                var objToType = objTo.GetType();
+                foreach (var propertyInfo in objToType.GetProperties())
+                {
+                    var propertyName = propertyInfo.Name;
+                    if (propertyNamesToIgnore.Contains(propertyName) || !HasProperty(objFr, propertyName))
+                    {
+                        continue;
+                    }
+
+                    MatchPropValue(objTo, objFr, propertyName);
+                }
+
+                return OpResult.Success();
+            }
+            catch (Exception e)
+            {
+                return OpResult.Fail(e.Message);
             }
         }
     }

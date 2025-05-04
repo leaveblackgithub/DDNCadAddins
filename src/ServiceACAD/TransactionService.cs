@@ -1,11 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Reflection;
-using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
-using Autodesk.AutoCAD.Geometry;
 
 namespace ServiceACAD
 {
@@ -22,12 +17,17 @@ namespace ServiceACAD
         {
             CadTrans = transaction;
             BlockServiceDict = new Dictionary<ObjectId, IBlockService>();
+
+            // 初始化服务组件
+            Entity = new TransactionServiceForEntity(this);
+            Block = new TransactionServiceForBlock(this);
+            Style = new TransactionServiceForStyle(this);
         }
 
         /// <summary>
         ///     事务对象
         /// </summary>
-        public Transaction CadTrans { get; }
+        private Transaction CadTrans { get; }
 
         /// <summary>
         ///     块服务缓存字典
@@ -35,353 +35,20 @@ namespace ServiceACAD
         public IDictionary<ObjectId, IBlockService> BlockServiceDict { get; }
 
         /// <summary>
-        ///     根据类型名称和属性字典创建实体
+        ///     实体服务组件
         /// </summary>
-        /// <param name="typeName">实体类型名称</param>
-        /// <param name="properties">属性字典</param>
-        /// <returns>创建的实体对象，如果创建失败则返回null</returns>
-        public Entity CreateEntityByTypeAndProperties(string typeName, Dictionary<string, object> properties)
-        {
-            try
-            {
-                // 在AutoCAD数据库服务命名空间中查找类型
-                Type entityType = null;
-                
-                // 尝试在Autodesk.AutoCAD.DatabaseServices命名空间中查找
-                entityType = typeof(Autodesk.AutoCAD.DatabaseServices.Entity).Assembly.GetType($"Autodesk.AutoCAD.DatabaseServices.{typeName}");
-                
-                if (entityType == null)
-                {
-                    Logger._.Error($"找不到实体类型: {typeName}");
-                    return null;
-                }
-                
-                // 特殊处理几种需要特定构造参数的类型
-                Entity entity = null;
-                if (typeName == "Line" && properties.ContainsKey("StartPoint") && properties.ContainsKey("EndPoint"))
-                {
-                    var startPoint = (Point3d)properties["StartPoint"];
-                    var endPoint = (Point3d)properties["EndPoint"];
-                    entity = new Line(startPoint, endPoint);
-                }
-                else if (typeName == "Circle" && properties.ContainsKey("Center") && properties.ContainsKey("Radius"))
-                {
-                    var center = (Point3d)properties["Center"];
-                    var radius = Convert.ToDouble(properties["Radius"]);
-                    entity = new Circle(center, Vector3d.ZAxis, radius);
-                }
-                else if (typeName == "AttributeDefinition" && 
-                         properties.ContainsKey("Position") && 
-                         properties.ContainsKey("TextString") && 
-                         properties.ContainsKey("Tag") && 
-                         properties.ContainsKey("Prompt"))
-                {
-                    var position = (Point3d)properties["Position"];
-                    var textString = properties["TextString"].ToString();
-                    var tag = properties["Tag"].ToString();
-                    var prompt = properties["Prompt"].ToString();
-                    entity = new AttributeDefinition(position, textString, tag, prompt, ObjectId.Null);
-                }
-                else
-                {
-                    // 使用默认构造函数创建实例
-                    entity = (Entity)Activator.CreateInstance(entityType);
-                }
-                
-                if (entity == null)
-                {
-                    Logger._.Error($"无法创建实体类型: {typeName}");
-                    return null;
-                }
-                
-                // 使用反射设置属性
-                foreach (var prop in properties)
-                {
-                    string propertyName = prop.Key;
-                    object propertyValue = prop.Value;
-                    
-                    // 跳过用于创建对象的特殊属性
-                    if (propertyName == "Type" || 
-                        (typeName == "Line" && (propertyName == "StartPoint" || propertyName == "EndPoint")) ||
-                        (typeName == "Circle" && (propertyName == "Center" || propertyName == "Radius")) ||
-                        (typeName == "AttributeDefinition" && (propertyName == "Position" || propertyName == "TextString" || 
-                                                              propertyName == "Tag" || propertyName == "Prompt")))
-                    {
-                        continue;
-                    }
-                    
-                    try
-                    {
-                        // 获取属性信息
-                        PropertyInfo propInfo = entityType.GetProperty(propertyName);
-                        
-                        if (propInfo != null && propInfo.CanWrite)
-                        {
-                            // 转换属性值为正确的类型
-                            object convertedValue = ConvertPropertyValue(propertyValue, propInfo.PropertyType);
-                            
-                            // 设置属性值
-                            propInfo.SetValue(entity, convertedValue, null);
-                        }
-                        else
-                        {
-                            Logger._.Warn($"属性不存在或不可写: {propertyName}");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger._.Warn($"设置属性 {propertyName} 失败: {ex.Message}");
-                    }
-                }
-                
-                return entity;
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"创建实体失败: {ex.Message}");
-                return null;
-            }
-        }
-        
-        /// <summary>
-        /// 转换属性值为目标类型
-        /// </summary>
-        /// <param name="value">原始值</param>
-        /// <param name="targetType">目标类型</param>
-        /// <returns>转换后的值</returns>
-        private object ConvertPropertyValue(object value, Type targetType)
-        {
-            if (value == null)
-                return null;
-                
-            if (targetType.IsAssignableFrom(value.GetType()))
-                return value;
-                
-            if (targetType == typeof(short) || targetType == typeof(Int16))
-                return Convert.ToInt16(value);
-                
-            if (targetType == typeof(int) || targetType == typeof(Int32))
-                return Convert.ToInt32(value);
-                
-            if (targetType == typeof(double))
-                return Convert.ToDouble(value);
-                
-            if (targetType == typeof(string))
-                return value.ToString();
-                
-            if (targetType == typeof(bool))
-                return Convert.ToBoolean(value);
-                
-            if (targetType.IsEnum && value is int)
-                return Enum.ToObject(targetType, value);
-                
-            if (targetType == typeof(LineWeight) && value is int)
-                return (LineWeight)(int)value;
-                
-            // 其他类型转换...
-            
-            Logger._.Warn($"无法将 {value.GetType().Name} 转换为 {targetType.Name}");
-            return null;
-        }
-        
-        /// <summary>
-        /// 设置实体的通用属性
-        /// </summary>
-        /// <param name="entity">要设置属性的实体</param>
-        /// <param name="properties">属性字典</param>
-        private void SetCommonProperties(Entity entity, Dictionary<string, object> properties)
-        {
-            if (entity == null || properties == null)
-                return;
-                
-            if (properties.TryGetValue("Layer", out object layerObj))
-            {
-                entity.Layer = layerObj.ToString();
-            }
-            
-            if (properties.TryGetValue("ColorIndex", out object colorObj))
-            {
-                if (colorObj is short shortColor)
-                {
-                    entity.ColorIndex = shortColor;
-                }
-                else
-                {
-                    entity.ColorIndex = Convert.ToInt16(colorObj);
-                }
-            }
-            
-            if (properties.TryGetValue("Linetype", out object linetypeObj))
-            {
-                entity.Linetype = linetypeObj.ToString();
-            }
-            
-            if (properties.TryGetValue("LinetypeScale", out object linetypeScaleObj))
-            {
-                entity.LinetypeScale = Convert.ToDouble(linetypeScaleObj);
-            }
-            
-            if (properties.TryGetValue("LineWeight", out object lineWeightObj))
-            {
-                if (lineWeightObj is LineWeight lineWeight)
-                {
-                    entity.LineWeight = lineWeight;
-                }
-                else if (lineWeightObj is int intWeight)
-                {
-                    entity.LineWeight = (LineWeight)intWeight;
-                }
-            }
-        }
+        public ITransactionServiceForEntity Entity { get; }
 
         /// <summary>
-        ///     为实体添加自定义标识
+        ///     块服务组件
         /// </summary>
-        /// <param name="entity">要添加标识的实体</param>
-        /// <param name="identityKey">标识键名</param>
-        /// <param name="identityValue">标识值</param>
-        /// <returns>是否添加成功</returns>
-        public bool AddCustomIdentity(Entity entity, string identityKey, string identityValue)
-        {
-            try
-            {
-                if (entity == null || string.IsNullOrEmpty(identityKey))
-                    return false;
-
-                // 如果实体没有扩展词典，则创建一个
-                if (entity.ExtensionDictionary == ObjectId.Null)
-                    entity.CreateExtensionDictionary();
-
-                // 获取扩展词典
-                using (var extDict = CadTrans.GetObject(entity.ExtensionDictionary, OpenMode.ForWrite) as DBDictionary)
-                {
-                    // 创建Xrecord来存储数据
-                    using (var xrec = new Xrecord())
-                    {
-                        // 设置Xrecord数据
-                        xrec.Data = new ResultBuffer(
-                            new TypedValue((int)DxfCode.Text, identityValue)
-                        );
-
-                        // 添加或更新词典中的键值对
-                        if (extDict.Contains(identityKey))
-                            extDict.Remove(identityKey);
-
-                        extDict.SetAt(identityKey, xrec);
-                        CadTrans.AddNewlyCreatedDBObject(xrec, true);
-                        return true;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"为实体添加自定义标识时发生异常: {ex.Message}");
-                return false;
-            }
-        }
+        public ITransactionServiceForBlock Block { get; }
 
         /// <summary>
-        ///     获取实体的自定义标识
+        ///     样式服务组件
         /// </summary>
-        /// <param name="entity">要获取标识的实体</param>
-        /// <param name="identityKey">标识键名</param>
-        /// <returns>标识值，如不存在则返回null</returns>
-        public string GetCustomIdentity(Entity entity, string identityKey)
-        {
-            try
-            {
-                if (entity == null || string.IsNullOrEmpty(identityKey) || entity.ExtensionDictionary == ObjectId.Null)
-                    return null;
+        public ITransactionServiceForStyle Style { get; }
 
-                // 获取扩展词典
-                using (var extDict = CadTrans.GetObject(entity.ExtensionDictionary, OpenMode.ForRead) as DBDictionary)
-                {
-                    // 检查词典中是否存在该键
-                    if (!extDict.Contains(identityKey))
-                        return null;
-
-                    // 获取Xrecord
-                    using (var xrec = CadTrans.GetObject(extDict.GetAt(identityKey), OpenMode.ForRead) as Xrecord)
-                    {
-                        if (xrec == null || xrec.Data == null)
-                            return null;
-
-                        // 解析Xrecord数据
-                        foreach (TypedValue value in xrec.Data)
-                        {
-                            if (value.TypeCode == (int)DxfCode.Text)
-                                return value.Value as string;
-                        }
-                        return null;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"获取实体自定义标识时发生异常: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// 为块参照添加多个属性并赋值
-        /// </summary>
-        /// <param name="transactionService">事务服务</param>
-        /// <param name="blockReference">块参照对象</param>
-        /// <param name="attributeValues">属性Tag和对应的值字典</param>
-        /// <returns>是否成功添加属性</returns>
-        public bool AddAttributesToBlockReference(ObjectId blkDefId,
-            ObjectId blkRefId,
-            Dictionary<string, Dictionary<string, object>> attributeValues)
-        {
-            try
-            {
-                var blockReference = GetObject<BlockReference>(blkRefId, OpenMode.ForWrite);
-                var blockDef = GetObject<BlockTableRecord>(blkDefId);
-                if (blockDef == null)
-                {
-                    Logger._.Error("块定义对象无效");
-                    return false;
-                }
-                if (blockReference == null )
-                {
-                    Logger._.Error("块参照对象无效");
-                    return false;
-                }
-
-                foreach (var attValue in attributeValues)
-                {
-                    string tag = attValue.Key;
-                    Dictionary<string, object> props = attValue.Value;
-                    // 获取属性定义
-                    var attDefs = GetChildObjects<AttributeDefinition>(blockDef, (att => att.Tag == tag));
-                    if (attDefs.Count != 1)
-                    {
-                        Logger._.Error($"获取属性{tag}定义失败");
-                        continue;
-
-                    }
-
-                    var attDefId = attDefs[0];
-                    var attDef = GetObject<AttributeDefinition>(attDefId);
-                    var attRef=new AttributeReference();
-                    attRef.SetAttributeFromBlock(attDef, blockReference.BlockTransform);
-                    foreach (var prop in props)
-                    {
-                        PropertyUtils.SetPropertyValue(attRef, prop.Key, prop.Value);
-                    }
-                    blockReference.AttributeCollection.AppendAttribute(attRef);
-                    AddNewlyCreatedDBObject(attRef, true);
-                }
-                return true;
-                
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"添加块属性时发生异常: {ex.Message}");
-                return false;
-            }
-        }
         /// <summary>
         ///     获取数据库对象
         /// </summary>
@@ -393,54 +60,16 @@ namespace ServiceACAD
         {
             try
             {
-                return (T)CadTrans.GetObject(objectId, openMode);
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"获取对象失败: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        ///     获取块服务
-        /// </summary>
-        /// <param name="objectId">块引用ID</param>
-        /// <returns>块服务实例</returns>
-        public IBlockService GetBlockService(ObjectId objectId)
-        {
-            try
-            {
-                if (!objectId.IsValid)
+                if (objectId.IsNull)
                 {
                     return null;
                 }
 
-                // 检查是否已存在缓存的块服务
-                if (BlockServiceDict.TryGetValue(objectId, out var serviceBlk))
-                {
-                    return serviceBlk;
-                }
-
-                // 获取块引用对象
-                var blockRef = GetObject<BlockReference>(objectId);
-                if (blockRef == null)
-                {
-                    Logger._.Error($"获取块引用失败，ObjectId: {objectId}");
-                    return null;
-                }
-
-                // 创建块服务实例
-                var blockService = new BlockService(this, blockRef);
-
-                // 添加到缓存字典
-                BlockServiceDict[objectId] = blockService;
-
-                return blockService;
+                return CadTrans.GetObject(objectId, openMode) as T;
             }
             catch (Exception ex)
             {
-                Logger._.Error($"获取块服务失败: {ex.Message}");
+                Logger._.Error($"获取对象异常: {ex.Message}");
                 return null;
             }
         }
@@ -454,21 +83,32 @@ namespace ServiceACAD
         {
             try
             {
-                var objectId = AppendEntityToBlockTableRecord(GetModelSpace(OpenMode.ForWrite), entity);
-                return objectId;
+                if (entity == null)
+                {
+                    Logger._.Error("添加实体失败：实体为null");
+                    return ObjectId.Null;
+                }
+
+                using (var modelSpace = GetModelSpace(OpenMode.ForWrite))
+                {
+                    if (modelSpace == null)
+                    {
+                        Logger._.Error("添加实体失败：获取模型空间失败");
+                        return ObjectId.Null;
+                    }
+
+                    var id = modelSpace.AppendEntity(entity);
+                    CadTrans.AddNewlyCreatedDBObject(entity, true);
+                    return id;
+                }
             }
             catch (Exception ex)
             {
-                Logger._.Error($"向模型空间添加实体失败: {ex.Message}");
+                Logger._.Error($"添加实体异常: {ex.Message}");
                 return ObjectId.Null;
             }
         }
 
-        /// <summary>
-        ///     向块表记录添加实体
-        /// </summary>
-        /// <param name="blockTableRecord">块表记录</param>
-        /// <param name="entity">要添加的实体</param
         /// <summary>
         ///     向块表记录添加实体
         /// </summary>
@@ -479,18 +119,19 @@ namespace ServiceACAD
         {
             try
             {
-                if (!blockTableRecord.IsWriteEnabled)
+                if (blockTableRecord == null || entity == null)
                 {
-                    blockTableRecord.UpgradeOpen();
+                    Logger._.Error("添加实体失败：块表记录或实体为null");
+                    return ObjectId.Null;
                 }
 
-                var objectId = blockTableRecord.AppendEntity(entity);
-                AddNewlyCreatedDBObject(entity, true);
-                return objectId;
+                var id = blockTableRecord.AppendEntity(entity);
+                CadTrans.AddNewlyCreatedDBObject(entity, true);
+                return id;
             }
             catch (Exception ex)
             {
-                Logger._.Error($"向块表记录添加实体失败: {ex.Message}");
+                Logger._.Error($"添加实体异常: {ex.Message}");
                 return ObjectId.Null;
             }
         }
@@ -504,11 +145,18 @@ namespace ServiceACAD
         {
             try
             {
-                return GetBlockTableRecord(BlockTableRecord.ModelSpace, openMode);
+                var blockTable = GetBlockTable(openMode);
+                if (blockTable == null)
+                {
+                    Logger._.Error("获取模型空间失败：获取块表失败");
+                    return null;
+                }
+
+                return GetObject<BlockTableRecord>(blockTable[BlockTableRecord.ModelSpace], openMode);
             }
             catch (Exception ex)
             {
-                Logger._.Error($"获取模型空间失败: {ex.Message}");
+                Logger._.Error($"获取模型空间异常: {ex.Message}");
                 return null;
             }
         }
@@ -522,12 +170,30 @@ namespace ServiceACAD
         {
             try
             {
+                if (string.IsNullOrEmpty(name))
+                {
+                    Logger._.Error("获取块表记录ID失败：块名称为空");
+                    return ObjectId.Null;
+                }
+
                 var blockTable = GetBlockTable();
+                if (blockTable == null)
+                {
+                    Logger._.Error("获取块表记录ID失败：获取块表失败");
+                    return ObjectId.Null;
+                }
+
+                if (!blockTable.Has(name))
+                {
+                    Logger._.Warn($"块 {name} 不存在");
+                    return ObjectId.Null;
+                }
+
                 return blockTable[name];
             }
             catch (Exception ex)
             {
-                Logger._.Error($"获取块表记录ID失败: {ex.Message}");
+                Logger._.Error($"获取块表记录ID异常: {ex.Message}");
                 return ObjectId.Null;
             }
         }
@@ -542,11 +208,17 @@ namespace ServiceACAD
         {
             try
             {
-                return GetObject<BlockTableRecord>(GetBlockTableRecordId(name), openMode);
+                var id = GetBlockTableRecordId(name);
+                if (id.IsNull)
+                {
+                    return null;
+                }
+
+                return GetObject<BlockTableRecord>(id, openMode);
             }
             catch (Exception ex)
             {
-                Logger._.Error($"获取块表记录失败: {ex.Message}");
+                Logger._.Error($"获取块表记录异常: {ex.Message}");
                 return null;
             }
         }
@@ -560,36 +232,38 @@ namespace ServiceACAD
         public List<ObjectId> GetChildObjects<T>(BlockTableRecord blockTableRecord, Func<T, bool> filter = null)
             where T : DBObject
         {
+            var result = new List<ObjectId>();
+
             try
             {
-                List<ObjectId> ret;
-                try
+                if (blockTableRecord == null)
                 {
-                    var childIds = new List<ObjectId>();
-                    foreach (var objectId in blockTableRecord)
+                    Logger._.Error("获取子对象失败：块表记录为null");
+                    return result;
+                }
+
+                foreach (var id in blockTableRecord)
+                {
+                    try
                     {
-                        var dbObject = GetObject<DBObject>(objectId);
-                        if (dbObject != null && dbObject is T && (filter == null || filter((T)dbObject)))
+                        var obj = GetObject<T>(id);
+                        if (obj != null && (filter == null || filter(obj)))
                         {
-                            childIds.Add(objectId);
+                            result.Add(id);
                         }
                     }
-
-                    ret = childIds;
+                    catch (Exception ex)
+                    {
+                        Logger._.Warn($"访问对象 {id} 异常: {ex.Message}");
+                    }
                 }
-                catch (Exception ex)
-                {
-                    Logger._.Error(ex.Message);
-                    ret = null;
-                }
-
-                return ret ?? new List<ObjectId>();
             }
             catch (Exception ex)
             {
-                Logger._.Error($"获取子对象失败: {ex.Message}");
-                return new List<ObjectId>();
+                Logger._.Error($"获取子对象异常: {ex.Message}");
             }
+
+            return result;
         }
 
         /// <summary>
@@ -599,14 +273,15 @@ namespace ServiceACAD
         /// <returns>子对象ID集合</returns>
         public List<ObjectId> GetChildObjectsFromModelspace<T>(Func<T, bool> filter = null) where T : DBObject
         {
-            try
+            using (var modelSpace = GetModelSpace())
             {
-                return GetChildObjects(GetModelSpace(), filter);
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"从模型空间获取子对象失败: {ex.Message}");
-                return new List<ObjectId>();
+                if (modelSpace == null)
+                {
+                    Logger._.Error("从模型空间获取子对象失败：获取模型空间失败");
+                    return new List<ObjectId>();
+                }
+
+                return GetChildObjects(modelSpace, filter);
             }
         }
 
@@ -617,53 +292,77 @@ namespace ServiceACAD
         /// <returns>子对象ID集合</returns>
         public List<ObjectId> GetChildObjectsFromCurrentSpace<T>(Func<T, bool> filter = null) where T : DBObject
         {
-            try
+            using (var currentSpace = GetCurrentSpace())
             {
-                return GetChildObjects(GetCurrentSpace(), filter);
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"从当前空间获取子对象失败: {ex.Message}");
-                return new List<ObjectId>();
+                if (currentSpace == null)
+                {
+                    Logger._.Error("从当前空间获取子对象失败：获取当前空间失败");
+                    return new List<ObjectId>();
+                }
+
+                return GetChildObjects(currentSpace, filter);
             }
         }
 
+        /// <summary>
+        ///     隔离模型空间中的对象
+        /// </summary>
+        /// <param name="objectIdsToIsolate">要隔离的对象ID集合</param>
         public void IsolateObjectsOfModelSpace(ICollection<ObjectId> objectIdsToIsolate)
         {
-            // 获取所有模型空间对象
-            var allObjects = GetChildObjectsFromModelspace<DBObject>();
-
-            // 确定需要隐藏的对象（所有对象减去需要隔离的对象）
-            var objectsToHide = allObjects.Where(id => !objectIdsToIsolate.Contains(id)).ToList();
-
-            // 设置需要隐藏的对象为不可见
-            foreach (var id in objectsToHide)
+            try
             {
-                if (!id.IsValid)
+                if (objectIdsToIsolate == null || objectIdsToIsolate.Count == 0)
                 {
-                    continue;
+                    Logger._.Error("隔离对象失败：对象集合为空");
+                    return;
                 }
 
-                var entity = GetObject<Entity>(id, OpenMode.ForWrite);
-                if (entity != null)
+                using (var modelSpace = GetModelSpace(OpenMode.ForWrite))
                 {
-                    entity.Visible = false;
+                    if (modelSpace == null)
+                    {
+                        Logger._.Error("隔离对象失败：获取模型空间失败");
+                        return;
+                    }
+
+                    foreach (var id in modelSpace)
+                    {
+                        try
+                        {
+                            // 跳过非实体对象
+                            if (!(GetObject<DBObject>(id) is Entity))
+                            {
+                                continue;
+                            }
+
+                            var entity = GetObject<Entity>(id, OpenMode.ForWrite);
+                            if (entity == null)
+                            {
+                                continue;
+                            }
+
+                            if (objectIdsToIsolate.Contains(id))
+                            {
+                                // 显示要隔离的对象
+                                entity.Visible = true;
+                            }
+                            else
+                            {
+                                // 隐藏其他对象
+                                entity.Visible = false;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger._.Warn($"处理对象 {id} 异常: {ex.Message}");
+                        }
+                    }
                 }
             }
-
-            // 确保需要隔离的对象可见
-            foreach (var id in objectIdsToIsolate)
+            catch (Exception ex)
             {
-                if (!id.IsValid)
-                {
-                    continue;
-                }
-
-                var entity = GetObject<Entity>(id, OpenMode.ForWrite);
-                if (entity != null)
-                {
-                    entity.Visible = true;
-                }
+                Logger._.Error($"隔离对象异常: {ex.Message}");
             }
         }
 
@@ -676,13 +375,31 @@ namespace ServiceACAD
         {
             try
             {
-                var database = CadServiceManager._.CadDb;
-                var currentSpaceId = database.CurrentSpaceId;
+                var db = HostApplicationServices.WorkingDatabase;
+                var blockTable = GetObject<BlockTable>(db.BlockTableId, openMode);
+                if (blockTable == null)
+                {
+                    Logger._.Error("获取当前空间失败：获取块表失败");
+                    return null;
+                }
+
+                ObjectId currentSpaceId;
+                if (db.TileMode)
+                {
+                    // 模型空间
+                    currentSpaceId = blockTable[BlockTableRecord.ModelSpace];
+                }
+                else
+                {
+                    // 纸空间
+                    currentSpaceId = db.CurrentSpaceId;
+                }
+
                 return GetObject<BlockTableRecord>(currentSpaceId, openMode);
             }
             catch (Exception ex)
             {
-                Logger._.Error($"获取当前空间失败: {ex.Message}");
+                Logger._.Error($"获取当前空间异常: {ex.Message}");
                 return null;
             }
         }
@@ -696,319 +413,133 @@ namespace ServiceACAD
         {
             try
             {
-                var objectId = AppendEntityToBlockTableRecord(GetCurrentSpace(OpenMode.ForWrite), entity);
-                return objectId;
+                if (entity == null)
+                {
+                    Logger._.Error("添加实体失败：实体为null");
+                    return ObjectId.Null;
+                }
+
+                using (var currentSpace = GetCurrentSpace(OpenMode.ForWrite))
+                {
+                    if (currentSpace == null)
+                    {
+                        Logger._.Error("添加实体失败：获取当前空间失败");
+                        return ObjectId.Null;
+                    }
+
+                    var id = currentSpace.AppendEntity(entity);
+                    CadTrans.AddNewlyCreatedDBObject(entity, true);
+                    return id;
+                }
             }
             catch (Exception ex)
             {
-                Logger._.Error($"向当前空间添加实体失败: {ex.Message}");
+                Logger._.Error($"添加实体异常: {ex.Message}");
                 return ObjectId.Null;
             }
         }
- 
-        /// <summary
+
+        /// <summary>
+        ///     向当前空间添加多个实体
+        /// </summary>
+        /// <param name="entities">实体集合</param>
+        /// <returns>添加的实体ID集合</returns>
         public List<ObjectId> AppendEntitiesToCurrentSpace(List<Entity> entities) =>
             AppendEntitiesToBlockTableRecord(GetCurrentSpace(OpenMode.ForWrite), entities);
 
+        /// <summary>
+        ///     向块表记录添加多个实体
+        /// </summary>
+        /// <param name="blockTableRecord">块表记录</param>
+        /// <param name="entities">实体集合</param>
+        /// <returns>添加的实体ID集合</returns>
         public List<ObjectId> AppendEntitiesToBlockTableRecord(BlockTableRecord blockTableRecord,
             ICollection<Entity> entities)
         {
+            var ids = new List<ObjectId>();
+
             try
             {
-                var objectIds = new List<ObjectId>();
-                foreach (var entity in entities)
+                if (blockTableRecord == null || entities == null || entities.Count == 0)
                 {
-                    var objectId = AppendEntityToBlockTableRecord(blockTableRecord, entity);
-                    // AddNewlyCreatedDBObject(entity,true);
-                    objectIds.Add(objectId);
+                    Logger._.Error("添加实体失败：块表记录或实体集合为null或为空");
+                    return ids;
                 }
 
-                return objectIds;
+                foreach (var entity in entities)
+                {
+                    try
+                    {
+                        if (entity == null)
+                        {
+                            continue;
+                        }
+
+                        var id = blockTableRecord.AppendEntity(entity);
+                        CadTrans.AddNewlyCreatedDBObject(entity, true);
+                        ids.Add(id);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger._.Warn($"添加实体异常: {ex.Message}");
+                    }
+                }
             }
             catch (Exception ex)
             {
-                Logger._.Error($"向块表记录添加实体失败: {ex.Message}");
-                return new List<ObjectId>();
+                Logger._.Error($"添加实体集合异常: {ex.Message}");
             }
+
+            if (blockTableRecord.IsDisposed == false)
+            {
+                blockTableRecord.Dispose();
+            }
+
+            return ids;
         }
 
+        /// <summary>
+        ///     过滤对象集合
+        /// </summary>
+        /// <param name="objectIds">对象ID集合</param>
+        /// <param name="filter">过滤器</param>
+        /// <returns>过滤后的对象ID集合</returns>
         public List<ObjectId> FilterObjects<T>(ICollection<ObjectId> objectIds, Func<T, bool> filter = null)
             where T : DBObject
         {
+            var result = new List<ObjectId>();
+
             try
             {
-                var result = new List<ObjectId>();
-                foreach (var objectId in objectIds)
+                if (objectIds == null || objectIds.Count == 0)
                 {
-                    var dbObject = GetObject<DBObject>(objectId);
-                    if (dbObject == null || !(dbObject is T) || (filter != null && !filter((T)dbObject)))
-                    {
-                        continue;
-                    }
-
-                    result.Add(objectId);
+                    Logger._.Error("过滤对象失败：对象集合为空");
+                    return result;
                 }
 
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"过滤对象失败: {ex.Message}");
-                return new List<ObjectId>();
-            }
-        }
-
-        /// <summary>
-        ///     创建块定义
-        /// </summary>
-        /// <param name="entities">要包含在块中的实体集合</param>
-        /// <param name="blockName">块名称</param>
-        /// <returns>创建的块的ObjectId</returns>
-        public ObjectId CreateBlockDef(ICollection<Entity> entities, string blockName = "")
-        {
-            try
-            {
-                BlockTableRecord btr;
-                if (!string.IsNullOrEmpty(blockName))
+                foreach (var id in objectIds)
                 {
-                    btr = GetBlockTableRecord(blockName);
-                    if (btr != null)
+                    try
                     {
-                        Logger._.Warn($"图块{blockName}定义已存在！");
-                        return ObjectId.Null;
+                        var obj = GetObject<T>(id);
+                        if (obj != null && (filter == null || filter(obj)))
+                        {
+                            result.Add(id);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger._.Warn($"访问对象 {id} 异常: {ex.Message}");
                     }
                 }
-                else
-                {
-                    blockName = CadServiceManager.GetDefaultName();
-                }
-
-                // 创建块表记录
-                btr = new BlockTableRecord();
-                btr.Name = blockName;
-
-
-                // 添加块表记录到块表
-                var bt = GetBlockTable(OpenMode.ForWrite);
-
-                var blockId = bt.Add(btr);
-
-                // 将实体添加到块表记录
-                AppendEntitiesToBlockTableRecord(btr, entities);
-                AddNewlyCreatedDBObject(btr,true);
-
-                return blockId;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"创建块失败: {ex.Message}");
-                return ObjectId.Null;
+                Logger._.Error($"过滤对象异常: {ex.Message}");
             }
+
+            return result;
         }
-
-        // ... existing code ...
-
-        /// <summary>
-        ///     在当前空间创建块参照
-        /// </summary>
-        /// <param name="name">块名称</param>
-        /// <param name="insertPt">插入点</param>
-        /// <param name="layerName">图层名称</param>
-        /// <param name="color">颜色</param>
-        /// <param name="linetype">线型</param>
-        /// <returns>创建成功的块参照ObjectId，失败返回ObjectId.Null</returns>
-        public ObjectId CreateBlockRefInCurrentSpace(ObjectId blkDefId, Point3d insertPt = default(Point3d),
-            string layerName = "", short colorIndex = 256, string linetype = "BYLAYER")
-        {
-            try
-            {
-                insertPt = insertPt == default(Point3d) ? Point3d.Origin : insertPt;
-                layerName = GetValidLayerName(layerName);
-
-                colorIndex = GetValidColorIndex(colorIndex, CadServiceManager.ColorIndexByLayer);
-                linetype = GetValidLineTypeName(linetype);
-                // 创建块参照
-                var blkRef = new BlockReference(insertPt, blkDefId)
-                {
-                    Layer = layerName,
-                    ColorIndex = colorIndex,
-                    Linetype = linetype
-                };
-
-                // 将块参照添加到当前空间
-                AppendEntityToCurrentSpace(blkRef);
-                var blkDef = GetObject<BlockTableRecord>(blkDefId);
-                var attDefIds = GetChildObjects<AttributeDefinition>(blkDef);
-                if (attDefIds.Count == 0) return blkRef.Id;
-                foreach (var attDefId in attDefIds)
-                {
-                    var attDef = GetObject<AttributeDefinition>(attDefId);
-                    var attRef = new AttributeReference()
-                    {
-                        Tag = attDef.Tag,
-                        TextString = attDef.TextString,
-                        Position = attDef.Position.TransformBy(blkRef.BlockTransform),
-                        Rotation = attDef.Rotation
-                    };
-                    blkRef.AttributeCollection.AppendAttribute(attRef);
-                    AddNewlyCreatedDBObject(attRef, true);
-                }
-
-                // CadServiceManager._.ServiceEd.Update();
-                return blkRef.Id;
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"创建块参照失败: {ex.Message}");
-                return ObjectId.Null;
-            }
-        }
-
-        public LayerTable GetLayerTable(OpenMode openMode = OpenMode.ForRead)
-        {
-
-            return  GetObject<LayerTable>(CadServiceManager._.CadDb.LayerTableId, openMode);
-        }
-
-        /// <summary>
-        ///     创建新线型
-        /// </summary>
-        /// <param name="lineTypeName">线型名称</param>
-        /// <returns>创建的线型对象，如果创建失败则返回null</returns>
-        public LinetypeTableRecord CreateNewLineType(string lineTypeName)
-        {
-            try
-            {
-                // 获取线型表
-                var lineTypeTable = GetLineTypeTable(OpenMode.ForWrite);
-                if (lineTypeTable == null)
-                {
-                    Logger._.Error("获取线型表失败");
-                    return null;
-                }
-
-                if (string.IsNullOrEmpty(lineTypeName))
-                {
-                    Logger._.Error("LineType Name is null or empty.");
-                    return null;
-                }
-
-                // 检查线型是否已存在
-                if (lineTypeTable.Has(lineTypeName))
-                {
-                    Logger._.Warn($"线型 {lineTypeName} 已存在");
-                    return null;
-                }
-
-                // 创建新线型
-                var lineType = new LinetypeTableRecord
-                {
-                    Name = lineTypeName,
-                    AsciiDescription = $"线型 {lineTypeName}",
-                    PatternLength = 1.0,
-                    NumDashes = 1
-                };
-
-                // 将新线型添加到线型表
-                var lineTypeId = lineTypeTable.Add(lineType);
-                AddNewlyCreatedDBObject(lineType, true);
-
-                Logger._.Info($"成功创建线型: {lineTypeName}");
-                return lineType;
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"创建线型失败: {ex.Message}", ex);
-                return null;
-            }
-        }
-
-        /// <summary>
-        ///     获取图层
-        /// </summary>
-        /// <param name="layerName">图层名称</param>
-        /// <returns>图层对象，如果不存在则返回null</returns>
-        public LayerTableRecord GetLayer(string layerName, OpenMode openMode = OpenMode.ForRead)
-        {
-            try
-            {
-                // 获取图层表
-                var layerTable = GetLayerTable();
-                if (layerTable == null)
-                {
-                    Logger._.Error("获取图层表失败");
-                    return null;
-                }
-
-                // 检查图层是否存在
-                if (string.IsNullOrEmpty(layerName))
-                {
-                    Logger._.Warn("Use current layer as default");
-                    layerName = GetCurrentLayerName();
-                }
-                else if (!layerTable.Has(layerName))
-                {
-                    Logger._.Debug($"图层 {layerName} 不存在，自动创建图层");
-                    return CreateNewLayer(layerName);
-                }
-
-                // 获取图层对象
-                var layerId = layerTable[layerName];
-                return GetObject<LayerTableRecord>(layerId, openMode);
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"获取图层失败: {ex.Message}", ex);
-                return layerName != GetCurrentLayerName() ? GetLayer(GetCurrentLayerName(), openMode) : null;
-            }
-        }
-
-        /// <summary>
-        ///     获取线型
-        /// </summary>
-        /// <param name="lineTypeName">线型名称</param>
-        /// <returns>线型对象，如果不存在则返回null</returns>
-        public LinetypeTableRecord GetLineType(string lineTypeName, OpenMode openMode = OpenMode.ForRead)
-        {
-            try
-            {
-                // 获取线型表
-                var lineTypeTable = GetLineTypeTable();
-                if (lineTypeTable == null)
-                {
-                    Logger._.Error("获取线型表失败");
-                    return null;
-                }
-
-                if (string.IsNullOrEmpty(lineTypeName))
-                {
-                    Logger._.Warn("Use Continuous as default lineType");
-                    lineTypeName = CadServiceManager.LineTypeContinuous;
-                }
-                // 检查线型是否存在
-                else if (!lineTypeTable.Has(lineTypeName))
-                {
-                    Logger._.Debug($"线型 {lineTypeName} 不存在，自动创建线型");
-                    return CreateNewLineType(lineTypeName);
-                }
-
-                // 获取线型对象
-                var lineTypeId = lineTypeTable[lineTypeName];
-                return GetObject<LinetypeTableRecord>(lineTypeId, openMode);
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"获取线型失败: {ex.Message}", ex);
-                return lineTypeName != CadServiceManager.LineTypeContinuous
-                    ? GetLineType(CadServiceManager.LineTypeContinuous, openMode)
-                    : null;
-            }
-        }
-
-        public void AddNewlyCreatedDBObject(DBObject obj, bool add) => CadTrans.AddNewlyCreatedDBObject(obj, add);
-
-        public LinetypeTable GetLineTypeTable(OpenMode openMode = OpenMode.ForRead) =>
-            GetObject<LinetypeTable>(CadServiceManager._.CadDb.LinetypeTableId, openMode);
 
         /// <summary>
         ///     获取块表
@@ -1018,126 +549,21 @@ namespace ServiceACAD
         {
             try
             {
-                return GetObject<BlockTable>(CadServiceManager._.CadDb.BlockTableId, openMode);
+                var db = HostApplicationServices.WorkingDatabase;
+                return GetObject<BlockTable>(db.BlockTableId, openMode);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"获取块表失败: {ex.Message}");
+                Logger._.Error($"获取块表异常: {ex.Message}");
                 return null;
             }
         }
 
-        public string GetValidLayerName(string layerName)
-        {
-            var layer = GetLayer(layerName);
-            return layer == null ? GetCurrentLayerName() : layer.Name;
-        }
-        public string GetValidLineTypeName(string linetypeName)
-        {
-            var lineType = GetLineType(linetypeName);
-            return lineType == null ? CadServiceManager.LineTypeContinuous : lineType.Name;
-        }
-
-        public short GetValidColorIndex(short colorIndex, short defaultColorIndex = CadServiceManager.ColorIndexWhite)
-        {
-            if (colorIndex >= 0 && colorIndex <= 256 && colorIndex != default(short))
-            {
-                return colorIndex;
-            }
-
-            return GetValidColorIndex(defaultColorIndex);
-        }
-        public Color GetValidColor(short colorIndex,short defaultColorIndex=CadServiceManager.ColorIndexWhite)
-        {
-            if(colorIndex==0) return Color.FromColorIndex(ColorMethod.ByBlock,CadServiceManager.ColorIndexByBlock);
-            if (colorIndex == 256)
-                return Color.FromColorIndex(ColorMethod.ByLayer, CadServiceManager.ColorIndexByLayer);
-            return Color.FromColorIndex(ColorMethod.ByAci, GetValidColorIndex(colorIndex, defaultColorIndex));
-        }
         /// <summary>
-        ///     获取当前图层名称
+        ///     添加新创建的数据库对象
         /// </summary>
-        /// <returns>当前图层名称</returns>
-        public string GetCurrentLayerName()
-        {
-            try
-            {
-                LayerTableRecord layer;
-                try
-                {
-                    // 获取当前图层ID
-                    var currentLayerId = CadServiceManager._.CadDb.Clayer;
-
-                    // 获取图层对象
-                    layer = GetObject<LayerTableRecord>(currentLayerId);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"获取当前图层失败: {ex.Message}");
-                    layer = null;
-                }
-
-                return layer?.Name ?? string.Empty;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"获取当前图层名称失败: {ex.Message}");
-                return string.Empty;
-            }
-        }
-
-        /// <summary>
-        ///     创建新图层
-        /// </summary>
-        /// <param name="layerName">图层名称</param>
-        /// <returns>创建的图层对象，如果创建失败则返回null</returns>
-        public LayerTableRecord CreateNewLayer(string layerName = "",
-            short colorIndex = CadServiceManager.ColorIndexWhite,
-            string lineType = CadServiceManager.LineTypeContinuous)
-        {
-            try
-            {
-                // 获取图层表
-                var layerTable = GetLayerTable(OpenMode.ForWrite);
-                if (layerTable == null)
-                {
-                    Logger._.Error("获取图层表失败");
-                    return null;
-                }
-
-                if (string.IsNullOrEmpty(layerName))
-                {
-                    layerName = $"Layer_{DateTime.Now.ToShortTimeString()}";
-                }
-                else if (layerTable.Has(layerName))
-                {
-                    Logger._.Warn($"图层 {layerName} 已存在");
-                    return null;
-                }
-
-                var color = GetValidColor(colorIndex, CadServiceManager.ColorIndexWhite);
-
-                var linetypeObjectId = GetLineType(lineType).Id;
-
-                // 创建新图层
-                var layer = new LayerTableRecord
-                {
-                    Name = layerName,
-                    Color = color,
-                    LinetypeObjectId = linetypeObjectId,
-                    LineWeight = LineWeight.LineWeight000
-                };
-                var layerId = layerTable.Add(layer);
-                AddNewlyCreatedDBObject(layer, true);
-
-                Logger._.Info($"成功创建图层: {layerName}");
-                return layer;
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"创建图层失败: {ex.Message}", ex);
-                return null;
-            }
-        }
+        /// <param name="obj">数据库对象</param>
+        /// <param name="add">是否添加</param>
+        public void AddNewlyCreatedDBObject(DBObject obj, bool add) => CadTrans.AddNewlyCreatedDBObject(obj, add);
     }
 }
