@@ -1,10 +1,8 @@
+using System;
+using System.Collections.Generic;
+using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
-using System;
-using System.Diagnostics;
-using System.Collections.Generic;
-using System.Reflection;
-using Autodesk.AutoCAD.Colors;
 
 namespace ServiceACAD
 {
@@ -315,11 +313,11 @@ namespace ServiceACAD
         }
 
         public OpResult<object> MatchProp(Entity entTo, Entity entFr, string propName, object valueToFix) =>
-            ServiceACAD.PropertyUtils.MatchPropValues(entFr, entTo, propName, (entT, entF) =>
+            PropertyUtils.MatchPropValues(entFr, entTo, propName, (entT, entF) =>
             {
                 var getValueTo = PropertyUtils.GetPropertyValue(entT, propName);
                 return !(entF is AttributeReference) ||
-                       (getValueTo.IsSuccess & getValueTo.Data.Equals(valueToFix));
+                       getValueTo.IsSuccess & getValueTo.Data.Equals(valueToFix);
             });
 
         /// <summary>
@@ -383,7 +381,7 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        /// 在当前空间创建块参照
+        ///     在当前空间创建块参照
         /// </summary>
         /// <param name="name">块名称</param>
         /// <param name="insertPt">插入点</param>
@@ -391,7 +389,8 @@ namespace ServiceACAD
         /// <param name="color">颜色</param>
         /// <param name="linetype">线型</param>
         /// <returns>创建成功的块参照ObjectId，失败返回ObjectId.Null</returns>
-        public ObjectId CreateBlockRefInCurrentSpace(string name, Point3d insertPt, string layerName, Color color, string linetype)
+        public ObjectId CreateBlockRefInCurrentSpace(string name, Point3d insertPt, string layerName, Color color,
+            string linetype)
         {
             if (string.IsNullOrEmpty(name))
             {

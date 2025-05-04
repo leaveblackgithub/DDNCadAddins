@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using Autodesk.AutoCAD.DatabaseServices;
 using NUnit.Framework;
@@ -56,33 +54,32 @@ namespace AddinsACAD.ServiceTests
                 Assert.AreEqual(blkRefIds.Count, 6);
                 // CadServiceManager._.Isolate(blkRefIds[0]);
             }
-        
+
             CadServiceManager._.ExecuteInTransactions("xclip", Action1);
         }
 
         [Test]
         public void TestCreateNewLayer()
         {
-            
             void Action1(ITransactionService tr)
             {
-
                 var layerName1 = CommonTestMethods.GetTestLayerName();
-                var newLayer1 = tr.CreateNewLayer(layerName1);
+                var newLayer1 = tr.Style.CreateLayer(layerName1);
                 Assert.IsNotNull(newLayer1);
                 Assert.AreEqual(layerName1, newLayer1.Name);
-                var newLayer2 = tr.CreateNewLayer(layerName1);
+                var newLayer2 = tr.Style.CreateLayer(layerName1);
                 Assert.IsNull(newLayer2);
                 var layerName2 = CommonTestMethods.GetTestLayerName();
 
                 var lineTypeName = CommonTestMethods.GetTestLineTypeName();
                 var colorIndex = CadServiceManager.ColorIndexMagenta;
-                var newLayer3 = tr.CreateNewLayer(layerName2, colorIndex,
+                var newLayer3 = tr.Style.CreateLayer(layerName2, colorIndex,
                     lineTypeName);
                 Assert.IsNotNull(newLayer3);
-                Assert.AreEqual(newLayer3.Name,layerName2);
-                Assert.AreEqual(newLayer3.Color.ColorIndex,colorIndex);
-                Assert.AreEqual(newLayer3.LinetypeObjectId.ToString(),tr.GetLineType(lineTypeName).Id.ToString());
+                Assert.AreEqual(newLayer3.Name, layerName2);
+                Assert.AreEqual(newLayer3.Color.ColorIndex, colorIndex);
+                Assert.AreEqual(newLayer3.LinetypeObjectId.ToString(),
+                    tr.Style.GetLineType(lineTypeName).Id.ToString());
             }
 
             CadServiceManager._.ExecuteInTransactions("", Action1);
@@ -91,18 +88,18 @@ namespace AddinsACAD.ServiceTests
         [Test]
         public void TestCreateNewLineType()
         {
-            string lineTypeName = CommonTestMethods.GetTestLineTypeName();
-            
+            var lineTypeName = CommonTestMethods.GetTestLineTypeName();
+
             void Action1(ITransactionService tr)
             {
-                var newLineType1 = tr.CreateNewLineType(lineTypeName);
+                var newLineType1 = tr.Style.CreateLineType(lineTypeName);
                 Assert.IsNotNull(newLineType1);
                 Assert.AreEqual(lineTypeName, newLineType1.Name);
-                var newLineType2 = tr.CreateNewLineType(lineTypeName);
+                var newLineType2 = tr.Style.CreateLineType(lineTypeName);
                 Assert.IsNull(newLineType2);
             }
+
             CadServiceManager._.ExecuteInTransactions("", Action1);
         }
-
     }
 }

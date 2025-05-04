@@ -15,7 +15,7 @@ namespace ServiceACAD
         public const short ColorIndexByLayer = 256;
         public const short ColorIndexGreen = 3;
         public const short ColorIndexWhite = 7;
-        public const short ColorIndexRed = 1; 
+        public const short ColorIndexRed = 1;
         public const short ColorIndexYellow = 2;
         public const short ColorIndexBlue = 6;
         public const short ColorIndexMagenta = 5;
@@ -31,8 +31,23 @@ namespace ServiceACAD
         public const string StrPosition = "Position";
         public const string StrTextStyleId = "TextStyleId";
         public const string StrHeight = "Height";
+        public const string StrTypeName = "TypeName";
+        public const string StrLine = "Line";
+        public const string StrStartPoint = "StartPoint";
+        public const string StrEndPoint = "EndPoint";
+
+
+        public const string StrLinetypeScale = "LinetypeScale";
 
         public const string LineTypeContinuous = "Continuous";
+
+        public const string StrCircle = "Circle";
+        public const string StrCenter = "Center";
+        public const string StrRadius = "Radius";
+        public const string StrDbText = "DBText";
+        public const string StrAttributeDefinition = "AttributeDefinition";
+        public const string StrNormal = "Normal";
+
         // 单例模式的锁对象
         private static readonly object _lockObj = new object();
         private static CadServiceManager _instance;

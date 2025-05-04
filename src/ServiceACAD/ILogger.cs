@@ -32,4 +32,4 @@ namespace ServiceACAD
         /// <param name="exception">异常对象</param>
         void Error(string message, Exception exception = null);
     }
-} 
+}

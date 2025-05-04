@@ -7,7 +7,6 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using NUnit.Framework;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
-using Autodesk.AutoCAD.EditorInput;
 
 namespace ServiceACAD
 {
@@ -24,7 +23,7 @@ namespace ServiceACAD
             CadDoc = document == null ? Application.DocumentManager.MdiActiveDocument : document;
             ServiceEd = new EditorService(CadDoc.Editor);
         }
-        
+
         public Document CadDoc { get; }
         public Database CadDb => CadDoc.Database;
         public IEditorService ServiceEd { get; }
