@@ -135,8 +135,8 @@ namespace ServiceACAD
         /// <summary>
         ///     检查前者类型的属性是否能接受后者类型的赋值
         /// </summary>
-        /// <param name="propertyType">目标属性的类型</param>
-        /// <param name="valueType">源数据的类型</param>
+        /// <param name="targetType">目标属性的类型</param>
+        /// <param name="sourceType">源数据的类型</param>
         /// <returns>如果可以转换/赋值返回true，否则返回false</returns>
         /// <remarks>
         ///     此方法综合检查以下情况：
@@ -147,53 +147,53 @@ namespace ServiceACAD
         ///     5. 类型转换器支持的转换
         ///     6. 特殊类型转换（如字符串到枚举、Guid等）
         /// </remarks>
-        public static bool CanBeConvertedFrom(Type propertyType, Type valueType)
+        public static bool CanBeConvertedFrom(Type targetType, Type sourceType)
         {
-            if (propertyType == null || valueType == null)
+            if (targetType == null || sourceType == null)
             {
                 return false;
             }
 
             // 相同类型可直接赋值
-            if (propertyType == valueType)
+            if (targetType == sourceType)
             {
                 return true;
             }
 
             // 检查null值 - 引用类型属性可以接受null
-            if (valueType == typeof(DBNull) ||
-                (valueType.IsValueType == false && propertyType.IsValueType == false))
+            if (sourceType == typeof(DBNull) ||
+                (sourceType.IsValueType == false && targetType.IsValueType == false))
             {
                 return true;
             }
 
             // 检查数值类型的隐式转换
-            if (IsNumericType(propertyType) && IsNumericType(valueType))
+            if (IsNumericType(targetType) && IsNumericType(sourceType))
             {
                 // 数值类型的扩展转换规则
                 // 小范围类型可以隐式转换为大范围类型
-                if (GetNumericTypeRank(propertyType) >= GetNumericTypeRank(valueType))
+                if (GetNumericTypeRank(targetType) >= GetNumericTypeRank(sourceType))
                 {
                     return true;
                 }
             }
 
             // 检查可空类型
-            if (propertyType.IsGenericType &&
-                propertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
+            if (targetType.IsGenericType &&
+                targetType.GetGenericTypeDefinition() == typeof(Nullable<>))
             {
                 // 可空类型的底层类型
-                var underlyingType = Nullable.GetUnderlyingType(propertyType);
+                var underlyingType = Nullable.GetUnderlyingType(targetType);
                 // 如果值类型与可空类型的底层类型匹配，可以赋值
-                if (underlyingType == valueType)
+                if (underlyingType == sourceType)
                 {
                     return true;
                 }
 
                 // 检查可空数值类型的隐式转换
-                if (IsNumericType(underlyingType) && IsNumericType(valueType))
+                if (IsNumericType(underlyingType) && IsNumericType(sourceType))
                 {
-                    if (GetNumericTypeRank(underlyingType) >= GetNumericTypeRank(valueType))
+                    if (GetNumericTypeRank(underlyingType) >= GetNumericTypeRank(sourceType))
                     {
                         return true;
                     }
@@ -201,13 +201,13 @@ namespace ServiceACAD
             }
 
             // 检查继承关系（子类可以赋值给父类）
-            if (propertyType.IsAssignableFrom(valueType))
+            if (targetType.IsAssignableFrom(sourceType))
             {
                 return true;
             }
 
             // 检查接口实现
-            if (propertyType.IsInterface && valueType.GetInterfaces().Contains(propertyType))
+            if (targetType.IsInterface && sourceType.GetInterfaces().Contains(targetType))
             {
                 return true;
             }
@@ -215,14 +215,14 @@ namespace ServiceACAD
             // 检查是否存在类型转换器或隐式转换操作符
             try
             {
-                var converter = TypeDescriptor.GetConverter(valueType);
-                if (converter.CanConvertTo(propertyType))
+                var converter = TypeDescriptor.GetConverter(sourceType);
+                if (converter.CanConvertTo(targetType))
                 {
                     return true;
                 }
 
-                converter = TypeDescriptor.GetConverter(propertyType);
-                if (converter.CanConvertFrom(valueType))
+                converter = TypeDescriptor.GetConverter(targetType);
+                if (converter.CanConvertFrom(sourceType))
                 {
                     return true;
                 }
@@ -234,25 +234,25 @@ namespace ServiceACAD
 
             // 检查常见的特殊转换情况
             // string -> Guid
-            if (propertyType == typeof(Guid) && valueType == typeof(string))
+            if (targetType == typeof(Guid) && sourceType == typeof(string))
             {
                 return true;
             }
 
             // string -> enum
-            if (propertyType.IsEnum && valueType == typeof(string))
+            if (targetType.IsEnum && sourceType == typeof(string))
             {
                 return true;
             }
 
             // int -> enum
-            if (propertyType.IsEnum && valueType == typeof(int))
+            if (targetType.IsEnum && sourceType == typeof(int))
             {
                 return true;
             }
 
             // string -> 数值类型
-            if (IsNumericType(propertyType) && valueType == typeof(string))
+            if (IsNumericType(targetType) && sourceType == typeof(string))
             {
                 return true;
             }

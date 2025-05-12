@@ -85,16 +85,16 @@ namespace AddinsACAD.ServiceTests
                         Assert.Fail($"\n 爆炸结果元素数量不符合预期: 期望2个，实际{explodeResult.Data.Count}个");
                     }
 
-                    // // 检查文本内容
-                    // var textCount = transactionService.FilterObjects<DBText>(
-                    //     explodeResult.Data, txt => txt.TextString == "3.1415926").Count;
-                    //
-                    // if (textCount != 1)
-                    // {
-                    //     Assert.Fail($"\n 找不到TextString为'3.1415926'的文本对象，找到{textCount}个");
-                    // }
-                    //
-                    // // Assert.Pass("\n 测试通过: 块参照成功爆炸且属性转换为文本");
+                    // 检查文本内容
+                    var textCount = transactionService.FilterObjects<DBText>(
+                        explodeResult.Data, txt => txt.TextString == "3.1415926").Count;
+
+                    if (textCount != 1)
+                    {
+                        Assert.Fail($"\n 找不到TextString为'3.1415926'的文本对象，找到{textCount}个");
+                    }
+
+                    // Assert.Pass("\n 测试通过: 块参照成功爆炸且属性转换为文本");
                 }
                 catch (AssertionException assertionException)
                 {

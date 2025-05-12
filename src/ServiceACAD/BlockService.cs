@@ -221,24 +221,6 @@ namespace ServiceACAD
             try
             {
                 // 复制基本属性
-                // text.Position = attRef.Position;
-                // text.TextString = attRef.TextString;
-                // text.Height = attRef.Height;
-                // text.WidthFactor = attRef.WidthFactor;
-                // text.Rotation = attRef.Rotation;
-                // text.TextStyleId = attRef.TextStyleId;
-                // text.Visible = attRef.Visible;
-                // // text.ColorIndex = attRef.ColorIndex;
-                //
-                // // 处理对齐方式
-                // text.HorizontalMode = attRef.HorizontalMode;
-                // text.VerticalMode = attRef.VerticalMode;
-                //
-                // if (attRef.Justify != AttachmentPoint.BaseLeft)
-                // {
-                //     text.Justify = attRef.Justify;
-                //     text.AlignmentPoint = attRef.AlignmentPoint;
-                // }
                 PropertyUtils.MatchPropValues(text, attRef);
                 // 使用ProcessEntityProperties方法处理图层和属性
                 // SetChildPropsAsBlk(text, attRef);
