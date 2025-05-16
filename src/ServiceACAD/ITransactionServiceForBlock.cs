@@ -31,10 +31,11 @@ namespace ServiceACAD
         /// <param name="insertPt">插入点</param>
         /// <param name="layerName">图层名称</param>
         /// <param name="colorIndex">颜色索引</param>
-        /// <param name="linetype">线型</param>
+        /// <param name="lineTypeName">线型</param>
         /// <returns>创建成功的块参照ObjectId，失败返回ObjectId.Null</returns>
         ObjectId CreateBlockRefInCurrentSpace(ObjectId blkDefId, Point3d insertPt = default(Point3d),
-            string layerName = "", short colorIndex = 256, string linetype = "BYLAYER");
+            string layerName = CadServiceManager.Layer0, short colorIndex = CadServiceManager.ColorIndexByLayer,
+            string lineTypeName = CadServiceManager.StrByLayer);
 
         /// <summary>
         ///     为块参照添加多个属性并赋值

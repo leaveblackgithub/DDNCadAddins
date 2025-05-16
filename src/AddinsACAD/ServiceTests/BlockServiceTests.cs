@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using AddinsAcad.ServiceTests;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -11,6 +12,7 @@ namespace AddinsACAD.ServiceTests
     [Apartment(ApartmentState.STA)]
     public class BlockServiceTests
     {
+        private const int BlkChildCount = 8;
         private IBlockService _blkService;
 
         [Test]
@@ -80,19 +82,26 @@ namespace AddinsACAD.ServiceTests
                     }
 
                     // 检查结果数量
-                    if (explodeResult.Data.Count != 8)
+                    if (explodeResult.Data.Count != BlkChildCount)
                     {
-                        Assert.Fail($"\n 爆炸结果元素数量不符合预期: 期望2个，实际{explodeResult.Data.Count}个");
+                        Assert.Fail($"\n 爆炸结果元素数量不符合预期: 期望{BlkChildCount}个，实际{explodeResult.Data.Count}个");
                     }
 
                     // 检查文本内容
-                    var textCount = transactionService.FilterObjects<DBText>(
-                        explodeResult.Data, txt => txt.TextString == "3.1415926").Count;
+                    var txtFrAttr1s = transactionService.FilterObjects<DBText>(
+                        explodeResult.Data, txt => txt.TextString == BlockServiceTestUtils.StrValue1);
+                    Assert.AreEqual(1,txtFrAttr1s.Count);
 
-                    if (textCount != 1)
-                    {
-                        Assert.Fail($"\n 找不到TextString为'3.1415926'的文本对象，找到{textCount}个");
-                    }
+                    var txtFrAttr1 = transactionService.GetObject<DBText>(txtFrAttr1s[0]);
+                    Assert.AreEqual( BlockServiceTestUtils.NameTestLayer,txtFrAttr1.Layer) ;
+                    Assert.AreEqual(BlockServiceTestUtils.NameTestLinetype,txtFrAttr1.Linetype);
+
+                    var txtFrAttr2s = transactionService.FilterObjects<DBText>(explodeResult.Data,
+                        txt => txt.TextString == BlockServiceTestUtils.StrValue2);
+                    Assert.AreEqual(1,txtFrAttr2s.Count);
+
+                    var txtFrAttr2 = transactionService.GetObject<DBText>(txtFrAttr2s[0]);
+                    Assert.AreEqual( CadServiceManager.ColorIndexMagenta,txtFrAttr2.ColorIndex);
 
                     // Assert.Pass("\n 测试通过: 块参照成功爆炸且属性转换为文本");
                 }

@@ -202,8 +202,19 @@ namespace ServiceACAD
         /// <param name="defaultColorIndex">默认颜色索引</param>
         /// <returns>有效的颜色索引</returns>
         public short
-            GetValidColorIndex(short colorIndex, short defaultColorIndex = CadServiceManager.ColorIndexWhite) =>
-            colorIndex < 0 || colorIndex > 255 ? defaultColorIndex : colorIndex;
+            GetValidColorIndex(short colorIndex, short defaultColorIndex = CadServiceManager.ColorIndexWhite)
+        {
+            if (colorIndex < 0 || colorIndex > 255)
+            {
+                return defaultColorIndex < 0 || defaultColorIndex > 255
+                    ? CadServiceManager.ColorIndexWhite
+                    : defaultColorIndex;
+            }
+            else
+            {
+                return colorIndex;
+            }
+        }
 
         /// <summary>
         ///     获取有效的颜色

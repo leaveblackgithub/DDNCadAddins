@@ -310,16 +310,16 @@ namespace ServiceACAD
                 return false;
             }
 
-            // 如果两个值类型相同，直接比较
-            if (value1.GetType() == value2.GetType())
-            {
-                return value1.Equals(value2);
-            }
-
             // 处理字符串和数值类型的比较
             if (value1 is string strValue1 && value2 is string strValue2)
             {
                 return string.Equals(strValue1, strValue2, StringComparison.OrdinalIgnoreCase);
+            }
+
+            // 如果两个值类型相同，直接比较
+            if (value1.GetType() == value2.GetType())
+            {
+                return value1.Equals(value2);
             }
 
             // 尝试将值转换为相同类型后比较
@@ -401,51 +401,8 @@ namespace ServiceACAD
             }
         }
 
-        /// <summary>
-        ///     在当前空间创建块参照
-        /// </summary>
-        /// <param name="name">块名称</param>
-        /// <param name="insertPt">插入点</param>
-        /// <param name="layerName">图层名称</param>
-        /// <param name="color">颜色</param>
-        /// <param name="linetype">线型</param>
-        /// <returns>创建成功的块参照ObjectId，失败返回ObjectId.Null</returns>
-        public ObjectId CreateBlockRefInCurrentSpace(string name, Point3d insertPt, string layerName, Color color,
-            string linetype)
-        {
-            if (string.IsNullOrEmpty(name))
-            {
-                Logger._.Warn("块名称不能为空");
-                return ObjectId.Null;
-            }
 
-            try
-            {
-                // 获取块表记录
-                var btr = ServiceTrans.GetBlockTableRecord(name);
-                if (btr == null)
-                {
-                    Logger._.Warn($"块 {name} 不存在");
-                    return ObjectId.Null;
-                }
 
-                // 创建块参照
-                var blkRef = new BlockReference(insertPt, btr.ObjectId)
-                {
-                    Layer = layerName,
-                    Color = color,
-                    Linetype = linetype
-                };
-
-                // 将块参照添加到当前空间
-                return ServiceTrans.AppendEntityToCurrentSpace(blkRef);
-            }
-            catch (Exception ex)
-            {
-                Logger._.Error($"创建块参照失败: {ex.Message}");
-                return ObjectId.Null;
-            }
-        }
 
         // /// <summary>
         // /// 获取块参照的所有属性值

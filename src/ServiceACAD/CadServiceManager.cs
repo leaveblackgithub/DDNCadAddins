@@ -17,8 +17,8 @@ namespace ServiceACAD
         public const short ColorIndexWhite = 7;
         public const short ColorIndexRed = 1;
         public const short ColorIndexYellow = 2;
-        public const short ColorIndexBlue = 6;
-        public const short ColorIndexMagenta = 5;
+        public const short ColorIndexBlue = 5;
+        public const short ColorIndexMagenta = 6;
         public const short ColorIndexCyan = 4;
         public const string StrLayer = "Layer";
         public const string StrLinetype = "Linetype";

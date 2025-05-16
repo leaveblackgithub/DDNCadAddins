@@ -128,10 +128,11 @@ namespace ServiceACAD
         /// <param name="insertPt">插入点</param>
         /// <param name="layerName">图层名称</param>
         /// <param name="colorIndex">颜色索引</param>
-        /// <param name="linetype">线型</param>
+        /// <param name="lineTypeName">线型</param>
         /// <returns>创建成功的块参照ObjectId，失败返回ObjectId.Null</returns>
         public ObjectId CreateBlockRefInCurrentSpace(ObjectId blkDefId, Point3d insertPt = default(Point3d),
-            string layerName = "", short colorIndex = 256, string linetype = "BYLAYER")
+            string layerName = CadServiceManager.Layer0, short colorIndex = CadServiceManager.ColorIndexByLayer,
+            string lineTypeName = CadServiceManager.StrByLayer)
         {
             try
             {
@@ -152,21 +153,20 @@ namespace ServiceACAD
 
                     // 创建块参照
                     var blockRef = new BlockReference(insertPt, blkDefId);
-
                     // 设置块参照属性
-                    if (!string.IsNullOrEmpty(layerName))
+                    if (layerName!=CadServiceManager.Layer0)
                     {
                         blockRef.Layer = _transactionService.Style.GetValidLayerName(layerName);
                     }
 
-                    if (colorIndex != 256)
+                    if (colorIndex != CadServiceManager.ColorIndexByLayer)
                     {
                         blockRef.ColorIndex = _transactionService.Style.GetValidColorIndex(colorIndex);
                     }
 
-                    if (linetype != "BYLAYER")
+                    if (lineTypeName != CadServiceManager.StrByLayer)
                     {
-                        blockRef.Linetype = _transactionService.Style.GetValidLineTypeName(linetype);
+                        blockRef.Linetype = _transactionService.Style.GetValidLineTypeName(lineTypeName);
                     }
 
                     // 添加块参照到当前空间

@@ -11,10 +11,12 @@ namespace AddinsAcad.ServiceTests
     /// </summary>
     public static class BlockServiceTestUtils
     {
-        private const string NameTestLayer = "TestLayer";
-        private const string NameTestLinetype = "TestLinetype";
-        private const string EntityIdKey = "TestEntityId";
+        public const string NameTestLayer = "TestLayer";
+        public const string NameTestLinetype = "TestLinetype";
+        public const string EntityIdKey = "TestEntityId";
         public const string TestBlockName = "TestBlockForExplode";
+        public const string StrValue1 = "属性值1";
+        public const string StrValue2 = "属性值2";
 
         /// <summary>
         ///     测试实体信息字典，键为实体标识符，值为实体属性信息
@@ -109,7 +111,7 @@ namespace AddinsAcad.ServiceTests
                     {
                         { CadServiceManager.StrTypeName, CadServiceManager.StrAttributeDefinition },
                         { CadServiceManager.StrPosition, new Point3d(40, 0, 0) },
-                        { CadServiceManager.StrTextString, "属性值1" },
+                        { CadServiceManager.StrTextString, StrValue1 },
                         { CadServiceManager.StrTag, "ATTR1" },
                         { CadServiceManager.StrPrompt, "默认值1" },
                         { CadServiceManager.StrHeight, 2.5 },
@@ -126,7 +128,7 @@ namespace AddinsAcad.ServiceTests
                     {
                         { CadServiceManager.StrTypeName, CadServiceManager.StrAttributeDefinition },
                         { CadServiceManager.StrPosition, new Point3d(40, 10, 0) },
-                        { CadServiceManager.StrTextString, "属性值2" },
+                        { CadServiceManager.StrTextString, StrValue2 },
                         { CadServiceManager.StrTag, "ATTR2" },
                         { CadServiceManager.StrPrompt, "默认值2" },
                         { CadServiceManager.StrHeight, 5.0 },
@@ -155,9 +157,9 @@ namespace AddinsAcad.ServiceTests
                 // 使用事务服务创建块
                 var blkDefId = serviceTrans.Block.CreateBlockDef(entities, TestBlockName);
                 var blkRefId = serviceTrans.Block.CreateBlockRefInCurrentSpace(blkDefId, Point3d.Origin,
-                    serviceTrans.Style.GetValidLayerName(NameTestLayer),
-                    serviceTrans.Style.GetValidColorIndex(CadServiceManager.ColorIndexMagenta),
-                    serviceTrans.Style.GetValidLineTypeName(NameTestLinetype));
+                    NameTestLayer,
+                    CadServiceManager.ColorIndexMagenta,
+                    NameTestLinetype);
                 return blkRefId;
             }
             catch (Exception ex)
