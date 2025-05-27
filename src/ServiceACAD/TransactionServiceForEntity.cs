@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.ApplicationServices;
 
 namespace ServiceACAD
 {
@@ -267,6 +269,73 @@ namespace ServiceACAD
 
             Logger._.Warn($"无法将 {value.GetType().Name} 转换为 {targetType.Name}");
             return null;
+        }
+        public OpResult<ObjectId> DrawPolygon(Vector3d normal, Matrix3d mat, Point2dCollection vertices)
+        {
+            try
+            {
+                if (vertices == null || vertices.Count == 0)
+                {
+                    Logger._.Error("边界点集合为空");
+                    return OpResult<ObjectId>.Fail("边界点集合为空");
+                }
+
+                if (mat == null)
+                {
+                    Logger._.Error("变换矩阵为空");
+                    return OpResult<ObjectId>.Fail("变换矩阵为空");
+                }
+
+                ObjectId ret;
+                var pl = new Polyline();
+                pl.SetDatabaseDefaults();
+                pl.ColorIndex = CadServiceManager.ColorIndexMagenta;
+                pl.Layer =_transactionService.Style.GetValidLayerName("_POLYGON");
+                pl.Closed = true;
+                if (vertices.Count > 2)
+                {
+                    
+                    for (var i = 0; i < vertices.Count; i++)
+                    {
+                        pl.AddVertexAt(0, vertices[i], 0, 0, 0);
+                    }
+
+                }
+                else
+                {
+                    pl.SetDatabaseDefaults();
+                    
+                    var p1 = vertices[0];
+                    var p2 = vertices[1];
+                    
+                    pl.AddVertexAt(0, p1, 0, 0, 0);
+                    pl.AddVertexAt(1, new Point2d(p1.X, p2.Y), 0, 0, 0);
+                    pl.AddVertexAt(2, p2, 0, 0, 0);
+                    pl.AddVertexAt(3, new Point2d(p2.X, p1.Y), 0, 0, 0);
+                }
+
+                // 检查变换矩阵是否为单位矩阵
+                if (mat != Matrix3d.Identity)
+                {
+                    pl.TransformBy(mat);
+                }
+                
+                ret = _transactionService.AppendEntityToModelSpace(pl);
+                
+                if (ret == ObjectId.Null)
+                {
+                    Logger._.Error("无法将多边形添加到模型空间");
+                    return OpResult<ObjectId>.Fail("无法将多边形添加到模型空间");
+                }
+
+                Logger._.Info($"成功创建多边形，ID: {ret}");
+                return OpResult<ObjectId>.Success(ret);
+            }
+            catch (Exception e)
+            {
+                Logger._.Error($"创建多边形失败: {e.Message}");
+                return OpResult<ObjectId>.Fail($"创建多边形失败: {e.Message}");
+            }
         }
     }
 }

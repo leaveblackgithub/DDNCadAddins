@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
 
 namespace ServiceACAD
 {
@@ -32,5 +33,7 @@ namespace ServiceACAD
         /// <param name="properties">属性字典</param>
         /// <returns>创建的实体对象，如果创建失败则返回null</returns>
         Entity CreateEntityByTypeAndProperties(string typeName, Dictionary<string, object> properties);
+
+        OpResult<ObjectId> DrawPolygon(Vector3d normal, Matrix3d mat, Point2dCollection vertices);
     }
 }

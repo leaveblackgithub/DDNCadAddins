@@ -33,6 +33,9 @@ Features:
     <Compile Include="$(SolutionDir)CommonAssemblyInfo.cs">
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
+    <Compile Include="Commands\BlockCleanupCommand.cs" />
+    <Compile Include="Commands\ExplodeAsShownCommand.cs" />
+    <Compile Include="Commands\GenerateXclipBoundaryCommand.cs" />
     <Compile Include="TestCommands\CreateTestBlockForExplodeCommand.cs" />
     <Compile Include="ExampleTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

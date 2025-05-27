@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
-using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.DatabaseServices.Filters;
 using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.ApplicationServices;
 
 namespace ServiceACAD
 {
@@ -80,11 +81,53 @@ namespace ServiceACAD
             return CadBlkRef.AttributeCollection.Count > 0;
         }
 
+        public string Layer
+        {
+            get => CadBlkRef.Layer;
+            set
+            {
+                UpgradeOpen();
+
+                CadBlkRef.Layer = value;
+            }
+        }
+
+        public void UpgradeOpen()
+        {
+            if (!CadBlkRef.IsWriteEnabled)
+            {
+                CadBlkRef.UpgradeOpen();
+            }
+        }
+
+
+        public int ColorIndex
+        {
+            get => CadBlkRef.ColorIndex;
+            set
+            {
+                UpgradeOpen();
+                CadBlkRef.ColorIndex = value;
+            }
+        }
+
+        public string Linetype
+        {
+            get => CadBlkRef.Linetype;
+            set
+            {
+                UpgradeOpen();
+                CadBlkRef.Linetype = value;
+            }
+        }
+
+        public string Name => CadBlkRef.Name;
+
         /// <summary>
         ///     爆炸块参照并将其属性转换为文本
         /// </summary>
         /// <returns>如果爆炸成功返回true，否则返回false</returns>
-        public OpResult<List<ObjectId>> ExplodeWithAttributes()
+        public OpResult<List<ObjectId>> ExplodeAsShown()
         {
             if (CadBlkRef == null)
             {
@@ -118,12 +161,17 @@ namespace ServiceACAD
                 entitiesToAdd.AddRange(textList);
 
                 // 执行爆炸操作
-                var explodedResult=ProcessExplodedEntities(CadBlkRef);
+                var explodedResult = ProcessExplodedEntities(CadBlkRef);
                 if (!explodedResult.IsSuccess)
                 {
                     return OpResult<List<ObjectId>>.Fail(explodedResult.Message);
                 }
+
                 entitiesToAdd.AddRange(explodedResult.Data);
+                if (entitiesToAdd.Count == 0)
+                {
+                    return OpResult<List<ObjectId>>.Fail("无法获取爆炸后实体");
+                }
 
                 // 将所有实体添加到当前空间
                 var addedEntities = ServiceTrans.AppendEntitiesToCurrentSpace(entitiesToAdd);
@@ -140,6 +188,220 @@ namespace ServiceACAD
             catch (Exception ex)
             {
                 return OpResult<List<ObjectId>>.Fail($"爆炸块参照失败: {ex.Message}");
+            }
+        }
+
+
+        // /// <summary>
+        // /// 获取块参照的所有属性值
+        // /// </summary>
+        // /// <returns>属性标签和值的字典，如果块参照不存在或没有属性则返回空字典</returns>
+        // public Dictionary<string, string> GetAllAttributeValues()
+        // {
+        //     var attributeValues = new Dictionary<string, string>();
+        //     
+        //     if (CadBlkRef == null)
+        //     {
+        //         return attributeValues;
+        //     }
+        //
+        //     try
+        //     {
+        //         // 遍历块参照的所有属性
+        //         foreach (ObjectId attId in CadBlkRef.AttributeCollection)
+        //         {
+        //             AttributeReference attRef = ServiceTrans.GetObject<AttributeReference>(attId, OpenMode.ForRead);
+        //             if (attRef != null)
+        //             {
+        //                 // 添加属性标签和值到字典
+        //                 attributeValues[attRef.Tag] = attRef.TextString;
+        //             }
+        //         }
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         Debug.WriteLine($"获取属性值失败: {ex.Message}");
+        //     }
+        //
+        //     return attributeValues;
+        // }
+        //
+        // /// <summary>
+        // /// 获取指定标签的属性值
+        // /// </summary>
+        // /// <param name="tag">属性标签</param>
+        // /// <returns>属性值，如果找不到则返回空字符串</returns>
+        // public string GetAttributeValue(string tag)
+        // {
+        //     if (string.IsNullOrEmpty(tag) || CadBlkRef == null)
+        //     {
+        //         return string.Empty;
+        //     }
+        //
+        //     try
+        //     {
+        //         // 遍历块参照的所有属性
+        //         foreach (ObjectId attId in CadBlkRef.AttributeCollection)
+        //         {
+        //             AttributeReference attRef = ServiceTrans.GetObject<AttributeReference>(attId, OpenMode.ForRead);
+        //             if (attRef != null && attRef.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase))
+        //             {
+        //                 // 找到匹配的属性标签，返回其值
+        //                 return attRef.TextString;
+        //             }
+        //         }
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         Debug.WriteLine($"获取属性值失败: {ex.Message}");
+        //     }
+        //
+        //     return string.Empty;
+        // }
+        /// <summary>
+        ///     为图块生成Xclip边界
+        /// </summary>
+        /// <returns>操作结果</returns>
+        public OpResult<ObjectId> GenerateXclipBoundary()
+        {
+            try
+            {
+                if (CadBlkRef == null)
+                {
+                    Logger._.Error("无法获取图块引用");
+                    return OpResult<ObjectId>.Fail("无法获取图块引用");
+                }
+
+                if (!IsXclipped())
+                {
+                    Logger._.Error("图块没有Xclip信息");
+                    return OpResult<ObjectId>.Fail("图块没有Xclip信息");
+                }
+
+                // 获取当前文档和数据库
+                var doc = Application.DocumentManager.MdiActiveDocument;
+                if (doc == null)
+                {
+                    Logger._.Error("无法获取当前文档");
+                    return OpResult<ObjectId>.Fail("无法获取当前文档");
+                }
+
+                var db = doc.Database;
+                if (db == null)
+                {
+                    Logger._.Error("无法获取数据库");
+                    return OpResult<ObjectId>.Fail("无法获取数据库");
+                }
+
+                // 获取当前UCS
+                var ucs = doc.Editor.CurrentUserCoordinateSystem;
+                Logger._.Info($"当前UCS: {ucs}");
+
+                // 打开扩展字典
+                var extDict = ServiceTrans.GetObject<DBDictionary>(CadBlkRef.ExtensionDictionary);
+                if (extDict == null)
+                {
+                    Logger._.Error("无法获取扩展字典");
+                    return OpResult<ObjectId>.Fail("无法获取扩展字典");
+                }
+
+                // 打开ACAD_FILTER字典
+                var filterDict = ServiceTrans.GetObject<DBDictionary>(extDict.GetAt("ACAD_FILTER"));
+                if (filterDict == null)
+                {
+                    Logger._.Error("无法获取ACAD_FILTER字典");
+                    return OpResult<ObjectId>.Fail("无法获取ACAD_FILTER字典");
+                }
+
+                // 获取SPATIAL项
+                var spatialId = filterDict.GetAt("SPATIAL");
+                if (spatialId == ObjectId.Null)
+                {
+                    Logger._.Error("无法获取SPATIAL项");
+                    return OpResult<ObjectId>.Fail("无法获取SPATIAL项");
+                }
+
+                var filter = ServiceTrans.GetObject<SpatialFilter>(spatialId);
+                if (filter == null)
+                {
+                    Logger._.Error("无法获取Xclip边界数据");
+                    return OpResult<ObjectId>.Fail("无法获取Xclip边界数据");
+                }
+
+                // 获取原始点集
+                var points = filter.Definition.GetPoints();
+                if (points == null || points.Count == 0)
+                {
+                    Logger._.Error("Xclip边界点集合为空");
+                    return OpResult<ObjectId>.Fail("Xclip边界点集合为空");
+                }
+
+                Logger._.Info($"图块信息:");
+                Logger._.Info($"- 旋转角度: {CadBlkRef.Rotation}");
+                Logger._.Info($"- 缩放比例: {CadBlkRef.ScaleFactors}");
+                Logger._.Info($"- 插入点: {CadBlkRef.Position}");
+                Logger._.Info($"- 原始点数量: {points.Count}");
+
+                // 从SpatialFilter获取参数
+                var normal = filter.Definition.Normal;
+                var elevation = filter.Definition.Elevation;
+                var frontClip = filter.Definition.FrontClip;
+                var backClip = filter.Definition.BackClip;
+                
+                Logger._.Info($"- 法线方向: {normal}");
+                Logger._.Info($"- 标高: {elevation}");
+                Logger._.Info($"- 前剪裁距离: {frontClip}");
+                Logger._.Info($"- 后剪裁距离: {backClip}");
+                
+                // 获取块参照的变换矩阵
+                var blockTransform = CadBlkRef.BlockTransform;
+                Logger._.Info($"块参照变换矩阵: {blockTransform}");
+
+                // 创建一个新的点集合，用于存储转换后的点
+                var transformedPoints = new Point2dCollection();
+
+                // 获取当前视图的信息来决定是否缩放
+                var view = doc.Editor.GetCurrentView();
+                var viewCenter = view.Target;
+                Logger._.Info($"视图中心: ({viewCenter.X}, {viewCenter.Y})");
+
+                // 输出原始点
+                for (int i = 0; i < points.Count; i++)
+                {
+                    Logger._.Info($"原始点[{i}]: ({points[i].X}, {points[i].Y})");
+                }
+
+                // 使用循环迭代点集合
+                for (int i = 0; i < points.Count; i++)
+                {
+                    // 直接使用原始点，不进行任何变换
+                    var point3d = new Point3d(points[i].X, points[i].Y, 0);
+                    
+                    // 将点变换到块参照的坐标系
+                    var transformedPoint = point3d.TransformBy(blockTransform);
+                    Logger._.Info($"变换点[{i}]: ({transformedPoint.X}, {transformedPoint.Y})");
+                    
+                    // 直接使用变换后的点作为最终点
+                    transformedPoints.Add(new Point2d(transformedPoint.X, transformedPoint.Y));
+                }
+
+                // 使用XCLIP的Normal/Elevation/Clip values 创建多边形
+                // 使用单位矩阵作为变换矩阵，因为点已经被转换过了
+                var result = ServiceTrans.Entity.DrawPolygon(normal, Matrix3d.Identity, transformedPoints);
+
+                if (!result.IsSuccess)
+                {
+                    Logger._.Error($"生成Xclip边界失败: {result.Message}");
+                    return result;
+                }
+
+                Logger._.Info($"成功生成Xclip边界，ID: {result.Data}");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"生成Xclip边界时发生错误: {ex.Message}\n{ex.StackTrace}");
+                return OpResult<ObjectId>.Fail($"生成Xclip边界时发生错误: {ex.Message}");
             }
         }
 
@@ -184,7 +446,7 @@ namespace ServiceACAD
 
                         // 创建DBText并添加到列表
                         var text = ConvertAttributeToText(attRef);
-                        SetChildPropsAsBlk(text,CadBlkRef);
+                        SetChildPropsAsBlk(text, CadBlkRef);
                         textList.Add(text);
                     }
                     catch (Exception ex)
@@ -355,13 +617,70 @@ namespace ServiceACAD
         {
             try
             {
+                // 1. 检查块参照状态
+                if (!blockRef.ObjectId.IsValid)
+                {
+                    Logger._.Error("块参照无效");
+                    return OpResult<List<Entity>>.Fail("块参照无效");
+                }
+
+                // 2. 确保以写方式打开
+                if (!blockRef.IsWriteEnabled)
+                {
+                    blockRef.UpgradeOpen();
+                    if (!blockRef.IsWriteEnabled)
+                    {
+                        Logger._.Error("无法以写方式打开块参照");
+                        return OpResult<List<Entity>>.Fail("无法以写方式打开块参照");
+                    }
+                }
+
+                // 3. 检查块定义
+                var blockDef = ServiceTrans.GetObject<BlockTableRecord>(blockRef.BlockTableRecord);
+                if (blockDef == null || !blockRef.BlockTableRecord.IsValid)
+                {
+                    Logger._.Error("块定义无效");
+                    return OpResult<List<Entity>>.Fail("块定义无效");
+                }
+
+                // 4. 检查块定义中的实体数量
+                var entityIds = ServiceTrans.GetChildObjects<DBObject>(blockDef);
+                if (entityIds.Count == 0)
+                {
+                    Logger._.Error("块定义不含实体");
+                    return OpResult<List<Entity>>.Fail("块定义不含实体");
+                }
+
+                Logger._.Info($"块定义中的实体数量: {entityIds.Count}");
+
+
+                // 5. 检查块参照的变换
+                if (blockRef.ScaleFactors.X == 0 || blockRef.ScaleFactors.Y == 0 || blockRef.ScaleFactors.Z == 0)
+                {
+                    Logger._.Error("块参照的缩放比例无效");
+                    return OpResult<List<Entity>>.Fail("块参照的缩放比例无效");
+                }
+
+                if (double.IsNaN(blockRef.Rotation))
+                {
+                    Logger._.Error("块参照的旋转角度无效");
+                    return OpResult<List<Entity>>.Fail("块参照的旋转角度无效");
+                }
+
+                // 6. 执行爆炸操作
                 var entitiesToAdd = new List<Entity>();
                 var explodedEntities = new DBObjectCollection();
+
                 blockRef.Explode(explodedEntities);
+                if (explodedEntities.Count == 0)
+                {
+                    Logger._.Error("爆炸后实体数量为0");
+                    return OpResult<List<Entity>>.Fail("爆炸后实体数量为0");
+                }
 
-                var entityCount = 0;
-                var attributeDefCount = 0;
+                Logger._.Info($"爆炸后实体数量: {explodedEntities.Count}");
 
+                // 7. 处理爆炸后的实体
                 foreach (DBObject obj in explodedEntities)
                 {
                     if (obj == null)
@@ -371,21 +690,16 @@ namespace ServiceACAD
 
                     if (obj is AttributeDefinition)
                     {
-                        // 丢弃属性定义
                         obj.Dispose();
-                        attributeDefCount++;
                     }
                     else if (obj is Entity entity)
                     {
-                        // 处理实体的图层和属性
                         SetChildPropsAsBlk(entity, blockRef);
                         entitiesToAdd.Add(entity);
-                        entityCount++;
                     }
                     else
                     {
-                        Logger._.Warn($"\n警告: 遇到未处理的对象类型 {obj.GetType().Name}");
-
+                        Logger._.Warn($"遇到未处理的对象类型: {obj.GetType().Name}");
                         if (obj is DBObject dbObj && !dbObj.IsDisposed)
                         {
                             dbObj.Dispose();
@@ -397,78 +711,12 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
+                Logger._.Error($"爆炸块参照时发生异常: {ex.Message}");
                 return OpResult<List<Entity>>.Fail(ex.Message);
             }
         }
 
-
-
-
-        // /// <summary>
-        // /// 获取块参照的所有属性值
-        // /// </summary>
-        // /// <returns>属性标签和值的字典，如果块参照不存在或没有属性则返回空字典</returns>
-        // public Dictionary<string, string> GetAllAttributeValues()
-        // {
-        //     var attributeValues = new Dictionary<string, string>();
-        //     
-        //     if (CadBlkRef == null)
-        //     {
-        //         return attributeValues;
-        //     }
-        //
-        //     try
-        //     {
-        //         // 遍历块参照的所有属性
-        //         foreach (ObjectId attId in CadBlkRef.AttributeCollection)
-        //         {
-        //             AttributeReference attRef = ServiceTrans.GetObject<AttributeReference>(attId, OpenMode.ForRead);
-        //             if (attRef != null)
-        //             {
-        //                 // 添加属性标签和值到字典
-        //                 attributeValues[attRef.Tag] = attRef.TextString;
-        //             }
-        //         }
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         Debug.WriteLine($"获取属性值失败: {ex.Message}");
-        //     }
-        //
-        //     return attributeValues;
-        // }
-        //
-        // /// <summary>
-        // /// 获取指定标签的属性值
-        // /// </summary>
-        // /// <param name="tag">属性标签</param>
-        // /// <returns>属性值，如果找不到则返回空字符串</returns>
-        // public string GetAttributeValue(string tag)
-        // {
-        //     if (string.IsNullOrEmpty(tag) || CadBlkRef == null)
-        //     {
-        //         return string.Empty;
-        //     }
-        //
-        //     try
-        //     {
-        //         // 遍历块参照的所有属性
-        //         foreach (ObjectId attId in CadBlkRef.AttributeCollection)
-        //         {
-        //             AttributeReference attRef = ServiceTrans.GetObject<AttributeReference>(attId, OpenMode.ForRead);
-        //             if (attRef != null && attRef.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase))
-        //             {
-        //                 // 找到匹配的属性标签，返回其值
-        //                 return attRef.TextString;
-        //             }
-        //         }
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         Debug.WriteLine($"获取属性值失败: {ex.Message}");
-        //     }
-        //
-        //     return string.Empty;
-        // }
+        
     }
 }
+

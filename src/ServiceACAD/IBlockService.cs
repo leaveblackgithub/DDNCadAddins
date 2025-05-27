@@ -5,15 +5,11 @@ namespace ServiceACAD
 {
     public interface IBlockService
     {
-        /// <summary>
-        ///     获取块参照对象
-        /// </summary>
-        BlockReference CadBlkRef { get; }
 
-        /// <summary>
-        ///     获取事务服务
-        /// </summary>
-        ITransactionService ServiceTrans { get; }
+        string Name { get; }
+        string Layer { get; set; }
+        int ColorIndex { get; set; }
+        string Linetype { get; set; }
 
         /// <summary>
         ///     检查块参照是否被X裁剪
@@ -31,6 +27,16 @@ namespace ServiceACAD
         ///     爆炸块参照并将其属性转换为文本
         /// </summary>
         /// <returns>如果爆炸成功返回true，否则返回false</returns>
-        OpResult<List<ObjectId>> ExplodeWithAttributes();
+        OpResult<List<ObjectId>> ExplodeAsShown();
+
+        void UpgradeOpen();
+
+        /// <summary>
+        ///     为图块生成Xclip边界
+        /// </summary>
+        /// <param name="serviceTrans">事务服务</param>
+        /// <param name="blockRefId">图块引用ID</param>
+        /// <returns>操作结果</returns>
+        OpResult<ObjectId> GenerateXclipBoundary();
     }
 }

@@ -72,7 +72,7 @@ namespace AddinsACAD.ServiceTests
                     }
 
                     // 爆炸块参照，将属性转换为文本
-                    var explodeResult = blkService2.ExplodeWithAttributes();
+                    var explodeResult = blkService2.ExplodeAsShown();
 
                     // 验证爆炸操作成功
                     if (!explodeResult.IsSuccess)
@@ -143,19 +143,18 @@ namespace AddinsACAD.ServiceTests
                     }
 
                     // 修改块参照的属性
-                    var blockRef = blockService.CadBlkRef;
-                    var originalLayer = blockRef.Layer;
-                    var originalColorIndex = blockRef.ColorIndex;
-                    var originalLinetype = blockRef.Linetype;
+                    var originalLayer = blockService.Layer;
+                    var originalColorIndex = blockService.ColorIndex;
+                    var originalLinetype = blockService.Linetype;
 
                     // 设置新的属性
-                    blockRef.UpgradeOpen();
-                    blockRef.Layer = "TestExplodeLayer";
-                    blockRef.ColorIndex = CadServiceManager.ColorIndexCyan; // 青色
-                    blockRef.Linetype = "DASHED";
+                    blockService.UpgradeOpen();
+                    blockService.Layer = "TestExplodeLayer";
+                    blockService.ColorIndex = CadServiceManager.ColorIndexCyan; // 青色
+                    blockService.Linetype = "DASHED";
 
                     // 爆炸块参照
-                    var explodeResult = blockService.ExplodeWithAttributes();
+                    var explodeResult = blockService.ExplodeAsShown();
 
                     // 验证爆炸操作成功
                     if (!explodeResult.IsSuccess)

@@ -34,6 +34,8 @@ Features:
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
     <Compile Include="BlockService.cs" />
+    <Compile Include="MyMessageFilter.cs" />
+    <Compile Include="HostApplicationServicesExtensions.cs" />
     <Compile Include="ConstructorUtils.cs" />
     <Compile Include="DocumentService.cs" />
     <Compile Include="CadServiceManager.cs" />
