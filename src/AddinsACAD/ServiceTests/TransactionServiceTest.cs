@@ -19,10 +19,8 @@ namespace AddinsACAD.ServiceTests
                 Assert.NotNull(modelSpace);
             }
 
-            ;
             CadServiceManager._.ExecuteInTransactions("", Action1);
         }
-
 
         [Test]
         public void TestGetModelSpaceChildObjs2()
@@ -52,7 +50,6 @@ namespace AddinsACAD.ServiceTests
             {
                 var blkRefIds = CommonTestMethods.GetBlkRefIdsOf23432(tr);
                 Assert.AreEqual(blkRefIds.Count, 6);
-                // CadServiceManager._.Isolate(blkRefIds[0]);
             }
 
             CadServiceManager._.ExecuteInTransactions("xclip", Action1);

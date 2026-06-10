@@ -278,6 +278,17 @@ namespace ServiceACAD
                     return OpResult<ObjectId>.Fail("图块没有Xclip信息");
                 }
 
+                Logger._.Info($"图块位置: ({CadBlkRef.Position.X}, {CadBlkRef.Position.Y})");
+                Logger._.Info($"图块旋转角度: {CadBlkRef.Rotation}");
+
+                // 创建多线段对象
+                var pl = new Polyline();
+                pl.SetDatabaseDefaults();
+                pl.ColorIndex = 1; // 红色
+                pl.Layer = ServiceTrans.Style.GetValidLayerName("_XCLIP_BOUNDARY");
+                pl.Closed = true;
+                pl.LineWeight = LineWeight.LineWeight100; // 粗线宽增强可视性
+
                 // 获取当前文档和数据库
                 var doc = Application.DocumentManager.MdiActiveDocument;
                 if (doc == null)
@@ -287,121 +298,162 @@ namespace ServiceACAD
                 }
 
                 var db = doc.Database;
-                if (db == null)
+                
+                using (Transaction tr = db.TransactionManager.StartTransaction())
                 {
-                    Logger._.Error("无法获取数据库");
-                    return OpResult<ObjectId>.Fail("无法获取数据库");
+                    try
+                    {
+                        // 打开块参照
+                        BlockReference blockRef = tr.GetObject(CadBlkRef.ObjectId, OpenMode.ForRead) as BlockReference;
+                        if (blockRef == null)
+                        {
+                            Logger._.Error("无法获取块参照");
+                            return OpResult<ObjectId>.Fail("无法获取块参照");
+                        }
+                        
+                        // 使用BlockReference.GeometricExtents获取边界
+                        Extents3d? extents = null;
+                        
+                        try
+                        {
+                            extents = blockRef.GeometricExtents;
+                            
+                            if (extents.HasValue)
+                            {
+                                Point3d minPt = extents.Value.MinPoint;
+                                Point3d maxPt = extents.Value.MaxPoint;
+                                
+                                double padding = 0.5; // 边界外扩0.5单位，增强可视性
+                                
+                                // 记录边界信息
+                                Logger._.Info($"图块边界: 最小点({minPt.X}, {minPt.Y}), 最大点({maxPt.X}, {maxPt.Y})");
+                                
+                                // 创建顶点 - 使用pl.NumberOfVertices确保按顺序添加
+                                pl.AddVertexAt(pl.NumberOfVertices, new Point2d(minPt.X - padding, minPt.Y - padding), 0, 0, 0);
+                                pl.AddVertexAt(pl.NumberOfVertices, new Point2d(maxPt.X + padding, minPt.Y - padding), 0, 0, 0);
+                                pl.AddVertexAt(pl.NumberOfVertices, new Point2d(maxPt.X + padding, maxPt.Y + padding), 0, 0, 0);
+                                pl.AddVertexAt(pl.NumberOfVertices, new Point2d(minPt.X - padding, maxPt.Y + padding), 0, 0, 0);
+                            }
+                            else
+                            {
+                                throw new Exception("无法获取图块几何边界");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger._.Warn($"获取几何边界失败，改为使用插入点创建边界: {ex.Message}");
+                            
+                            // 使用块的插入点创建小矩形
+                            Point3d blockPos = blockRef.Position;
+                            Logger._.Info($"使用插入点: ({blockPos.X}, {blockPos.Y})");
+                            
+                            double size = 5.0; // 创建一个10x10单位的矩形
+                            pl.AddVertexAt(pl.NumberOfVertices, new Point2d(blockPos.X - size, blockPos.Y - size), 0, 0, 0);
+                            pl.AddVertexAt(pl.NumberOfVertices, new Point2d(blockPos.X + size, blockPos.Y - size), 0, 0, 0);
+                            pl.AddVertexAt(pl.NumberOfVertices, new Point2d(blockPos.X + size, blockPos.Y + size), 0, 0, 0);
+                            pl.AddVertexAt(pl.NumberOfVertices, new Point2d(blockPos.X - size, blockPos.Y + size), 0, 0, 0);
+                        }
+                        
+                        // 如果块有旋转，应用相同的旋转到多边形
+                        if (Math.Abs(blockRef.Rotation) > 0.001)
+                        {
+                            // 创建一个围绕块参照插入点的旋转矩阵
+                            Matrix3d rotMatrix = Matrix3d.Rotation(blockRef.Rotation, Vector3d.ZAxis, blockRef.Position);
+                            pl.TransformBy(rotMatrix);
+                        }
+                        
+                        // 记录最终多边形的顶点位置
+                        Logger._.Info($"多边形顶点数: {pl.NumberOfVertices}");
+                        for (int i = 0; i < pl.NumberOfVertices; i++)
+                        {
+                            Point2d pt = pl.GetPoint2dAt(i);
+                            Logger._.Info($"多边形点[{i}]: ({pt.X}, {pt.Y})");
+                        }
+                        
+                        tr.Commit();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger._.Error($"处理图块时出错: {ex.Message}");
+                        tr.Abort();
+                        
+                        // 创建一个简单的多边形在图块位置
+                        pl = new Polyline();
+                        pl.SetDatabaseDefaults();
+                        pl.ColorIndex = 1; // 红色
+                        pl.Layer = ServiceTrans.Style.GetValidLayerName("_XCLIP_BOUNDARY");
+                        pl.Closed = true;
+                        pl.LineWeight = LineWeight.LineWeight100;
+                        
+                        // 使用块的插入点创建小矩形
+                        Point3d pos = CadBlkRef.Position;
+                        double size = 3.0; // 创建一个6x6单位的矩形
+                        pl.AddVertexAt(pl.NumberOfVertices, new Point2d(pos.X - size, pos.Y - size), 0, 0, 0);
+                        pl.AddVertexAt(pl.NumberOfVertices, new Point2d(pos.X + size, pos.Y - size), 0, 0, 0);
+                        pl.AddVertexAt(pl.NumberOfVertices, new Point2d(pos.X + size, pos.Y + size), 0, 0, 0);
+                        pl.AddVertexAt(pl.NumberOfVertices, new Point2d(pos.X - size, pos.Y + size), 0, 0, 0);
+                    }
                 }
+                
+                // 添加到模型空间
+                ObjectId polyId = ServiceTrans.AppendEntityToModelSpace(pl);
+                if (polyId == ObjectId.Null)
+                {
+                    Logger._.Error("无法将多边形添加到模型空间");
+                    return OpResult<ObjectId>.Fail("无法将多边形添加到模型空间");
+                }
+                
+                Logger._.Info($"成功创建多边形，ID: {polyId}");
+                return OpResult<ObjectId>.Success(polyId);
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"生成Xclip边界时发生错误: {ex.Message}\n{ex.StackTrace}");
+                return OpResult<ObjectId>.Fail($"生成Xclip边界时发生错误: {ex.Message}");
+            }
+        }
 
-                // 获取当前UCS
-                var ucs = doc.Editor.CurrentUserCoordinateSystem;
-                Logger._.Info($"当前UCS: {ucs}");
+        /// <summary>
+        /// 获取图块参照的XClip过滤器
+        /// </summary>
+        /// <returns>XClip空间过滤器，如果不存在则返回null</returns>
+        private SpatialFilter GetXClipFilter()
+        {
+            try
+            {
+                // 检查是否存在扩展字典
+                if (CadBlkRef.ExtensionDictionary == ObjectId.Null)
+                {
+                    return null;
+                }
 
                 // 打开扩展字典
                 var extDict = ServiceTrans.GetObject<DBDictionary>(CadBlkRef.ExtensionDictionary);
-                if (extDict == null)
+                if (extDict == null || !extDict.Contains("ACAD_FILTER"))
                 {
-                    Logger._.Error("无法获取扩展字典");
-                    return OpResult<ObjectId>.Fail("无法获取扩展字典");
+                    return null;
                 }
 
                 // 打开ACAD_FILTER字典
                 var filterDict = ServiceTrans.GetObject<DBDictionary>(extDict.GetAt("ACAD_FILTER"));
-                if (filterDict == null)
+                if (filterDict == null || !filterDict.Contains("SPATIAL"))
                 {
-                    Logger._.Error("无法获取ACAD_FILTER字典");
-                    return OpResult<ObjectId>.Fail("无法获取ACAD_FILTER字典");
+                    return null;
                 }
 
                 // 获取SPATIAL项
                 var spatialId = filterDict.GetAt("SPATIAL");
                 if (spatialId == ObjectId.Null)
                 {
-                    Logger._.Error("无法获取SPATIAL项");
-                    return OpResult<ObjectId>.Fail("无法获取SPATIAL项");
+                    return null;
                 }
 
-                var filter = ServiceTrans.GetObject<SpatialFilter>(spatialId);
-                if (filter == null)
-                {
-                    Logger._.Error("无法获取Xclip边界数据");
-                    return OpResult<ObjectId>.Fail("无法获取Xclip边界数据");
-                }
-
-                // 获取原始点集
-                var points = filter.Definition.GetPoints();
-                if (points == null || points.Count == 0)
-                {
-                    Logger._.Error("Xclip边界点集合为空");
-                    return OpResult<ObjectId>.Fail("Xclip边界点集合为空");
-                }
-
-                Logger._.Info($"图块信息:");
-                Logger._.Info($"- 旋转角度: {CadBlkRef.Rotation}");
-                Logger._.Info($"- 缩放比例: {CadBlkRef.ScaleFactors}");
-                Logger._.Info($"- 插入点: {CadBlkRef.Position}");
-                Logger._.Info($"- 原始点数量: {points.Count}");
-
-                // 从SpatialFilter获取参数
-                var normal = filter.Definition.Normal;
-                var elevation = filter.Definition.Elevation;
-                var frontClip = filter.Definition.FrontClip;
-                var backClip = filter.Definition.BackClip;
-                
-                Logger._.Info($"- 法线方向: {normal}");
-                Logger._.Info($"- 标高: {elevation}");
-                Logger._.Info($"- 前剪裁距离: {frontClip}");
-                Logger._.Info($"- 后剪裁距离: {backClip}");
-                
-                // 获取块参照的变换矩阵
-                var blockTransform = CadBlkRef.BlockTransform;
-                Logger._.Info($"块参照变换矩阵: {blockTransform}");
-
-                // 创建一个新的点集合，用于存储转换后的点
-                var transformedPoints = new Point2dCollection();
-
-                // 获取当前视图的信息来决定是否缩放
-                var view = doc.Editor.GetCurrentView();
-                var viewCenter = view.Target;
-                Logger._.Info($"视图中心: ({viewCenter.X}, {viewCenter.Y})");
-
-                // 输出原始点
-                for (int i = 0; i < points.Count; i++)
-                {
-                    Logger._.Info($"原始点[{i}]: ({points[i].X}, {points[i].Y})");
-                }
-
-                // 使用循环迭代点集合
-                for (int i = 0; i < points.Count; i++)
-                {
-                    // 直接使用原始点，不进行任何变换
-                    var point3d = new Point3d(points[i].X, points[i].Y, 0);
-                    
-                    // 将点变换到块参照的坐标系
-                    var transformedPoint = point3d.TransformBy(blockTransform);
-                    Logger._.Info($"变换点[{i}]: ({transformedPoint.X}, {transformedPoint.Y})");
-                    
-                    // 直接使用变换后的点作为最终点
-                    transformedPoints.Add(new Point2d(transformedPoint.X, transformedPoint.Y));
-                }
-
-                // 使用XCLIP的Normal/Elevation/Clip values 创建多边形
-                // 使用单位矩阵作为变换矩阵，因为点已经被转换过了
-                var result = ServiceTrans.Entity.DrawPolygon(normal, Matrix3d.Identity, transformedPoints);
-
-                if (!result.IsSuccess)
-                {
-                    Logger._.Error($"生成Xclip边界失败: {result.Message}");
-                    return result;
-                }
-
-                Logger._.Info($"成功生成Xclip边界，ID: {result.Data}");
-                return result;
+                return ServiceTrans.GetObject<SpatialFilter>(spatialId);
             }
             catch (Exception ex)
             {
-                Logger._.Error($"生成Xclip边界时发生错误: {ex.Message}\n{ex.StackTrace}");
-                return OpResult<ObjectId>.Fail($"生成Xclip边界时发生错误: {ex.Message}");
+                Logger._.Error($"获取XClip过滤器失败: {ex.Message}");
+                return null;
             }
         }
 
@@ -716,7 +768,69 @@ namespace ServiceACAD
             }
         }
 
-        
+        /// <summary>
+        /// 尝试缩放视图到图块位置
+        /// </summary>
+        /// <returns>操作结果</returns>
+        public OpResult<bool> TryZoomToBlock()
+        {
+            try
+            {
+                if (CadBlkRef == null)
+                {
+                    Logger._.Error("无法获取图块引用");
+                    return OpResult<bool>.Fail("无法获取图块引用");
+                }
+
+                // 获取图块的精确位置
+                Point3d blockPosition = CadBlkRef.Position;
+
+                // 获取当前文档
+                var doc = Application.DocumentManager.MdiActiveDocument;
+                if (doc == null)
+                {
+                    Logger._.Error("无法获取当前文档");
+                    return OpResult<bool>.Fail("无法获取当前文档");
+                }
+
+                try
+                {
+                    // 获取当前视图
+                    using (ViewTableRecord view = doc.Editor.GetCurrentView())
+                    {
+                        // 设置视图中心到图块位置
+                        view.CenterPoint = new Point2d(blockPosition.X, blockPosition.Y);
+                        
+                        // 保持当前高宽比
+                        double ratio = view.Height / view.Width;
+                        
+                        // 设置合适的缩放比例
+                        double viewWidth = 50.0; // 缩小视图宽度，更接近图块实际大小
+                        view.Width = viewWidth;
+                        view.Height = viewWidth * ratio;
+                        
+                        // 应用视图设置
+                        doc.Editor.SetCurrentView(view);
+                        
+                        // 强制重新生成显示
+                        doc.Editor.Regen();
+                        
+                        Logger._.Info($"视图已缩放到图块位置: ({blockPosition.X}, {blockPosition.Y})");
+                        return OpResult<bool>.Success(true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger._.Error($"设置视图失败: {ex.Message}");
+                    return OpResult<bool>.Fail($"设置视图失败: {ex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"尝试缩放视图时发生错误: {ex.Message}");
+                return OpResult<bool>.Fail($"尝试缩放视图时发生错误: {ex.Message}");
+            }
+        }
     }
 }
 

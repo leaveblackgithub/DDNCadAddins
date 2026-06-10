@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
 
@@ -11,34 +12,38 @@ namespace TestRunnerACAD
     {
         // 配置文件名
         private const string CONFIG_FILE_NAME = "paths.config";
-
-        // 用于回退的默认路径
-        private const string DEFAULT_OUTPUT_PATH = @"D:\leaveblackgithub\AutoCAD_UnitTest\bin\Debug";
+        private const string HOTLOAD_PLUGIN_DIR_KEY = "HOTLOAD_PLUGIN_DIR";
+        private const string HOTLOAD_ASSEMBLY_PATHS_KEY = "HOTLOAD_ASSEMBLY_PATHS";
 
         /// <summary>
         ///     从配置文件读取输出路径
         /// </summary>
-        /// <returns>配置的输出路径，如果读取失败则返回默认路径</returns>
+        /// <returns>配置的输出路径，如果读取失败则返回插件程序集所在目录</returns>
         public static string GetOutputPath()
         {
             try
             {
-                // 配置文件路径 - 使用相对于程序运行目录的路径
-                var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, CONFIG_FILE_NAME);
-
-                // 如果配置文件存在，直接读取
-                if (File.Exists(configPath))
+                foreach (var searchDir in GetConfigSearchDirectories())
                 {
+                    var configPath = Path.Combine(searchDir, CONFIG_FILE_NAME);
+                    if (!File.Exists(configPath))
+                    {
+                        continue;
+                    }
+
                     try
                     {
-                        // 创建配置映射
                         var configFileMap = new ExeConfigurationFileMap { ExeConfigFilename = configPath };
                         var config =
                             ConfigurationManager.OpenMappedExeConfiguration(configFileMap, ConfigurationUserLevel.None);
 
                         if (config.AppSettings.Settings["OutputPath"] != null)
                         {
-                            return config.AppSettings.Settings["OutputPath"].Value;
+                            var configuredPath = config.AppSettings.Settings["OutputPath"].Value;
+                            if (!string.IsNullOrWhiteSpace(configuredPath))
+                            {
+                                return configuredPath;
+                            }
                         }
                     }
                     catch
@@ -53,7 +58,11 @@ namespace TestRunnerACAD
                     var appSettings = ConfigurationManager.AppSettings;
                     if (appSettings["OutputPath"] != null)
                     {
-                        return appSettings["OutputPath"];
+                        var configuredPath = appSettings["OutputPath"];
+                        if (!string.IsNullOrWhiteSpace(configuredPath))
+                        {
+                            return configuredPath;
+                        }
                     }
                 }
                 catch
@@ -61,13 +70,92 @@ namespace TestRunnerACAD
                     /* 忽略错误 */
                 }
 
-                // 如果无法读取配置，返回默认路径
-                return DEFAULT_OUTPUT_PATH;
+                return GetDefaultOutputPath();
             }
             catch (Exception)
             {
-                // 出现异常时返回默认路径
-                return DEFAULT_OUTPUT_PATH;
+                return GetDefaultOutputPath();
+            }
+        }
+
+        /// <summary>
+        ///     获取默认输出路径（当前插件程序集所在目录）
+        /// </summary>
+        /// <returns>插件程序集目录，无法解析时返回应用程序基目录</returns>
+        private static string GetDefaultOutputPath()
+        {
+            try
+            {
+                var assemblyDir = GetAssemblyDirectory(typeof(ConfigReader));
+                if (!string.IsNullOrEmpty(assemblyDir))
+                {
+                    return assemblyDir;
+                }
+            }
+            catch
+            {
+                /* 忽略错误 */
+            }
+
+            return AppDomain.CurrentDomain.BaseDirectory;
+        }
+
+        /// <summary>
+        ///     获取配置文件搜索目录列表
+        /// </summary>
+        /// <returns>按优先级排序的目录列表</returns>
+        private static string[] GetConfigSearchDirectories()
+        {
+            var assemblyDir = GetAssemblyDirectory(typeof(ConfigReader));
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+
+            if (string.IsNullOrEmpty(assemblyDir))
+            {
+                return new[] { baseDir };
+            }
+
+            if (string.Equals(assemblyDir.TrimEnd('\\'), baseDir.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+            {
+                return new[] { baseDir };
+            }
+
+            return new[] { assemblyDir, baseDir };
+        }
+
+        /// <summary>
+        ///     获取指定类型所在程序集的目录
+        /// </summary>
+        /// <param name="typeInAssembly">程序集中的类型</param>
+        /// <returns>程序集目录，无法解析时返回 null</returns>
+        private static string GetAssemblyDirectory(Type typeInAssembly)
+        {
+            try
+            {
+                var paths = AppDomain.CurrentDomain.GetData(HOTLOAD_ASSEMBLY_PATHS_KEY) as Dictionary<string, string>;
+                if (paths != null &&
+                    paths.TryGetValue(typeInAssembly.Assembly.FullName, out var dllPath) &&
+                    !string.IsNullOrEmpty(dllPath))
+                {
+                    return Path.GetDirectoryName(dllPath);
+                }
+
+                var pluginDir = AppDomain.CurrentDomain.GetData(HOTLOAD_PLUGIN_DIR_KEY) as string;
+                if (!string.IsNullOrEmpty(pluginDir))
+                {
+                    return pluginDir;
+                }
+
+                var location = typeInAssembly.Assembly.Location;
+                if (string.IsNullOrEmpty(location))
+                {
+                    return null;
+                }
+
+                return Path.GetDirectoryName(location);
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -81,15 +169,16 @@ namespace TestRunnerACAD
         {
             try
             {
-                // 配置文件路径
-                var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, CONFIG_FILE_NAME);
-
-                // 如果配置文件存在，读取
-                if (File.Exists(configPath))
+                foreach (var searchDir in GetConfigSearchDirectories())
                 {
+                    var configPath = Path.Combine(searchDir, CONFIG_FILE_NAME);
+                    if (!File.Exists(configPath))
+                    {
+                        continue;
+                    }
+
                     try
                     {
-                        // 创建配置映射
                         var configFileMap = new ExeConfigurationFileMap { ExeConfigFilename = configPath };
                         var config =
                             ConfigurationManager.OpenMappedExeConfiguration(configFileMap, ConfigurationUserLevel.None);

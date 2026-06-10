@@ -167,15 +167,10 @@ namespace ServiceACAD
                 return true;
             }
 
-            // 检查数值类型的隐式转换
+            // 检查数值类型的隐式转换（仅允许小范围到大范围，禁止依赖 TypeConverter 的显式转换）
             if (IsNumericType(targetType) && IsNumericType(sourceType))
             {
-                // 数值类型的扩展转换规则
-                // 小范围类型可以隐式转换为大范围类型
-                if (GetNumericTypeRank(targetType) >= GetNumericTypeRank(sourceType))
-                {
-                    return true;
-                }
+                return GetNumericTypeRank(targetType) >= GetNumericTypeRank(sourceType);
             }
 
             // 检查可空类型

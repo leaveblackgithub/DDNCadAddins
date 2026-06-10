@@ -56,6 +56,11 @@ namespace TestRunnerACAD
 
             CleanupHtmlReport();
 
+            if (string.IsNullOrEmpty(GeneratorPath) || !File.Exists(GeneratorPath))
+            {
+                throw new FileNotFoundException($"报告生成工具不存在: {GeneratorPath}", GeneratorPath);
+            }
+
             using (var process = new Process())
             {
                 process.StartInfo.UseShellExecute = false;

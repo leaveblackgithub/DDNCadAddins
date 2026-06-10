@@ -13,7 +13,7 @@ namespace AddinsACAD
         [Test]
         public void TestPass() => Assert.Pass("This test should always passes.");
 
-        [Test]
+        [Test, Ignore("演示用：故意失败的示例测试，不参与常规测试运行")]
         public void TestFail() => Assert.Fail("This test should always fail.");
 
 

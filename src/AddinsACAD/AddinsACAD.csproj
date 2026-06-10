@@ -42,12 +42,25 @@ Features:
     <Compile Include="TestCommands\RunTestsCommand.cs" />
     <Compile Include="ServiceTests\BlockServiceTestUtils.cs" />
     <Compile Include="ServiceTests\BlockServiceTests.cs" />
+    <Compile Include="ServiceTests\BlockServiceExtendedTests.cs" />
     <Compile Include="ServiceTests\CommonTestMethods.cs" />
     <Compile Include="ServiceTests\DocumentServiceTest.cs" />
     <Compile Include="ServiceTests\TransactionServiceTest.cs" />
+    <Compile Include="ServiceTests\TransactionServiceExtendedTests.cs" />
+    <Compile Include="UnitTests\OpResultTests.cs" />
+    <Compile Include="UnitTests\PropertyUtilsTests.cs" />
+    <Compile Include="UnitTests\ConstructorUtilsTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="..\TestRunnerACAD\paths.config">
+      <Link>paths.config</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <Content Include="..\TestRunnerACAD\ExtentReports\ExtentReports.exe">
+      <Link>ExtentReports\ExtentReports.exe</Link>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="$(SolutionDir)TestRunnerACAD\TestRunnerACAD.csproj">

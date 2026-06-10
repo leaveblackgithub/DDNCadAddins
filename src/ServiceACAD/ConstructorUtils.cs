@@ -27,9 +27,24 @@ namespace ServiceACAD
                     for (var i = 0; i < parameters.Length; i++)
                     {
                         var paramType = parameters[i].ParameterType;
-                        var valueType = paramValues[i]?.GetType();
+                        var paramValue = paramValues[i];
 
-                        if (valueType == null || !PropertyUtils.CanBeConvertedFrom(paramType, valueType))
+                        if (paramValue == null)
+                        {
+                            var canAcceptNull = !paramType.IsValueType ||
+                                (paramType.IsGenericType &&
+                                 paramType.GetGenericTypeDefinition() == typeof(Nullable<>));
+                            if (!canAcceptNull)
+                            {
+                                typeMatch = false;
+                                break;
+                            }
+
+                            continue;
+                        }
+
+                        var valueType = paramValue.GetType();
+                        if (!PropertyUtils.CanBeConvertedFrom(paramType, valueType))
                         {
                             typeMatch = false;
                             break;

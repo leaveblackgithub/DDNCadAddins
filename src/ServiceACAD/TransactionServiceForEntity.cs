@@ -294,12 +294,10 @@ namespace ServiceACAD
                 pl.Closed = true;
                 if (vertices.Count > 2)
                 {
-                    
                     for (var i = 0; i < vertices.Count; i++)
                     {
-                        pl.AddVertexAt(0, vertices[i], 0, 0, 0);
+                        pl.AddVertexAt(i, vertices[i], 0, 0, 0);
                     }
-
                 }
                 else
                 {
