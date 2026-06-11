@@ -267,148 +267,64 @@ namespace ServiceACAD
             try
             {
                 if (CadBlkRef == null)
-                {
-                    Logger._.Error("无法获取图块引用");
                     return OpResult<ObjectId>.Fail("无法获取图块引用");
-                }
 
                 if (!IsXclipped())
-                {
-                    Logger._.Error("图块没有Xclip信息");
                     return OpResult<ObjectId>.Fail("图块没有Xclip信息");
-                }
 
-                Logger._.Info($"图块位置: ({CadBlkRef.Position.X}, {CadBlkRef.Position.Y})");
-                Logger._.Info($"图块旋转角度: {CadBlkRef.Rotation}");
-
-                // 创建多线段对象
                 var pl = new Polyline();
                 pl.SetDatabaseDefaults();
-                pl.ColorIndex = 1; // 红色
+                pl.ColorIndex = 1;
                 pl.Layer = ServiceTrans.Style.GetValidLayerName("_XCLIP_BOUNDARY");
                 pl.Closed = true;
-                pl.LineWeight = LineWeight.LineWeight100; // 粗线宽增强可视性
+                pl.LineWeight = LineWeight.LineWeight100;
 
-                // 获取当前文档和数据库
-                var doc = Application.DocumentManager.MdiActiveDocument;
-                if (doc == null)
+                // 直接通过 ServiceTrans 读取块参照，不开新事务
+                var blockRef = ServiceTrans.GetObject<BlockReference>(CadBlkRef.ObjectId);
+                if (blockRef == null)
+                    return OpResult<ObjectId>.Fail("无法获取块参照");
+
+                try
                 {
-                    Logger._.Error("无法获取当前文档");
-                    return OpResult<ObjectId>.Fail("无法获取当前文档");
+                    var extents = blockRef.GeometricExtents;
+                    const double padding = 0.5;
+                    var minPt = extents.MinPoint;
+                    var maxPt = extents.MaxPoint;
+
+                    Logger._.Info($"图块边界: 最小点({minPt.X}, {minPt.Y}), 最大点({maxPt.X}, {maxPt.Y})");
+
+                    pl.AddVertexAt(0, new Point2d(minPt.X - padding, minPt.Y - padding), 0, 0, 0);
+                    pl.AddVertexAt(1, new Point2d(maxPt.X + padding, minPt.Y - padding), 0, 0, 0);
+                    pl.AddVertexAt(2, new Point2d(maxPt.X + padding, maxPt.Y + padding), 0, 0, 0);
+                    pl.AddVertexAt(3, new Point2d(minPt.X - padding, maxPt.Y + padding), 0, 0, 0);
+                }
+                catch (Exception ex)
+                {
+                    Logger._.Warn($"获取几何边界失败，改为使用插入点: {ex.Message}");
+                    const double size = 5.0;
+                    var pos = blockRef.Position;
+                    pl.AddVertexAt(0, new Point2d(pos.X - size, pos.Y - size), 0, 0, 0);
+                    pl.AddVertexAt(1, new Point2d(pos.X + size, pos.Y - size), 0, 0, 0);
+                    pl.AddVertexAt(2, new Point2d(pos.X + size, pos.Y + size), 0, 0, 0);
+                    pl.AddVertexAt(3, new Point2d(pos.X - size, pos.Y + size), 0, 0, 0);
                 }
 
-                var db = doc.Database;
-                
-                using (Transaction tr = db.TransactionManager.StartTransaction())
+                if (Math.Abs(blockRef.Rotation) > 0.001)
                 {
-                    try
-                    {
-                        // 打开块参照
-                        BlockReference blockRef = tr.GetObject(CadBlkRef.ObjectId, OpenMode.ForRead) as BlockReference;
-                        if (blockRef == null)
-                        {
-                            Logger._.Error("无法获取块参照");
-                            return OpResult<ObjectId>.Fail("无法获取块参照");
-                        }
-                        
-                        // 使用BlockReference.GeometricExtents获取边界
-                        Extents3d? extents = null;
-                        
-                        try
-                        {
-                            extents = blockRef.GeometricExtents;
-                            
-                            if (extents.HasValue)
-                            {
-                                Point3d minPt = extents.Value.MinPoint;
-                                Point3d maxPt = extents.Value.MaxPoint;
-                                
-                                double padding = 0.5; // 边界外扩0.5单位，增强可视性
-                                
-                                // 记录边界信息
-                                Logger._.Info($"图块边界: 最小点({minPt.X}, {minPt.Y}), 最大点({maxPt.X}, {maxPt.Y})");
-                                
-                                // 创建顶点 - 使用pl.NumberOfVertices确保按顺序添加
-                                pl.AddVertexAt(pl.NumberOfVertices, new Point2d(minPt.X - padding, minPt.Y - padding), 0, 0, 0);
-                                pl.AddVertexAt(pl.NumberOfVertices, new Point2d(maxPt.X + padding, minPt.Y - padding), 0, 0, 0);
-                                pl.AddVertexAt(pl.NumberOfVertices, new Point2d(maxPt.X + padding, maxPt.Y + padding), 0, 0, 0);
-                                pl.AddVertexAt(pl.NumberOfVertices, new Point2d(minPt.X - padding, maxPt.Y + padding), 0, 0, 0);
-                            }
-                            else
-                            {
-                                throw new Exception("无法获取图块几何边界");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger._.Warn($"获取几何边界失败，改为使用插入点创建边界: {ex.Message}");
-                            
-                            // 使用块的插入点创建小矩形
-                            Point3d blockPos = blockRef.Position;
-                            Logger._.Info($"使用插入点: ({blockPos.X}, {blockPos.Y})");
-                            
-                            double size = 5.0; // 创建一个10x10单位的矩形
-                            pl.AddVertexAt(pl.NumberOfVertices, new Point2d(blockPos.X - size, blockPos.Y - size), 0, 0, 0);
-                            pl.AddVertexAt(pl.NumberOfVertices, new Point2d(blockPos.X + size, blockPos.Y - size), 0, 0, 0);
-                            pl.AddVertexAt(pl.NumberOfVertices, new Point2d(blockPos.X + size, blockPos.Y + size), 0, 0, 0);
-                            pl.AddVertexAt(pl.NumberOfVertices, new Point2d(blockPos.X - size, blockPos.Y + size), 0, 0, 0);
-                        }
-                        
-                        // 如果块有旋转，应用相同的旋转到多边形
-                        if (Math.Abs(blockRef.Rotation) > 0.001)
-                        {
-                            // 创建一个围绕块参照插入点的旋转矩阵
-                            Matrix3d rotMatrix = Matrix3d.Rotation(blockRef.Rotation, Vector3d.ZAxis, blockRef.Position);
-                            pl.TransformBy(rotMatrix);
-                        }
-                        
-                        // 记录最终多边形的顶点位置
-                        Logger._.Info($"多边形顶点数: {pl.NumberOfVertices}");
-                        for (int i = 0; i < pl.NumberOfVertices; i++)
-                        {
-                            Point2d pt = pl.GetPoint2dAt(i);
-                            Logger._.Info($"多边形点[{i}]: ({pt.X}, {pt.Y})");
-                        }
-                        
-                        tr.Commit();
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger._.Error($"处理图块时出错: {ex.Message}");
-                        tr.Abort();
-                        
-                        // 创建一个简单的多边形在图块位置
-                        pl = new Polyline();
-                        pl.SetDatabaseDefaults();
-                        pl.ColorIndex = 1; // 红色
-                        pl.Layer = ServiceTrans.Style.GetValidLayerName("_XCLIP_BOUNDARY");
-                        pl.Closed = true;
-                        pl.LineWeight = LineWeight.LineWeight100;
-                        
-                        // 使用块的插入点创建小矩形
-                        Point3d pos = CadBlkRef.Position;
-                        double size = 3.0; // 创建一个6x6单位的矩形
-                        pl.AddVertexAt(pl.NumberOfVertices, new Point2d(pos.X - size, pos.Y - size), 0, 0, 0);
-                        pl.AddVertexAt(pl.NumberOfVertices, new Point2d(pos.X + size, pos.Y - size), 0, 0, 0);
-                        pl.AddVertexAt(pl.NumberOfVertices, new Point2d(pos.X + size, pos.Y + size), 0, 0, 0);
-                        pl.AddVertexAt(pl.NumberOfVertices, new Point2d(pos.X - size, pos.Y + size), 0, 0, 0);
-                    }
+                    var rotMatrix = Matrix3d.Rotation(blockRef.Rotation, Vector3d.ZAxis, blockRef.Position);
+                    pl.TransformBy(rotMatrix);
                 }
-                
-                // 添加到模型空间
-                ObjectId polyId = ServiceTrans.AppendEntityToModelSpace(pl);
+
+                var polyId = ServiceTrans.AppendEntityToModelSpace(pl);
                 if (polyId == ObjectId.Null)
-                {
-                    Logger._.Error("无法将多边形添加到模型空间");
-                    return OpResult<ObjectId>.Fail("无法将多边形添加到模型空间");
-                }
-                
-                Logger._.Info($"成功创建多边形，ID: {polyId}");
+                    return OpResult<ObjectId>.Fail("无法将多段线添加到模型空间");
+
+                Logger._.Info($"成功创建XClip边界多段线，ID: {polyId}");
                 return OpResult<ObjectId>.Success(polyId);
             }
             catch (Exception ex)
             {
-                Logger._.Error($"生成Xclip边界时发生错误: {ex.Message}\n{ex.StackTrace}");
+                Logger._.Error($"生成Xclip边界时发生错误: {ex.Message}");
                 return OpResult<ObjectId>.Fail($"生成Xclip边界时发生错误: {ex.Message}");
             }
         }
