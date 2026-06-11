@@ -261,7 +261,7 @@ namespace ServiceACAD
         /// <summary>
         ///     为图块生成Xclip边界
         /// </summary>
-        /// <returns>操作结果</returns>
+        /// <returns>操作结果，成功时返回创建的多段线 ObjectId</returns>
         public OpResult<ObjectId> GenerateXclipBoundary()
         {
             try
@@ -272,6 +272,18 @@ namespace ServiceACAD
                 if (!IsXclipped())
                     return OpResult<ObjectId>.Fail("图块没有Xclip信息");
 
+                var spatialFilter = GetXClipFilter();
+                if (spatialFilter == null)
+                    return OpResult<ObjectId>.Fail("无法获取XClip过滤器");
+
+                var boundaryResult = GetXClipBoundaryPointsWcs(spatialFilter, CadBlkRef);
+                if (!boundaryResult.IsSuccess)
+                    return OpResult<ObjectId>.Fail(boundaryResult.Message);
+
+                var wcsPoints = boundaryResult.Data;
+                if (wcsPoints == null || wcsPoints.Count < 3)
+                    return OpResult<ObjectId>.Fail("XClip边界顶点不足");
+
                 var pl = new Polyline();
                 pl.SetDatabaseDefaults();
                 pl.ColorIndex = 1;
@@ -279,47 +291,16 @@ namespace ServiceACAD
                 pl.Closed = true;
                 pl.LineWeight = LineWeight.LineWeight100;
 
-                // 直接通过 ServiceTrans 读取块参照，不开新事务
-                var blockRef = ServiceTrans.GetObject<BlockReference>(CadBlkRef.ObjectId);
-                if (blockRef == null)
-                    return OpResult<ObjectId>.Fail("无法获取块参照");
-
-                try
+                for (var i = 0; i < wcsPoints.Count; i++)
                 {
-                    var extents = blockRef.GeometricExtents;
-                    const double padding = 0.5;
-                    var minPt = extents.MinPoint;
-                    var maxPt = extents.MaxPoint;
-
-                    Logger._.Info($"图块边界: 最小点({minPt.X}, {minPt.Y}), 最大点({maxPt.X}, {maxPt.Y})");
-
-                    pl.AddVertexAt(0, new Point2d(minPt.X - padding, minPt.Y - padding), 0, 0, 0);
-                    pl.AddVertexAt(1, new Point2d(maxPt.X + padding, minPt.Y - padding), 0, 0, 0);
-                    pl.AddVertexAt(2, new Point2d(maxPt.X + padding, maxPt.Y + padding), 0, 0, 0);
-                    pl.AddVertexAt(3, new Point2d(minPt.X - padding, maxPt.Y + padding), 0, 0, 0);
-                }
-                catch (Exception ex)
-                {
-                    Logger._.Warn($"获取几何边界失败，改为使用插入点: {ex.Message}");
-                    const double size = 5.0;
-                    var pos = blockRef.Position;
-                    pl.AddVertexAt(0, new Point2d(pos.X - size, pos.Y - size), 0, 0, 0);
-                    pl.AddVertexAt(1, new Point2d(pos.X + size, pos.Y - size), 0, 0, 0);
-                    pl.AddVertexAt(2, new Point2d(pos.X + size, pos.Y + size), 0, 0, 0);
-                    pl.AddVertexAt(3, new Point2d(pos.X - size, pos.Y + size), 0, 0, 0);
-                }
-
-                if (Math.Abs(blockRef.Rotation) > 0.001)
-                {
-                    var rotMatrix = Matrix3d.Rotation(blockRef.Rotation, Vector3d.ZAxis, blockRef.Position);
-                    pl.TransformBy(rotMatrix);
+                    pl.AddVertexAt(i, wcsPoints[i], 0, 0, 0);
                 }
 
                 var polyId = ServiceTrans.AppendEntityToModelSpace(pl);
                 if (polyId == ObjectId.Null)
                     return OpResult<ObjectId>.Fail("无法将多段线添加到模型空间");
 
-                Logger._.Info($"成功创建XClip边界多段线，ID: {polyId}");
+                Logger._.Info($"成功创建XClip边界多段线，顶点数: {wcsPoints.Count}，ID: {polyId}");
                 return OpResult<ObjectId>.Success(polyId);
             }
             catch (Exception ex)
@@ -327,6 +308,73 @@ namespace ServiceACAD
                 Logger._.Error($"生成Xclip边界时发生错误: {ex.Message}");
                 return OpResult<ObjectId>.Fail($"生成Xclip边界时发生错误: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        ///     从 XClip 空间过滤器读取边界顶点，并变换到 WCS
+        /// </summary>
+        /// <param name="spatialFilter">XClip 空间过滤器</param>
+        /// <param name="blockRef">块参照</param>
+        /// <returns>变换后的边界顶点集合</returns>
+        private OpResult<Point2dCollection> GetXClipBoundaryPointsWcs(SpatialFilter spatialFilter, BlockReference blockRef)
+        {
+            try
+            {
+                if (spatialFilter == null)
+                    return OpResult<Point2dCollection>.Fail("XClip过滤器为空");
+
+                if (blockRef == null)
+                    return OpResult<Point2dCollection>.Fail("块参照为空");
+
+                var definition = spatialFilter.Definition;
+                var localPoints = definition.GetPoints();
+                if (localPoints == null || localPoints.Count == 0)
+                    return OpResult<Point2dCollection>.Fail("XClip边界点为空");
+
+                // 裁剪创建时的逆块变换 + 当前块变换，才能正确处理旋转/移动后的图块
+                var clipToWcs = spatialFilter.ClipSpaceToWorldCoordinateSystemTransform
+                    .PreMultiplyBy(spatialFilter.OriginalInverseBlockTransform)
+                    .PreMultiplyBy(blockRef.BlockTransform);
+                var wcsPoints = new Point2dCollection();
+
+                if (localPoints.Count > 2)
+                {
+                    for (var i = 0; i < localPoints.Count; i++)
+                    {
+                        wcsPoints.Add(TransformClipPointToWcs(localPoints[i], clipToWcs));
+                    }
+                }
+                else
+                {
+                    var p1 = TransformClipPointToWcs(localPoints[0], clipToWcs);
+                    var p2 = TransformClipPointToWcs(localPoints[1], clipToWcs);
+
+                    wcsPoints.Add(p1);
+                    wcsPoints.Add(new Point2d(p1.X, p2.Y));
+                    wcsPoints.Add(p2);
+                    wcsPoints.Add(new Point2d(p2.X, p1.Y));
+                }
+
+                return OpResult<Point2dCollection>.Success(wcsPoints);
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"获取XClip边界点失败: {ex.Message}");
+                return OpResult<Point2dCollection>.Fail($"获取XClip边界点失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        ///     将 XClip 局部坐标点变换到 WCS
+        /// </summary>
+        /// <param name="localPoint">局部坐标点</param>
+        /// <param name="clipToWcs">裁剪空间到 WCS 的完整变换矩阵</param>
+        /// <returns>WCS 下的二维点</returns>
+        private static Point2d TransformClipPointToWcs(Point2d localPoint, Matrix3d clipToWcs)
+        {
+            var pt3d = new Point3d(localPoint.X, localPoint.Y, 0);
+            pt3d = pt3d.TransformBy(clipToWcs);
+            return new Point2d(pt3d.X, pt3d.Y);
         }
 
         /// <summary>
