@@ -95,11 +95,11 @@ namespace AddinsACAD.ServiceTests
             void Action(ITransactionService tr)
             {
                 var result1 = tr.Style.GetValidColorIndex(-1);
-                Assert.AreEqual(CadServiceManager.ColorIndexWhite, result1, 
+                Assert.AreEqual(CadServiceManager.ColorIndexWhite, result1,
                     "负数颜色索引应返回默认值");
 
                 var result2 = tr.Style.GetValidColorIndex(256);
-                Assert.AreEqual(CadServiceManager.ColorIndexWhite, result2, 
+                Assert.AreEqual(CadServiceManager.ColorIndexWhite, result2,
                     "超出范围的颜色索引应返回默认值");
             }
 
@@ -112,7 +112,7 @@ namespace AddinsACAD.ServiceTests
             void Action(ITransactionService tr)
             {
                 var name = tr.Style.GetValidLayerName(string.Empty);
-                Assert.AreEqual(CadServiceManager.Layer0, name, 
+                Assert.AreEqual(CadServiceManager.Layer0, name,
                     "空字符串应返回图层0");
             }
 
@@ -139,9 +139,91 @@ namespace AddinsACAD.ServiceTests
                 var layerName = CommonTestMethods.GetTestLayerName();
                 var layer1 = tr.Style.CreateLayer(layerName);
                 Assert.IsNotNull(layer1);
-                
+
                 var layer2 = tr.Style.CreateLayer(layerName);
                 Assert.IsNull(layer2, "重复图层名应返回 null");
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // 第一批新增：GetBlockTable / AppendEntityToBlockTableRecord /
+        //             AppendEntitiesToBlockTableRecord / GetChildObjects
+        // ────────────────────────────────────────────────────────────────
+
+        [Test]
+        public void TestGetBlockTable_ReturnsNotNull()
+        {
+            void Action(ITransactionService tr)
+            {
+                var bt = tr.GetBlockTable();
+                Assert.IsNotNull(bt, "GetBlockTable 应返回有效的块表");
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        [Test]
+        public void TestAppendEntityToBlockTableRecord_ValidEntity_ReturnsValidId()
+        {
+            void Action(ITransactionService tr)
+            {
+                var modelSpace = tr.GetModelSpace(OpenMode.ForWrite);
+                var line = new Line(new Point3d(0, 0, 0), new Point3d(3, 3, 0));
+                var id = tr.AppendEntityToBlockTableRecord(modelSpace, line);
+                Assert.AreNotEqual(ObjectId.Null, id, "应返回有效 ID");
+                Assert.IsTrue(id.IsValid);
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        [Test]
+        public void TestAppendEntityToBlockTableRecord_NullEntity_ReturnsNullId()
+        {
+            void Action(ITransactionService tr)
+            {
+                var modelSpace = tr.GetModelSpace(OpenMode.ForWrite);
+                var id = tr.AppendEntityToBlockTableRecord(modelSpace, null);
+                Assert.AreEqual(ObjectId.Null, id, "传入 null 实体应返回 ObjectId.Null");
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        [Test]
+        public void TestAppendEntitiesToBlockTableRecord_MultipleEntities_AllAdded()
+        {
+            void Action(ITransactionService tr)
+            {
+                var modelSpace = tr.GetModelSpace(OpenMode.ForWrite);
+                var entities = new List<Entity>
+                {
+                    new Line(new Point3d(0, 0, 0), new Point3d(1, 0, 0)),
+                    new Circle(new Point3d(5, 5, 0), Vector3d.ZAxis, 2.0)
+                };
+                var ids = tr.AppendEntitiesToBlockTableRecord(modelSpace, entities);
+                Assert.AreEqual(2, ids.Count, "应添加 2 个实体");
+                foreach (var id in ids)
+                    Assert.IsTrue(id.IsValid, "每个 ID 都应有效");
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        [Test]
+        public void TestGetChildObjects_WithFilter_ReturnsOnlyMatching()
+        {
+            void Action(ITransactionService tr)
+            {
+                var modelSpace = tr.GetModelSpace(OpenMode.ForWrite);
+                var line = new Line(new Point3d(999, 999, 0), new Point3d(1000, 999, 0));
+                tr.AppendEntityToBlockTableRecord(modelSpace, line);
+
+                var modelSpaceRead = tr.GetModelSpace();
+                var filtered = tr.GetChildObjects<Line>(modelSpaceRead, l => l.StartPoint.X >= 999);
+                Assert.Greater(filtered.Count, 0, "过滤后应至少有 1 条线");
             }
 
             CadServiceManager._.ExecuteInTransactions("", Action);

@@ -71,7 +71,11 @@ namespace TestRunnerACAD
                 process.StartInfo.Arguments = $" \"-i\" \"{NunitXmlPath}\" \"-o\" \"{ReportDir}\" \"-r\" \"v3html\"";
 
                 process.Start();
-                process.WaitForExit();
+                // 最多等待 15 秒，避免阻塞 AutoCAD 主线程
+                if (!process.WaitForExit(15000))
+                {
+                    try { process.Kill(); } catch { }
+                }
             }
         }
 
