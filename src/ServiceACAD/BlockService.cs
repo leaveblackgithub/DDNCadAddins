@@ -187,7 +187,55 @@ namespace ServiceACAD
             }
             catch (Exception ex)
             {
-                return OpResult<List<ObjectId>>.Fail($"爆炸块参照失败: {ex.Message}");
+                Logger._.Error($"爆炸块参照失败: {ex.Message}");
+                return OpResult<List<ObjectId>>.Fail(FormatExplodeErrorMessage(ex.Message));
+            }
+        }
+
+        /// <summary>
+        ///     删除块定义不含任何实体的图块参照
+        /// </summary>
+        /// <returns>删除成功返回 true</returns>
+        public OpResult<bool> EraseIfEmptyDefinition()
+        {
+            try
+            {
+                if (CadBlkRef == null)
+                {
+                    return OpResult<bool>.Fail("块参照为空");
+                }
+
+                if (HasAttributes())
+                {
+                    return OpResult<bool>.Fail("空定义图块仍包含属性引用");
+                }
+
+                var blockDef = ServiceTrans.GetObject<BlockTableRecord>(CadBlkRef.BlockTableRecord);
+                if (blockDef == null || !CadBlkRef.BlockTableRecord.IsValid)
+                {
+                    return OpResult<bool>.Fail("块定义无效");
+                }
+
+                var entityIds = ServiceTrans.GetChildObjects<DBObject>(blockDef);
+                if (entityIds.Count > 0)
+                {
+                    return OpResult<bool>.Fail("块定义包含实体");
+                }
+
+                if (!CadBlkRef.IsWriteEnabled)
+                {
+                    CadBlkRef.UpgradeOpen();
+                }
+
+                var blockName = CadBlkRef.Name;
+                CadBlkRef.Erase();
+                Logger._.Info($"已删除空定义图块参照: {blockName}");
+                return OpResult<bool>.Success(true);
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"删除空定义图块失败: {ex.Message}");
+                return OpResult<bool>.Fail($"删除空定义图块失败: {ex.Message}");
             }
         }
 
@@ -659,7 +707,15 @@ namespace ServiceACAD
                     return OpResult<List<Entity>>.Fail("块定义无效");
                 }
 
-                // 4. 检查块定义中的实体数量
+                // 4. 检查图层是否锁定
+                var layer = ServiceTrans.GetObject<LayerTableRecord>(blockRef.LayerId);
+                if (layer != null && layer.IsLocked)
+                {
+                    Logger._.Error($"图块所在图层已锁定: {layer.Name}");
+                    return OpResult<List<Entity>>.Fail("图块所在图层已锁定");
+                }
+
+                // 5. 检查块定义中的实体数量
                 var entityIds = ServiceTrans.GetChildObjects<DBObject>(blockDef);
                 if (entityIds.Count == 0)
                 {
@@ -670,7 +726,7 @@ namespace ServiceACAD
                 Logger._.Info($"块定义中的实体数量: {entityIds.Count}");
 
 
-                // 5. 检查块参照的变换
+                // 6. 检查块参照的变换
                 if (blockRef.ScaleFactors.X == 0 || blockRef.ScaleFactors.Y == 0 || blockRef.ScaleFactors.Z == 0)
                 {
                     Logger._.Error("块参照的缩放比例无效");
@@ -683,7 +739,7 @@ namespace ServiceACAD
                     return OpResult<List<Entity>>.Fail("块参照的旋转角度无效");
                 }
 
-                // 6. 执行爆炸操作
+                // 7. 执行爆炸操作
                 var entitiesToAdd = new List<Entity>();
                 var explodedEntities = new DBObjectCollection();
 
@@ -696,7 +752,7 @@ namespace ServiceACAD
 
                 Logger._.Info($"爆炸后实体数量: {explodedEntities.Count}");
 
-                // 7. 处理爆炸后的实体
+                // 8. 处理爆炸后的实体
                 foreach (DBObject obj in explodedEntities)
                 {
                     if (obj == null)
@@ -728,8 +784,38 @@ namespace ServiceACAD
             catch (Exception ex)
             {
                 Logger._.Error($"爆炸块参照时发生异常: {ex.Message}");
-                return OpResult<List<Entity>>.Fail(ex.Message);
+                return OpResult<List<Entity>>.Fail(FormatExplodeErrorMessage(ex.Message));
             }
+        }
+
+        /// <summary>
+        ///     将爆炸相关异常消息转换为用户可读的简短说明
+        /// </summary>
+        /// <param name="message">原始异常消息</param>
+        /// <returns>用户可读的错误说明</returns>
+        private static string FormatExplodeErrorMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return "爆炸图块时发生未知错误";
+            }
+
+            if (message.IndexOf("eOnLockedLayer", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "图块所在图层已锁定";
+            }
+
+            if (message.IndexOf("eWasErased", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "图块已被删除";
+            }
+
+            if (message.IndexOf("eNotInDatabase", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "图块不在当前图形数据库中";
+            }
+
+            return message;
         }
 
         /// <summary>

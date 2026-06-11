@@ -29,6 +29,12 @@ namespace ServiceACAD
         /// <returns>如果爆炸成功返回true，否则返回false</returns>
         OpResult<List<ObjectId>> ExplodeAsShown();
 
+        /// <summary>
+        ///     删除块定义不含任何实体的图块参照
+        /// </summary>
+        /// <returns>删除成功返回 true</returns>
+        OpResult<bool> EraseIfEmptyDefinition();
+
         void UpgradeOpen();
 
         /// <summary>

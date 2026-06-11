@@ -377,5 +377,154 @@ namespace ServiceACAD
                 return null;
             }
         }
+
+        /// <summary>
+        ///     记录所有图层的锁定与冻结状态
+        /// </summary>
+        /// <returns>图层状态快照</returns>
+        public OpResult<LayerStateSnapshot> CaptureAllLayerStates()
+        {
+            try
+            {
+                var layerTable = GetLayerTable(OpenMode.ForRead);
+                if (layerTable == null)
+                {
+                    return OpResult<LayerStateSnapshot>.Fail("无法获取图层表");
+                }
+
+                var snapshot = new LayerStateSnapshot();
+                foreach (ObjectId layerId in layerTable)
+                {
+                    var layer = _transactionService.GetObject<LayerTableRecord>(layerId, OpenMode.ForRead);
+                    if (layer == null)
+                    {
+                        continue;
+                    }
+
+                    snapshot.States[layerId] = new LayerStateEntry
+                    {
+                        IsLocked = layer.IsLocked,
+                        IsFrozen = layer.IsFrozen
+                    };
+                }
+
+                return OpResult<LayerStateSnapshot>.Success(snapshot);
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"记录图层状态失败: {ex.Message}");
+                return OpResult<LayerStateSnapshot>.Fail($"记录图层状态失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        ///     解锁并解冻所有图层
+        /// </summary>
+        /// <returns>操作结果</returns>
+        public OpResult<bool> UnlockAndThawAllLayers()
+        {
+            try
+            {
+                var layerTable = GetLayerTable(OpenMode.ForRead);
+                if (layerTable == null)
+                {
+                    return OpResult<bool>.Fail("无法获取图层表");
+                }
+
+                foreach (ObjectId layerId in layerTable)
+                {
+                    try
+                    {
+                        if (!layerId.IsValid || layerId.IsErased)
+                        {
+                            continue;
+                        }
+
+                        var layer = _transactionService.GetObject<LayerTableRecord>(layerId, OpenMode.ForWrite);
+                        if (layer == null || layer.IsErased)
+                        {
+                            continue;
+                        }
+
+                        layer.IsLocked = false;
+                        layer.IsFrozen = false;
+                    }
+                    catch (Autodesk.AutoCAD.Runtime.Exception ex)
+                    {
+                        Logger._.Warn($"跳过无效图层 (ObjectId={layerId}): {ex.ErrorStatus}");
+                    }
+                }
+
+                return OpResult<bool>.Success(true);
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"解锁解冻图层失败: {ex.Message}");
+                return OpResult<bool>.Fail($"解锁解冻图层失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        ///     根据快照恢复图层的锁定与冻结状态
+        /// </summary>
+        /// <param name="snapshot">图层状态快照</param>
+        /// <returns>操作结果</returns>
+        public OpResult<bool> RestoreLayerStates(LayerStateSnapshot snapshot)
+        {
+            try
+            {
+                if (snapshot == null || snapshot.States.Count == 0)
+                {
+                    return OpResult<bool>.Success(true);
+                }
+
+                var db = HostApplicationServices.WorkingDatabase;
+                var currentLayerId = db.Clayer;
+
+                foreach (var layerState in snapshot.States)
+                {
+                    try
+                    {
+                        if (!layerState.Key.IsValid || layerState.Key.IsErased)
+                        {
+                            continue;
+                        }
+
+                        var layer = _transactionService.GetObject<LayerTableRecord>(layerState.Key, OpenMode.ForWrite);
+                        if (layer == null || layer.IsErased)
+                        {
+                            continue;
+                        }
+
+                        layer.IsLocked = layerState.Value.IsLocked;
+
+                        if (layerState.Value.IsFrozen)
+                        {
+                            if (layer.Name == "0" || layerState.Key == currentLayerId)
+                            {
+                                continue;
+                            }
+
+                            layer.IsFrozen = true;
+                        }
+                        else
+                        {
+                            layer.IsFrozen = false;
+                        }
+                    }
+                    catch (Autodesk.AutoCAD.Runtime.Exception ex)
+                    {
+                        Logger._.Warn($"跳过无效图层 (ObjectId={layerState.Key}): {ex.ErrorStatus}");
+                    }
+                }
+
+                return OpResult<bool>.Success(true);
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"恢复图层状态失败: {ex.Message}");
+                return OpResult<bool>.Fail($"恢复图层状态失败: {ex.Message}");
+            }
+        }
     }
 }
