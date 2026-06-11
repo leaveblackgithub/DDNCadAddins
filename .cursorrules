@@ -320,3 +320,46 @@ AUTO_REFACTORING: |
    - 生成代码后执行编译验证
    - 检查接口实现的完整性和一致性
    - 高风险操作使用独立会话，利用回滚功能快速修复 
+
+## ★★★ AutoCAD 单元测试安全规则（血泪教训，不可违反）★★★
+# 最后更新：2026-06-11
+# 背景：在为图层状态管理功能编写单元测试时，多次导致 RunTests 命令卡死（死锁），
+#       经过反复排查确认根本原因，记录于此以避免再犯。
+
+### 1. 禁止在测试中操作全局图层状态
+- 严禁在单元测试中调用 UnlockAndThawAllLayers()、RestoreLayerStates() 等
+  遍历整个图层表并以写模式打开所有图层的方法
+- 这类方法会与 NUnit 并发运行的其他测试产生写锁竞争，必然导致死锁卡死
+- 此类方法只能在命令层（Command）中调用，不能在测试中直接测试
+
+### 2. 禁止在同一事务中混用创建和遍历写操作
+- 在一个 ExecuteInTransaction 中，禁止同时：
+  * 创建图层/线型（CreateLayer、CreateLineType）
+  * 遍历图层表写操作（UnlockAndThawAllLayers 等）
+- 正确做法：用多个 Action 分离到不同事务，如 Action1 创建、Action2 操作
+
+### 3. 禁止在测试中调用 UpgradeOpen()
+- 在 ExecuteInTransaction 的 Action 中，禁止对已通过服务方法打开的对象再调用 UpgradeOpen()
+- 同一事务内对同一对象重复请求写锁会导致死锁
+- 服务方法（GetObject、CreateLayer 等）已自行管理打开模式，测试代码不应干预
+
+### 4. 禁止在测试中修改 db.Clayer（当前图层）
+- 在事务内修改 db.Clayer 会导致 AutoCAD 挂起
+- 如需测试"当前图层保护"逻辑，直接读取 db.Clayer 的 ID 传入快照即可，不要切换当前图层
+
+### 5. 禁止在测试中使用 Assert.DoesNotThrow 包裹 AutoCAD 操作
+- NUnit 的 Assert.DoesNotThrow 会拦截 AutoCAD 内部异常，行为不可预期
+- AutoCAD 操作的异常安全性应在服务层用 try-catch + OpResult 保证，测试层直接断言 IsSuccess 即可
+
+### 6. 全局状态类功能的测试策略
+- 凡是操作 AutoCAD 全局状态（图层、线型、块表等）的服务方法，应通过集成测试验证：
+  * 直接在 AutoCAD 中运行对应命令（如 BlockCleanup），观察命令是否正常完成
+  * 不要在 RunTests 自动化测试套件中测试这类方法
+- 自动化单元测试只适合测试：只读操作、局部状态修改、纯逻辑计算
+
+### 7. 新测试加入项目前的验证流程（必须遵守）
+- 新建测试类后，必须先将其排除在 csproj 之外
+- 在排除新测试的情况下确认 RunTests 正常完成（作为基准）
+- 再将新测试加入 csproj，重新运行 RunTests，确认不卡死
+- 如果加入后卡死，立即从 csproj 移除，用二分法逐个方法排查
+- 不要反复修改测试逻辑猜测原因，应先定位到具体的卡死方法再修复
