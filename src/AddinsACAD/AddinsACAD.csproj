@@ -43,6 +43,7 @@ Features:
     <Compile Include="ServiceTests\BlockServiceTestUtils.cs" />
     <Compile Include="ServiceTests\BlockServiceTests.cs" />
     <Compile Include="ServiceTests\BlockServiceExtendedTests.cs" />
+    <Compile Include="ServiceTests\BlockServicePropertyTests.cs" />
     <Compile Include="ServiceTests\CommonTestMethods.cs" />
     <Compile Include="ServiceTests\DocumentServiceTest.cs" />
     <Compile Include="ServiceTests\TransactionServiceTest.cs" />

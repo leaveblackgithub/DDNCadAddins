@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -147,11 +147,6 @@ namespace AddinsACAD.ServiceTests
             CadServiceManager._.ExecuteInTransactions("", Action);
         }
 
-        // ────────────────────────────────────────────────────────────────
-        // 第一批新增：GetBlockTable / AppendEntityToBlockTableRecord /
-        //             AppendEntitiesToBlockTableRecord / GetChildObjects
-        // ────────────────────────────────────────────────────────────────
-
         [Test]
         public void TestGetBlockTable_ReturnsNotNull()
         {
@@ -228,5 +223,97 @@ namespace AddinsACAD.ServiceTests
 
             CadServiceManager._.ExecuteInTransactions("", Action);
         }
+
+        [Test]
+        public void TestGetCurrentLayerName_ReturnsNonEmpty()
+        {
+            void Action(ITransactionService tr)
+            {
+                var name = tr.Style.GetCurrentLayerName();
+                Assert.IsNotEmpty(name, "当前图层名不应为空");
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        [Test]
+        public void TestGetOrCreateLayer_NewName_CreatesLayer()
+        {
+            void Action(ITransactionService tr)
+            {
+                var layerName = CommonTestMethods.GetTestLayerName();
+                var layer = tr.Style.GetOrCreateLayer(layerName);
+                Assert.IsNotNull(layer, "GetOrCreateLayer 对新图层名应返回有效对象");
+                Assert.AreEqual(layerName, layer.Name);
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        [Test]
+        public void TestGetOrCreateLayer_ExistingName_ReturnsExisting()
+        {
+            void Action(ITransactionService tr)
+            {
+                var layerName = CommonTestMethods.GetTestLayerName();
+                var layer1 = tr.Style.GetOrCreateLayer(layerName);
+                var layer2 = tr.Style.GetOrCreateLayer(layerName);
+                Assert.IsNotNull(layer1);
+                Assert.IsNotNull(layer2, "GetOrCreateLayer 对已存在图层名应返回对象而非 null");
+                Assert.AreEqual(layer1.Name, layer2.Name);
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        [Test]
+        public void TestGetValidLineTypeName_EmptyString_ReturnsContinuous()
+        {
+            void Action(ITransactionService tr)
+            {
+                var name = tr.Style.GetValidLineTypeName(string.Empty);
+                Assert.IsNotEmpty(name, "空字符串应返回有效的线型名");
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        [Test]
+        public void TestGetValidLineTypeName_InvalidName_ReturnsFallback()
+        {
+            void Action(ITransactionService tr)
+            {
+                var name = tr.Style.GetValidLineTypeName("__LINETYPE_NOT_EXISTS__");
+                Assert.IsNotEmpty(name, "无效线型名应返回回退值而非空字符串");
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        [Test]
+        public void TestGetLineType_ExistingContinuous_ReturnsNotNull()
+        {
+            void Action(ITransactionService tr)
+            {
+                var lt = tr.Style.GetLineType(CadServiceManager.LineTypeContinuous);
+                Assert.IsNotNull(lt, "Continuous 线型应始终存在");
+                Assert.AreEqual(CadServiceManager.LineTypeContinuous, lt.Name);
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
+
+        [Test]
+        public void TestGetLineType_NonExistent_ReturnsNull()
+        {
+            void Action(ITransactionService tr)
+            {
+                var lt = tr.Style.GetLineType(CommonTestMethods.GetTestLineTypeName());
+                Assert.IsNull(lt, "不存在的线型应返回 null");
+            }
+
+            CadServiceManager._.ExecuteInTransactions("", Action);
+        }
     }
 }
+
