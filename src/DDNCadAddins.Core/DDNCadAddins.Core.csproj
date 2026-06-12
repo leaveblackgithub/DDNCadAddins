@@ -18,6 +18,7 @@
     </Compile>
     <Compile Include="Interfaces\ICalculatorService.cs" />
     <Compile Include="Models\CalculationResult.cs" />
+    <Compile Include="Models\OpResult.cs" />
     <Compile Include="Services\CalculatorService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
