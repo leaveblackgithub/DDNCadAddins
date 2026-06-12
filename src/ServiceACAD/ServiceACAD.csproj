@@ -52,6 +52,10 @@ Features:
     <Compile Include="ITransactionService.cs" />
     <Compile Include="ITransactionServiceForEntity.cs" />
     <Compile Include="ITransactionServiceForBlock.cs" />
+    <Compile Include="ILayerService.cs" />
+    <Compile Include="ILinetypeService.cs" />
+    <Compile Include="IColorService.cs" />
+    <Compile Include="ILayerStateService.cs" />
     <Compile Include="ITransactionServiceForStyle.cs" />
     <Compile Include="Logger.cs" />
     <Compile Include="OpResult.cs" />
