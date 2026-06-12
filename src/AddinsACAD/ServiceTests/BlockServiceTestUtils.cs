@@ -32,9 +32,9 @@ namespace AddinsAcad.ServiceTests
                         { CadServiceManager.PropNames.EndPoint, new Point3d(10, 0, 0) },
                         { CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default },
                         { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock },
-                        { CadServiceManager.EntityTypes.Linetype, CadServiceManager.Linetypes.ByBlock },
-                        { CadServiceManager.EntityTypes.LinetypeScale, 1.0 },
-                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.ByBlock }
+                        { CadServiceManager.PropNames.Linetype, CadServiceManager.Linetypes.ByBlock },
+                        { CadServiceManager.PropNames.LinetypeScale, 1.0 },
+                        { CadServiceManager.PropNames.LineWeight, LineWeight.ByBlock }
                     }
                 },
                 {
@@ -45,9 +45,9 @@ namespace AddinsAcad.ServiceTests
                         { CadServiceManager.PropNames.EndPoint, new Point3d(10, 10, 0) },
                         { CadServiceManager.PropNames.Layer, NameTestLayer },
                         { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.Red },
-                        { CadServiceManager.EntityTypes.Linetype, NameTestLinetype },
-                        { CadServiceManager.EntityTypes.LinetypeScale, 2.0 },
-                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.LineWeight050 }
+                        { CadServiceManager.PropNames.Linetype, NameTestLinetype },
+                        { CadServiceManager.PropNames.LinetypeScale, 2.0 },
+                        { CadServiceManager.PropNames.LineWeight, LineWeight.LineWeight050 }
                     }
                 },
                 {
@@ -59,9 +59,9 @@ namespace AddinsAcad.ServiceTests
                         { CadServiceManager.PropNames.Radius, 5.0 },
                         { CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default },
                         { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByLayer },
-                        { CadServiceManager.EntityTypes.Linetype, CadServiceManager.Linetypes.ByBlock },
-                        { CadServiceManager.EntityTypes.LinetypeScale, 1.0 },
-                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.ByBlock }
+                        { CadServiceManager.PropNames.Linetype, CadServiceManager.Linetypes.ByBlock },
+                        { CadServiceManager.PropNames.LinetypeScale, 1.0 },
+                        { CadServiceManager.PropNames.LineWeight, LineWeight.ByBlock }
                     }
                 },
                 {
@@ -73,9 +73,9 @@ namespace AddinsAcad.ServiceTests
                         { CadServiceManager.PropNames.Radius, 5.0 },
                         { CadServiceManager.PropNames.Layer, NameTestLayer },
                         { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock },
-                        { CadServiceManager.EntityTypes.Linetype, NameTestLinetype },
-                        { CadServiceManager.EntityTypes.LinetypeScale, 0.5 },
-                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.LineWeight030 }
+                        { CadServiceManager.PropNames.Linetype, NameTestLinetype },
+                        { CadServiceManager.PropNames.LinetypeScale, 0.5 },
+                        { CadServiceManager.PropNames.LineWeight, LineWeight.LineWeight030 }
                     }
                 },
                 {
@@ -87,9 +87,9 @@ namespace AddinsAcad.ServiceTests
                         { CadServiceManager.PropNames.Height, 2.5 },
                         { CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default },
                         { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.Green },
-                        { CadServiceManager.EntityTypes.Linetype, CadServiceManager.Linetypes.ByBlock },
-                        { CadServiceManager.EntityTypes.LinetypeScale, 1.0 },
-                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.ByBlock }
+                        { CadServiceManager.PropNames.Linetype, CadServiceManager.Linetypes.ByBlock },
+                        { CadServiceManager.PropNames.LinetypeScale, 1.0 },
+                        { CadServiceManager.PropNames.LineWeight, LineWeight.ByBlock }
                     }
                 },
                 {
@@ -101,9 +101,9 @@ namespace AddinsAcad.ServiceTests
                         { CadServiceManager.PropNames.Height, 2.5 },
                         { CadServiceManager.PropNames.Layer, NameTestLayer },
                         { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock },
-                        { CadServiceManager.EntityTypes.Linetype, NameTestLinetype },
-                        { CadServiceManager.EntityTypes.LinetypeScale, 1.5 },
-                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.LineWeight070 }
+                        { CadServiceManager.PropNames.Linetype, NameTestLinetype },
+                        { CadServiceManager.PropNames.LinetypeScale, 1.5 },
+                        { CadServiceManager.PropNames.LineWeight, LineWeight.LineWeight070 }
                     }
                 },
                 {
@@ -117,9 +117,9 @@ namespace AddinsAcad.ServiceTests
                         { CadServiceManager.PropNames.Height, 2.5 },
                         { CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default },
                         { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.Green },
-                        { CadServiceManager.EntityTypes.Linetype, CadServiceManager.Linetypes.ByBlock },
-                        { CadServiceManager.EntityTypes.LinetypeScale, 1.0 },
-                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.ByBlock },
+                        { CadServiceManager.PropNames.Linetype, CadServiceManager.Linetypes.ByBlock },
+                        { CadServiceManager.PropNames.LinetypeScale, 1.0 },
+                        { CadServiceManager.PropNames.LineWeight, LineWeight.ByBlock },
                         { CadServiceManager.PropNames.TextStyleId, ObjectId.Null }
                     }
                 },
@@ -134,9 +134,9 @@ namespace AddinsAcad.ServiceTests
                         { CadServiceManager.PropNames.Height, 5.0 },
                         { CadServiceManager.PropNames.Layer, NameTestLayer },
                         { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock },
-                        { CadServiceManager.EntityTypes.Linetype, NameTestLinetype },
-                        { CadServiceManager.EntityTypes.LinetypeScale, 1.0 },
-                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.ByBlock },
+                        { CadServiceManager.PropNames.Linetype, NameTestLinetype },
+                        { CadServiceManager.PropNames.LinetypeScale, 1.0 },
+                        { CadServiceManager.PropNames.LineWeight, LineWeight.ByBlock },
                         { CadServiceManager.PropNames.TextStyleId, ObjectId.Null }
                     }
                 }

@@ -34,7 +34,7 @@ namespace ServiceACAD
 
         private readonly List<string> _stylesToCheck = new List<string>
         {
-            CadServiceManager.PropNames.Layer, CadServiceManager.PropNames.ColorIndex, CadServiceManager.EntityTypes.Linetype
+            CadServiceManager.PropNames.Layer, CadServiceManager.PropNames.ColorIndex, CadServiceManager.PropNames.Linetype
         };
 
         private readonly TransactionService _transactionService;
@@ -194,7 +194,7 @@ namespace ServiceACAD
                         case CadServiceManager.PropNames.ColorIndex:
                             propertyValue = _transactionService.Style.GetValidColorIndex((short)propertyValue);
                             break;
-                        case CadServiceManager.EntityTypes.Linetype:
+                        case CadServiceManager.PropNames.Linetype:
                             propertyValue = _transactionService.Style.GetValidLineTypeName((string)propertyValue);
                             break;
                     }
