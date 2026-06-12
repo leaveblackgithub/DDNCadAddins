@@ -45,6 +45,10 @@ Features:
     <Compile Include="IEditorService.cs" />
     <Compile Include="ILogger.cs" />
     <Compile Include="LayerStateSnapshot.cs" />
+    <Compile Include="ITransactionServiceCore.cs" />
+    <Compile Include="ITransactionServiceSpace.cs" />
+    <Compile Include="ITransactionServiceEntityAppend.cs" />
+    <Compile Include="ITransactionServiceQuery.cs" />
     <Compile Include="ITransactionService.cs" />
     <Compile Include="ITransactionServiceForEntity.cs" />
     <Compile Include="ITransactionServiceForBlock.cs" />
