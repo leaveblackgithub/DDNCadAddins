@@ -9,44 +9,181 @@ namespace ServiceACAD
     /// </summary>
     public class CadServiceManager
     {
-        public const string Layer0 = "0";
-        public const short ColorIndexByBlock = 0;
-        public const string StrByBlock = "BYBLOCK";
-        public const short ColorIndexByLayer = 256;
-        public const short ColorIndexGreen = 3;
-        public const short ColorIndexWhite = 7;
-        public const short ColorIndexRed = 1;
-        public const short ColorIndexYellow = 2;
-        public const short ColorIndexBlue = 5;
-        public const short ColorIndexMagenta = 6;
-        public const short ColorIndexCyan = 4;
-        public const string StrLayer = "Layer";
-        public const string StrLinetype = "Linetype";
-        public const string StrLineWeight = "LineWeight";
-        public const string StrColorIndex = "ColorIndex";
-        public const string StrByLayer = "BYLAYER";
-        public const string StrTextString = "TextString";
-        public const string StrTag = "Tag";
-        public const string StrPrompt = "Prompt";
-        public const string StrPosition = "Position";
-        public const string StrTextStyleId = "TextStyleId";
-        public const string StrHeight = "Height";
-        public const string StrTypeName = "TypeName";
-        public const string StrLine = "Line";
-        public const string StrStartPoint = "StartPoint";
-        public const string StrEndPoint = "EndPoint";
+        /// <summary>
+        ///     颜色索引常量
+        /// </summary>
+        public static class Colors
+        {
+            public const short ByBlock = 0;
+            public const short ByLayer = 256;
+            public const short Red = 1;
+            public const short Yellow = 2;
+            public const short Green = 3;
+            public const short Cyan = 4;
+            public const short Blue = 5;
+            public const short Magenta = 6;
+            public const short White = 7;
+        }
 
+        /// <summary>
+        ///     图层相关常量
+        /// </summary>
+        public static class Layers
+        {
+            public const string Default = "0";
+            public const string ByLayer = "BYLAYER";
+        }
 
-        public const string StrLinetypeScale = "LinetypeScale";
+        /// <summary>
+        ///     线型相关常量
+        /// </summary>
+        public static class Linetypes
+        {
+            public const string ByBlock = "BYBLOCK";
+            public const string ByLayer = "BYLAYER";
+            public const string Continuous = "Continuous";
+        }
 
-        public const string LineTypeContinuous = "Continuous";
+        /// <summary>
+        ///     实体属性名称常量（用于反射或字典键）
+        /// </summary>
+        public static class PropNames
+        {
+            public const string Layer = "Layer";
+            public const string ColorIndex = "ColorIndex";
+            public const string Linetype = "Linetype";
+            public const string LineWeight = "LineWeight";
+            public const string LinetypeScale = "LinetypeScale";
+            public const string Normal = "Normal";
+            public const string Position = "Position";
+            public const string Height = "Height";
+            public const string TextString = "TextString";
+            public const string Tag = "Tag";
+            public const string Prompt = "Prompt";
+            public const string TextStyleId = "TextStyleId";
+            public const string TypeName = "TypeName";
+            public const string StartPoint = "StartPoint";
+            public const string EndPoint = "EndPoint";
+            public const string Center = "Center";
+            public const string Radius = "Radius";
+        }
 
-        public const string StrCircle = "Circle";
-        public const string StrCenter = "Center";
-        public const string StrRadius = "Radius";
-        public const string StrDbText = "DBText";
-        public const string StrAttributeDefinition = "AttributeDefinition";
-        public const string StrNormal = "Normal";
+        /// <summary>
+        ///     实体类型名称常量
+        /// </summary>
+        public static class EntityTypes
+        {
+            public const string Line = "Line";
+            public const string Circle = "Circle";
+            public const string DbText = "DBText";
+            public const string AttributeDefinition = "AttributeDefinition";
+        }
+
+        #region Obsolete Constants - Use nested classes instead
+
+        [Obsolete("Use Layers.Default instead")]
+        public const string Layer0 = Layers.Default;
+
+        [Obsolete("Use Colors.ByBlock instead")]
+        public const short ColorIndexByBlock = Colors.ByBlock;
+
+        [Obsolete("Use Linetypes.ByBlock instead")]
+        public const string StrByBlock = Linetypes.ByBlock;
+
+        [Obsolete("Use Colors.ByLayer instead")]
+        public const short ColorIndexByLayer = Colors.ByLayer;
+
+        [Obsolete("Use Colors.Green instead")]
+        public const short ColorIndexGreen = Colors.Green;
+
+        [Obsolete("Use Colors.White instead")]
+        public const short ColorIndexWhite = Colors.White;
+
+        [Obsolete("Use Colors.Red instead")]
+        public const short ColorIndexRed = Colors.Red;
+
+        [Obsolete("Use Colors.Yellow instead")]
+        public const short ColorIndexYellow = Colors.Yellow;
+
+        [Obsolete("Use Colors.Blue instead")]
+        public const short ColorIndexBlue = Colors.Blue;
+
+        [Obsolete("Use Colors.Magenta instead")]
+        public const short ColorIndexMagenta = Colors.Magenta;
+
+        [Obsolete("Use Colors.Cyan instead")]
+        public const short ColorIndexCyan = Colors.Cyan;
+
+        [Obsolete("Use PropNames.Layer instead")]
+        public const string StrLayer = PropNames.Layer;
+
+        [Obsolete("Use PropNames.Linetype instead")]
+        public const string StrLinetype = PropNames.Linetype;
+
+        [Obsolete("Use PropNames.LineWeight instead")]
+        public const string StrLineWeight = PropNames.LineWeight;
+
+        [Obsolete("Use PropNames.ColorIndex instead")]
+        public const string StrColorIndex = PropNames.ColorIndex;
+
+        [Obsolete("Use Layers.ByLayer instead")]
+        public const string StrByLayer = Layers.ByLayer;
+
+        [Obsolete("Use PropNames.TextString instead")]
+        public const string StrTextString = PropNames.TextString;
+
+        [Obsolete("Use PropNames.Tag instead")]
+        public const string StrTag = PropNames.Tag;
+
+        [Obsolete("Use PropNames.Prompt instead")]
+        public const string StrPrompt = PropNames.Prompt;
+
+        [Obsolete("Use PropNames.Position instead")]
+        public const string StrPosition = PropNames.Position;
+
+        [Obsolete("Use PropNames.TextStyleId instead")]
+        public const string StrTextStyleId = PropNames.TextStyleId;
+
+        [Obsolete("Use PropNames.Height instead")]
+        public const string StrHeight = PropNames.Height;
+
+        [Obsolete("Use PropNames.TypeName instead")]
+        public const string StrTypeName = PropNames.TypeName;
+
+        [Obsolete("Use EntityTypes.Line instead")]
+        public const string StrLine = EntityTypes.Line;
+
+        [Obsolete("Use PropNames.StartPoint instead")]
+        public const string StrStartPoint = PropNames.StartPoint;
+
+        [Obsolete("Use PropNames.EndPoint instead")]
+        public const string StrEndPoint = PropNames.EndPoint;
+
+        [Obsolete("Use PropNames.LinetypeScale instead")]
+        public const string StrLinetypeScale = PropNames.LinetypeScale;
+
+        [Obsolete("Use Linetypes.Continuous instead")]
+        public const string LineTypeContinuous = Linetypes.Continuous;
+
+        [Obsolete("Use EntityTypes.Circle instead")]
+        public const string StrCircle = EntityTypes.Circle;
+
+        [Obsolete("Use PropNames.Center instead")]
+        public const string StrCenter = PropNames.Center;
+
+        [Obsolete("Use PropNames.Radius instead")]
+        public const string StrRadius = PropNames.Radius;
+
+        [Obsolete("Use EntityTypes.DbText instead")]
+        public const string StrDbText = EntityTypes.DbText;
+
+        [Obsolete("Use EntityTypes.AttributeDefinition instead")]
+        public const string StrAttributeDefinition = EntityTypes.AttributeDefinition;
+
+        [Obsolete("Use PropNames.Normal instead")]
+        public const string StrNormal = PropNames.Normal;
+
+        #endregion
 
         // 单例模式的锁对象
         private static readonly object _lockObj = new object();
