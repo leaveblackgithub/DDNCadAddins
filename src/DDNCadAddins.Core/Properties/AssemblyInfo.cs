@@ -1,8 +1,7 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 
-// Project-specific information
 [assembly: AssemblyTitle("DDNCadAddins.Core")]
 [assembly: AssemblyDescription("Core business logic - no AutoCAD dependency")]
 [assembly: AssemblyConfiguration("")]
-
-// 注意：通用程序集信息(包括版本)现在由 CommonAssemblyInfo.cs 管理
+[assembly: Guid("a1b2c3d4-e5f6-7890-abcd-ef1234567890")]
