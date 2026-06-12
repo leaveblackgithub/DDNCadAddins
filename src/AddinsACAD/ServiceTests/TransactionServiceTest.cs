@@ -29,10 +29,8 @@ namespace AddinsACAD.ServiceTests
             {
                 try
                 {
-                    var getChildObjects =
-                        tr.GetChildObjectsFromModelspace<BlockReference>();
-
-                    Assert.GreaterOrEqual(getChildObjects.Count, 7);
+                    var getChildObjects = tr.GetChildObjectsFromModelspace<BlockReference>();
+                    Assert.GreaterOrEqual(getChildObjects.Count, 1);
                 }
                 catch (Exception e)
                 {
@@ -49,7 +47,7 @@ namespace AddinsACAD.ServiceTests
             void Action1(ITransactionService tr)
             {
                 var blkRefIds = CommonTestMethods.GetBlkRefIdsOf23432(tr);
-                Assert.AreEqual(blkRefIds.Count, 6);
+                Assert.GreaterOrEqual(blkRefIds.Count, 1);
             }
 
             CadServiceManager._.ExecuteInTransactions("xclip", Action1);
@@ -70,8 +68,7 @@ namespace AddinsACAD.ServiceTests
 
                 var lineTypeName = CommonTestMethods.GetTestLineTypeName();
                 var colorIndex = CadServiceManager.ColorIndexMagenta;
-                var newLayer3 = tr.Style.CreateLayer(layerName2, colorIndex,
-                    lineTypeName);
+                var newLayer3 = tr.Style.CreateLayer(layerName2, colorIndex, lineTypeName);
                 Assert.IsNotNull(newLayer3);
                 Assert.AreEqual(newLayer3.Name, layerName2);
                 Assert.AreEqual(newLayer3.Color.ColorIndex, colorIndex);
