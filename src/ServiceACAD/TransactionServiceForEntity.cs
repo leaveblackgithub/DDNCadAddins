@@ -14,27 +14,27 @@ namespace ServiceACAD
         private readonly Dictionary<string, List<string>> _specialConstructor = new Dictionary<string, List<string>>
         {
             {
-                CadServiceManager.StrLine,
-                new List<string> { CadServiceManager.StrStartPoint, CadServiceManager.StrEndPoint }
+                CadServiceManager.EntityTypes.Line,
+                new List<string> { CadServiceManager.PropNames.StartPoint, CadServiceManager.PropNames.EndPoint }
             },
             {
-                CadServiceManager.StrCircle,
+                CadServiceManager.EntityTypes.Circle,
                 new List<string>
-                    { CadServiceManager.StrCenter, CadServiceManager.StrNormal, CadServiceManager.StrRadius }
+                    { CadServiceManager.PropNames.Center, CadServiceManager.PropNames.Normal, CadServiceManager.PropNames.Radius }
             },
             {
-                CadServiceManager.StrAttributeDefinition,
+                CadServiceManager.EntityTypes.AttributeDefinition,
                 new List<string>
                 {
-                    CadServiceManager.StrPosition, CadServiceManager.StrTextString, CadServiceManager.StrTag,
-                    CadServiceManager.StrPrompt, CadServiceManager.StrTextStyleId
+                    CadServiceManager.PropNames.Position, CadServiceManager.PropNames.TextString, CadServiceManager.PropNames.Tag,
+                    CadServiceManager.PropNames.Prompt, CadServiceManager.PropNames.TextStyleId
                 }
             }
         };
 
         private readonly List<string> _stylesToCheck = new List<string>
         {
-            CadServiceManager.StrLayer, CadServiceManager.StrColorIndex, CadServiceManager.StrLinetype
+            CadServiceManager.PropNames.Layer, CadServiceManager.PropNames.ColorIndex, CadServiceManager.EntityTypes.Linetype
         };
 
         private readonly TransactionService _transactionService;
@@ -178,7 +178,7 @@ namespace ServiceACAD
                     var propertyValue = prop.Value;
 
                     // 跳过用于创建对象的特殊属性
-                    if (propertyName == CadServiceManager.StrTypeName ||
+                    if (propertyName == CadServiceManager.PropNames.TypeName ||
                         (_specialConstructor.TryGetValue(typeName, out var constructorParams) &&
                          constructorParams.Contains(propertyName)))
                     {
@@ -188,13 +188,13 @@ namespace ServiceACAD
 
                     switch (propertyName)
                     {
-                        case CadServiceManager.StrLayer:
+                        case CadServiceManager.PropNames.Layer:
                             propertyValue = _transactionService.Style.GetValidLayerName((string)propertyValue);
                             break;
-                        case CadServiceManager.StrColorIndex:
+                        case CadServiceManager.PropNames.ColorIndex:
                             propertyValue = _transactionService.Style.GetValidColorIndex((short)propertyValue);
                             break;
-                        case CadServiceManager.StrLinetype:
+                        case CadServiceManager.EntityTypes.Linetype:
                             propertyValue = _transactionService.Style.GetValidLineTypeName((string)propertyValue);
                             break;
                     }
@@ -289,7 +289,7 @@ namespace ServiceACAD
                 ObjectId ret;
                 var pl = new Polyline();
                 pl.SetDatabaseDefaults();
-                pl.ColorIndex = CadServiceManager.ColorIndexMagenta;
+                pl.ColorIndex = CadServiceManager.Colors.Magenta;
                 pl.Layer =_transactionService.Style.GetValidLayerName("_POLYGON");
                 pl.Closed = true;
                 if (vertices.Count > 2)

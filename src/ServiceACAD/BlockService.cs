@@ -583,7 +583,7 @@ namespace ServiceACAD
                 //     entTo.Layer = entFr.Layer;
                 // }
 
-                MatchProp(entChild, entBlk, CadServiceManager.StrLayer, CadServiceManager.Layer0);
+                MatchProp(entChild, entBlk, CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default);
                 // 处理BYBLOCK颜色
                 // var nameColor = "ColorIndex";
                 // if (HasProperty(entFr, nameColor) && HasProperty(entTo, nameColor) &&
@@ -591,7 +591,7 @@ namespace ServiceACAD
                 // {
                 //     entTo.ColorIndex = entFr.ColorIndex;
                 // }
-                MatchProp(entChild, entBlk, CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexByBlock);
+                MatchProp(entChild, entBlk, CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock);
                 // 处理BYBLOCK线型
                 // var nameLinetype = "Linetype";
                 // if (HasProperty(entFr, nameLinetype) && HasProperty(entTo, nameLinetype) &&
@@ -600,7 +600,7 @@ namespace ServiceACAD
                 // {
                 //     entTo.LinetypeId = entFr.LinetypeId;
                 // }
-                MatchProp(entChild, entBlk, CadServiceManager.StrLinetype, CadServiceManager.StrByBlock);
+                MatchProp(entChild, entBlk, CadServiceManager.PropNames.Linetype, CadServiceManager.Linetypes.ByBlock);
 
                 // 处理BYBLOCK线宽
                 // if (HasProperty(entFr, "LineWeight") && HasProperty(entTo, "LineWeight") &&
@@ -609,7 +609,7 @@ namespace ServiceACAD
                 // {
                 //     entTo.LineWeight = entFr.LineWeight;
                 // }
-                MatchProp(entChild, entBlk, CadServiceManager.StrLineWeight, LineWeight.ByBlock);
+                MatchProp(entChild, entBlk, CadServiceManager.PropNames.LineWeight, LineWeight.ByBlock);
             }
             catch (Exception ex)
             {

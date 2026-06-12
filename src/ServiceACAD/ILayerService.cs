@@ -30,8 +30,8 @@ namespace ServiceACAD
         /// <param name="lineTypeName">线型名称</param>
         /// <returns>图层对象，如果操作失败则返回null</returns>
         LayerTableRecord GetOrCreateLayer(string layerName = "",
-            short colorIndex = CadServiceManager.ColorIndexWhite,
-            string lineTypeName = CadServiceManager.LineTypeContinuous);
+            short colorIndex = CadServiceManager.Colors.White,
+            string lineTypeName = CadServiceManager.Linetypes.Continuous);
 
         /// <summary>
         ///     创建新图层
@@ -41,8 +41,8 @@ namespace ServiceACAD
         /// <param name="lineTypeName">线型名称</param>
         /// <returns>创建的图层对象，如果创建失败则返回null</returns>
         LayerTableRecord CreateLayer(string layerName = "",
-            short colorIndex = CadServiceManager.ColorIndexWhite,
-            string lineTypeName = CadServiceManager.LineTypeContinuous);
+            short colorIndex = CadServiceManager.Colors.White,
+            string lineTypeName = CadServiceManager.Linetypes.Continuous);
 
         /// <summary>
         ///     获取有效的图层名称

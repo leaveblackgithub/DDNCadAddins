@@ -95,11 +95,11 @@ namespace AddinsACAD.ServiceTests
             void Action(ITransactionService tr)
             {
                 var result1 = tr.Style.GetValidColorIndex(-1);
-                Assert.AreEqual(CadServiceManager.ColorIndexWhite, result1,
+                Assert.AreEqual(CadServiceManager.Colors.White, result1,
                     "负数颜色索引应返回默认值");
 
                 var result2 = tr.Style.GetValidColorIndex(256);
-                Assert.AreEqual(CadServiceManager.ColorIndexWhite, result2,
+                Assert.AreEqual(CadServiceManager.Colors.White, result2,
                     "超出范围的颜色索引应返回默认值");
             }
 
@@ -112,7 +112,7 @@ namespace AddinsACAD.ServiceTests
             void Action(ITransactionService tr)
             {
                 var name = tr.Style.GetValidLayerName(string.Empty);
-                Assert.AreEqual(CadServiceManager.Layer0, name,
+                Assert.AreEqual(CadServiceManager.Layers.Default, name,
                     "空字符串应返回图层0");
             }
 
@@ -295,9 +295,9 @@ namespace AddinsACAD.ServiceTests
         {
             void Action(ITransactionService tr)
             {
-                var lt = tr.Style.GetLineType(CadServiceManager.LineTypeContinuous);
+                var lt = tr.Style.GetLineType(CadServiceManager.Linetypes.Continuous);
                 Assert.IsNotNull(lt, "Continuous 线型应始终存在");
-                Assert.AreEqual(CadServiceManager.LineTypeContinuous, lt.Name);
+                Assert.AreEqual(CadServiceManager.Linetypes.Continuous, lt.Name);
             }
 
             CadServiceManager._.ExecuteInTransactions("", Action);

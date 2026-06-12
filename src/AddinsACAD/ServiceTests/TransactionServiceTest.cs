@@ -67,7 +67,7 @@ namespace AddinsACAD.ServiceTests
                 var layerName2 = CommonTestMethods.GetTestLayerName();
 
                 var lineTypeName = CommonTestMethods.GetTestLineTypeName();
-                var colorIndex = CadServiceManager.ColorIndexMagenta;
+                var colorIndex = CadServiceManager.Colors.Magenta;
                 var newLayer3 = tr.Style.CreateLayer(layerName2, colorIndex, lineTypeName);
                 Assert.IsNotNull(newLayer3);
                 Assert.AreEqual(newLayer3.Name, layerName2);

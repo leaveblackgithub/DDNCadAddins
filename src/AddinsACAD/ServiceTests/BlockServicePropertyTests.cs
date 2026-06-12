@@ -38,9 +38,9 @@ namespace AddinsACAD.ServiceTests
                 if (refId.IsNull) { Assert.Inconclusive("测试块创建失败"); return; }
 
                 var blkService = tr.Block.GetBlockService(refId);
-                blkService.ColorIndex = CadServiceManager.ColorIndexRed;
+                blkService.ColorIndex = CadServiceManager.Colors.Red;
 
-                Assert.AreEqual(CadServiceManager.ColorIndexRed, blkService.ColorIndex);
+                Assert.AreEqual(CadServiceManager.Colors.Red, blkService.ColorIndex);
             }
 
             CadServiceManager._.ExecuteInTransactions("", Action);

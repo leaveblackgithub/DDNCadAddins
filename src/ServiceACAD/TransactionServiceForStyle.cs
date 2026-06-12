@@ -51,8 +51,8 @@ namespace ServiceACAD
             {
                 if (string.IsNullOrEmpty(lineTypeName))
                 {
-                    Logger._.Warn($"线型名为空，将返回{CadServiceManager.LineTypeContinuous}线型");
-                    return GetLineType(CadServiceManager.LineTypeContinuous);
+                    Logger._.Warn($"线型名为空，将返回{CadServiceManager.Linetypes.Continuous}线型");
+                    return GetLineType(CadServiceManager.Linetypes.Continuous);
                 }
 
                 // 检查线型是否已存在
@@ -202,12 +202,12 @@ namespace ServiceACAD
         /// <param name="defaultColorIndex">默认颜色索引</param>
         /// <returns>有效的颜色索引</returns>
         public short
-            GetValidColorIndex(short colorIndex, short defaultColorIndex = CadServiceManager.ColorIndexWhite)
+            GetValidColorIndex(short colorIndex, short defaultColorIndex = CadServiceManager.Colors.White)
         {
             if (colorIndex < 0 || colorIndex > 255)
             {
                 return defaultColorIndex < 0 || defaultColorIndex > 255
-                    ? CadServiceManager.ColorIndexWhite
+                    ? CadServiceManager.Colors.White
                     : defaultColorIndex;
             }
             else
@@ -222,7 +222,7 @@ namespace ServiceACAD
         /// <param name="colorIndex">原始颜色索引</param>
         /// <param name="defaultColorIndex">默认颜色索引</param>
         /// <returns>有效的颜色</returns>
-        public Color GetValidColor(short colorIndex, short defaultColorIndex = CadServiceManager.ColorIndexWhite)
+        public Color GetValidColor(short colorIndex, short defaultColorIndex = CadServiceManager.Colors.White)
         {
             colorIndex = GetValidColorIndex(colorIndex, defaultColorIndex);
             return Color.FromColorIndex(ColorMethod.ByAci, colorIndex);
@@ -268,15 +268,15 @@ namespace ServiceACAD
         /// <param name="lineTypeName"></param>
         /// <returns>创建的图层对象，如果创建失败则返回null</returns>
         public LayerTableRecord GetOrCreateLayer(string layerName = "",
-            short colorIndex = CadServiceManager.ColorIndexWhite,
-            string lineTypeName = CadServiceManager.LineTypeContinuous)
+            short colorIndex = CadServiceManager.Colors.White,
+            string lineTypeName = CadServiceManager.Linetypes.Continuous)
         {
             try
             {
                 if (string.IsNullOrEmpty(layerName))
                 {
-                    Logger._.Warn($"图层名为空，将返回{CadServiceManager.Layer0}图层");
-                    return GetLayer(CadServiceManager.Layer0);
+                    Logger._.Warn($"图层名为空，将返回{CadServiceManager.Layers.Default}图层");
+                    return GetLayer(CadServiceManager.Layers.Default);
                 }
                 // 生成一个有效的图层名
 
@@ -299,8 +299,8 @@ namespace ServiceACAD
             }
         }
 
-        public LayerTableRecord CreateLayer(string layerName = "", short colorIndex = CadServiceManager.ColorIndexWhite,
-            string lineTypeName = CadServiceManager.LineTypeContinuous)
+        public LayerTableRecord CreateLayer(string layerName = "", short colorIndex = CadServiceManager.Colors.White,
+            string lineTypeName = CadServiceManager.Linetypes.Continuous)
         {
             try
             {

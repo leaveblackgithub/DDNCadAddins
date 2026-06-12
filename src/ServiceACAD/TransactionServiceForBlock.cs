@@ -131,8 +131,8 @@ namespace ServiceACAD
         /// <param name="lineTypeName">线型</param>
         /// <returns>创建成功的块参照ObjectId，失败返回ObjectId.Null</returns>
         public ObjectId CreateBlockRefInCurrentSpace(ObjectId blkDefId, Point3d insertPt = default(Point3d),
-            string layerName = CadServiceManager.Layer0, short colorIndex = CadServiceManager.ColorIndexByLayer,
-            string lineTypeName = CadServiceManager.StrByLayer)
+            string layerName = CadServiceManager.Layers.Default, short colorIndex = CadServiceManager.Colors.ByLayer,
+            string lineTypeName = CadServiceManager.Linetypes.ByLayer)
         {
             try
             {
@@ -154,17 +154,17 @@ namespace ServiceACAD
                     // 创建块参照
                     var blockRef = new BlockReference(insertPt, blkDefId);
                     // 设置块参照属性
-                    if (layerName!=CadServiceManager.Layer0)
+                    if (layerName!=CadServiceManager.Layers.Default)
                     {
                         blockRef.Layer = _transactionService.Style.GetValidLayerName(layerName);
                     }
 
-                    if (colorIndex != CadServiceManager.ColorIndexByLayer)
+                    if (colorIndex != CadServiceManager.Colors.ByLayer)
                     {
                         blockRef.ColorIndex = _transactionService.Style.GetValidColorIndex(colorIndex);
                     }
 
-                    if (lineTypeName != CadServiceManager.StrByLayer)
+                    if (lineTypeName != CadServiceManager.Linetypes.ByLayer)
                     {
                         blockRef.Linetype = _transactionService.Style.GetValidLineTypeName(lineTypeName);
                     }

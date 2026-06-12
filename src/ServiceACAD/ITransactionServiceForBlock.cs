@@ -34,8 +34,8 @@ namespace ServiceACAD
         /// <param name="lineTypeName">线型</param>
         /// <returns>创建成功的块参照ObjectId，失败返回ObjectId.Null</returns>
         ObjectId CreateBlockRefInCurrentSpace(ObjectId blkDefId, Point3d insertPt = default(Point3d),
-            string layerName = CadServiceManager.Layer0, short colorIndex = CadServiceManager.ColorIndexByLayer,
-            string lineTypeName = CadServiceManager.StrByLayer);
+            string layerName = CadServiceManager.Layers.Default, short colorIndex = CadServiceManager.Colors.ByLayer,
+            string lineTypeName = CadServiceManager.Linetypes.ByLayer);
 
         /// <summary>
         ///     为块参照添加多个属性并赋值

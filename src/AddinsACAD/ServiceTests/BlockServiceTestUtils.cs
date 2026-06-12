@@ -27,117 +27,117 @@ namespace AddinsAcad.ServiceTests
                 {
                     "LINE_1_BYBLOCK", new Dictionary<string, object>
                     {
-                        { CadServiceManager.StrTypeName, CadServiceManager.StrLine },
-                        { CadServiceManager.StrStartPoint, new Point3d(0, 0, 0) },
-                        { CadServiceManager.StrEndPoint, new Point3d(10, 0, 0) },
-                        { CadServiceManager.StrLayer, CadServiceManager.Layer0 },
-                        { CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexByBlock },
-                        { CadServiceManager.StrLinetype, CadServiceManager.StrByBlock },
-                        { CadServiceManager.StrLinetypeScale, 1.0 },
-                        { CadServiceManager.StrLineWeight, LineWeight.ByBlock }
+                        { CadServiceManager.PropNames.TypeName, CadServiceManager.EntityTypes.Line },
+                        { CadServiceManager.PropNames.StartPoint, new Point3d(0, 0, 0) },
+                        { CadServiceManager.PropNames.EndPoint, new Point3d(10, 0, 0) },
+                        { CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default },
+                        { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock },
+                        { CadServiceManager.EntityTypes.Linetype, CadServiceManager.Linetypes.ByBlock },
+                        { CadServiceManager.EntityTypes.LinetypeScale, 1.0 },
+                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.ByBlock }
                     }
                 },
                 {
                     "LINE_2_RED", new Dictionary<string, object>
                     {
-                        { CadServiceManager.StrTypeName, CadServiceManager.StrLine },
-                        { CadServiceManager.StrStartPoint, new Point3d(0, 10, 0) },
-                        { CadServiceManager.StrEndPoint, new Point3d(10, 10, 0) },
-                        { CadServiceManager.StrLayer, NameTestLayer },
-                        { CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexRed },
-                        { CadServiceManager.StrLinetype, NameTestLinetype },
-                        { CadServiceManager.StrLinetypeScale, 2.0 },
-                        { CadServiceManager.StrLineWeight, LineWeight.LineWeight050 }
+                        { CadServiceManager.PropNames.TypeName, CadServiceManager.EntityTypes.Line },
+                        { CadServiceManager.PropNames.StartPoint, new Point3d(0, 10, 0) },
+                        { CadServiceManager.PropNames.EndPoint, new Point3d(10, 10, 0) },
+                        { CadServiceManager.PropNames.Layer, NameTestLayer },
+                        { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.Red },
+                        { CadServiceManager.EntityTypes.Linetype, NameTestLinetype },
+                        { CadServiceManager.EntityTypes.LinetypeScale, 2.0 },
+                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.LineWeight050 }
                     }
                 },
                 {
                     "CIRCLE_1_BYLAYER", new Dictionary<string, object>
                     {
-                        { CadServiceManager.StrTypeName, CadServiceManager.StrCircle },
-                        { CadServiceManager.StrCenter, new Point3d(20, 0, 0) },
-                        { CadServiceManager.StrNormal, new Vector3d(0, 0, 1) },
-                        { CadServiceManager.StrRadius, 5.0 },
-                        { CadServiceManager.StrLayer, CadServiceManager.Layer0 },
-                        { CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexByLayer },
-                        { CadServiceManager.StrLinetype, CadServiceManager.StrByBlock },
-                        { CadServiceManager.StrLinetypeScale, 1.0 },
-                        { CadServiceManager.StrLineWeight, LineWeight.ByBlock }
+                        { CadServiceManager.PropNames.TypeName, CadServiceManager.EntityTypes.Circle },
+                        { CadServiceManager.PropNames.Center, new Point3d(20, 0, 0) },
+                        { CadServiceManager.PropNames.Normal, new Vector3d(0, 0, 1) },
+                        { CadServiceManager.PropNames.Radius, 5.0 },
+                        { CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default },
+                        { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByLayer },
+                        { CadServiceManager.EntityTypes.Linetype, CadServiceManager.Linetypes.ByBlock },
+                        { CadServiceManager.EntityTypes.LinetypeScale, 1.0 },
+                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.ByBlock }
                     }
                 },
                 {
                     "CIRCLE_2_BYBLOCK", new Dictionary<string, object>
                     {
-                        { CadServiceManager.StrTypeName, CadServiceManager.StrCircle },
-                        { CadServiceManager.StrCenter, new Point3d(20, 10, 0) },
-                        { CadServiceManager.StrNormal, new Vector3d(0, 0, 1) },
-                        { CadServiceManager.StrRadius, 5.0 },
-                        { CadServiceManager.StrLayer, NameTestLayer },
-                        { CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexByBlock },
-                        { CadServiceManager.StrLinetype, NameTestLinetype },
-                        { CadServiceManager.StrLinetypeScale, 0.5 },
-                        { CadServiceManager.StrLineWeight, LineWeight.LineWeight030 }
+                        { CadServiceManager.PropNames.TypeName, CadServiceManager.EntityTypes.Circle },
+                        { CadServiceManager.PropNames.Center, new Point3d(20, 10, 0) },
+                        { CadServiceManager.PropNames.Normal, new Vector3d(0, 0, 1) },
+                        { CadServiceManager.PropNames.Radius, 5.0 },
+                        { CadServiceManager.PropNames.Layer, NameTestLayer },
+                        { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock },
+                        { CadServiceManager.EntityTypes.Linetype, NameTestLinetype },
+                        { CadServiceManager.EntityTypes.LinetypeScale, 0.5 },
+                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.LineWeight030 }
                     }
                 },
                 {
                     "TEXT_1_GREEN", new Dictionary<string, object>
                     {
-                        { CadServiceManager.StrTypeName, CadServiceManager.StrDbText },
-                        { CadServiceManager.StrPosition, new Point3d(30, 0, 0) },
-                        { CadServiceManager.StrTextString, "Text1" },
-                        { CadServiceManager.StrHeight, 2.5 },
-                        { CadServiceManager.StrLayer, CadServiceManager.Layer0 },
-                        { CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexGreen },
-                        { CadServiceManager.StrLinetype, CadServiceManager.StrByBlock },
-                        { CadServiceManager.StrLinetypeScale, 1.0 },
-                        { CadServiceManager.StrLineWeight, LineWeight.ByBlock }
+                        { CadServiceManager.PropNames.TypeName, CadServiceManager.EntityTypes.DbText },
+                        { CadServiceManager.PropNames.Position, new Point3d(30, 0, 0) },
+                        { CadServiceManager.PropNames.TextString, "Text1" },
+                        { CadServiceManager.PropNames.Height, 2.5 },
+                        { CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default },
+                        { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.Green },
+                        { CadServiceManager.EntityTypes.Linetype, CadServiceManager.Linetypes.ByBlock },
+                        { CadServiceManager.EntityTypes.LinetypeScale, 1.0 },
+                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.ByBlock }
                     }
                 },
                 {
                     "TEXT_2_BYBLOCK", new Dictionary<string, object>
                     {
-                        { CadServiceManager.StrTypeName, CadServiceManager.StrDbText },
-                        { CadServiceManager.StrPosition, new Point3d(30, 10, 0) },
-                        { CadServiceManager.StrTextString, "Text2" },
-                        { CadServiceManager.StrHeight, 2.5 },
-                        { CadServiceManager.StrLayer, NameTestLayer },
-                        { CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexByBlock },
-                        { CadServiceManager.StrLinetype, NameTestLinetype },
-                        { CadServiceManager.StrLinetypeScale, 1.5 },
-                        { CadServiceManager.StrLineWeight, LineWeight.LineWeight070 }
+                        { CadServiceManager.PropNames.TypeName, CadServiceManager.EntityTypes.DbText },
+                        { CadServiceManager.PropNames.Position, new Point3d(30, 10, 0) },
+                        { CadServiceManager.PropNames.TextString, "Text2" },
+                        { CadServiceManager.PropNames.Height, 2.5 },
+                        { CadServiceManager.PropNames.Layer, NameTestLayer },
+                        { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock },
+                        { CadServiceManager.EntityTypes.Linetype, NameTestLinetype },
+                        { CadServiceManager.EntityTypes.LinetypeScale, 1.5 },
+                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.LineWeight070 }
                     }
                 },
                 {
                     "ATTRIBUTE_1_GREEN", new Dictionary<string, object>
                     {
-                        { CadServiceManager.StrTypeName, CadServiceManager.StrAttributeDefinition },
-                        { CadServiceManager.StrPosition, new Point3d(40, 0, 0) },
-                        { CadServiceManager.StrTextString, StrValue1 },
-                        { CadServiceManager.StrTag, "ATTR1" },
-                        { CadServiceManager.StrPrompt, "默认值1" },
-                        { CadServiceManager.StrHeight, 2.5 },
-                        { CadServiceManager.StrLayer, CadServiceManager.Layer0 },
-                        { CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexGreen },
-                        { CadServiceManager.StrLinetype, CadServiceManager.StrByBlock },
-                        { CadServiceManager.StrLinetypeScale, 1.0 },
-                        { CadServiceManager.StrLineWeight, LineWeight.ByBlock },
-                        { CadServiceManager.StrTextStyleId, ObjectId.Null }
+                        { CadServiceManager.PropNames.TypeName, CadServiceManager.EntityTypes.AttributeDefinition },
+                        { CadServiceManager.PropNames.Position, new Point3d(40, 0, 0) },
+                        { CadServiceManager.PropNames.TextString, StrValue1 },
+                        { CadServiceManager.PropNames.Tag, "ATTR1" },
+                        { CadServiceManager.PropNames.Prompt, "默认值1" },
+                        { CadServiceManager.PropNames.Height, 2.5 },
+                        { CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default },
+                        { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.Green },
+                        { CadServiceManager.EntityTypes.Linetype, CadServiceManager.Linetypes.ByBlock },
+                        { CadServiceManager.EntityTypes.LinetypeScale, 1.0 },
+                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.ByBlock },
+                        { CadServiceManager.PropNames.TextStyleId, ObjectId.Null }
                     }
                 },
                 {
                     "ATTRIBUTE_2_BYBLOCK", new Dictionary<string, object>
                     {
-                        { CadServiceManager.StrTypeName, CadServiceManager.StrAttributeDefinition },
-                        { CadServiceManager.StrPosition, new Point3d(40, 10, 0) },
-                        { CadServiceManager.StrTextString, StrValue2 },
-                        { CadServiceManager.StrTag, "ATTR2" },
-                        { CadServiceManager.StrPrompt, "默认值2" },
-                        { CadServiceManager.StrHeight, 5.0 },
-                        { CadServiceManager.StrLayer, NameTestLayer },
-                        { CadServiceManager.StrColorIndex, CadServiceManager.ColorIndexByBlock },
-                        { CadServiceManager.StrLinetype, NameTestLinetype },
-                        { CadServiceManager.StrLinetypeScale, 1.0 },
-                        { CadServiceManager.StrLineWeight, LineWeight.ByBlock },
-                        { CadServiceManager.StrTextStyleId, ObjectId.Null }
+                        { CadServiceManager.PropNames.TypeName, CadServiceManager.EntityTypes.AttributeDefinition },
+                        { CadServiceManager.PropNames.Position, new Point3d(40, 10, 0) },
+                        { CadServiceManager.PropNames.TextString, StrValue2 },
+                        { CadServiceManager.PropNames.Tag, "ATTR2" },
+                        { CadServiceManager.PropNames.Prompt, "默认值2" },
+                        { CadServiceManager.PropNames.Height, 5.0 },
+                        { CadServiceManager.PropNames.Layer, NameTestLayer },
+                        { CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock },
+                        { CadServiceManager.EntityTypes.Linetype, NameTestLinetype },
+                        { CadServiceManager.EntityTypes.LinetypeScale, 1.0 },
+                        { CadServiceManager.EntityTypes.LineWeight, LineWeight.ByBlock },
+                        { CadServiceManager.PropNames.TextStyleId, ObjectId.Null }
                     }
                 }
             };
@@ -158,7 +158,7 @@ namespace AddinsAcad.ServiceTests
                 var blkDefId = serviceTrans.Block.CreateBlockDef(entities, TestBlockName);
                 var blkRefId = serviceTrans.Block.CreateBlockRefInCurrentSpace(blkDefId, Point3d.Origin,
                     NameTestLayer,
-                    CadServiceManager.ColorIndexMagenta,
+                    CadServiceManager.Colors.Magenta,
                     NameTestLinetype);
                 return blkRefId;
             }
