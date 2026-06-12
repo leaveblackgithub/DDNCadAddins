@@ -1,13 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
-ACADExampleTest.csproj - AutoCAD Unit Test Project File
-
-Features:
-1. Encapsulates test cases
-2. References TestRunnerACAD library
+AddinsACAD.csproj - AutoCAD Commands and Tests Project File
 -->
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <!-- Import the shared properties from Directory.props -->
   <Import Project="$(MSBuildThisFileDirectory)\..\Directory.props" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -20,19 +15,17 @@ Features:
     <RootNamespace>AddinsACAD</RootNamespace>
     <AssemblyName>AddinsACAD</AssemblyName>
   </PropertyGroup>
-  <!-- Debug配置 -->
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
   </PropertyGroup>
-  <!-- Release配置 -->
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
   </PropertyGroup>
   <ItemGroup>
-    <!-- 系统引用已迁移到Directory.props -->
   </ItemGroup>
   <ItemGroup>
     <Compile Include="$(SolutionDir)CommonAssemblyInfo.cs">
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
+    <Compile Include="Commands\HelloWorldCommand.cs" />
     <Compile Include="Commands\BlockCleanupCommand.cs" />
     <Compile Include="Commands\ExplodeAsShownCommand.cs" />
     <Compile Include="Commands\GenerateXclipBoundaryCommand.cs" />
@@ -64,6 +57,10 @@ Features:
     </Content>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\DDNCadAddins.Core\DDNCadAddins.Core.csproj">
+      <Project>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</Project>
+      <Name>DDNCadAddins.Core</Name>
+    </ProjectReference>
     <ProjectReference Include="$(SolutionDir)TestRunnerACAD\TestRunnerACAD.csproj">
       <Project>{e63bebf1-521b-4665-adae-c55e1c4898ce}</Project>
       <Name>TestRunnerACAD</Name>
@@ -74,7 +71,6 @@ Features:
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <!-- 系统引用 -->
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Windows.Forms" />
@@ -84,7 +80,6 @@ Features:
     <Reference Include="System.Data" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
-    <!-- NUnit引用 -->
     <Reference Include="nunit.framework, Version=3.13.2.0, Culture=neutral, PublicKeyToken=2638cd05610744eb">
       <HintPath>$(SolutionDir)packages\NUnit.3.13.2\lib\net45\nunit.framework.dll</HintPath>
       <Private>True</Private>
@@ -93,7 +88,6 @@ Features:
       <HintPath>$(SolutionDir)packages\NUnitLite.3.13.2\lib\net45\nunitlite.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <!-- AutoCAD引用 -->
     <Reference Include="AcCoreMgd">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>C:\Program Files\Autodesk\AutoCAD 2019\AcCoreMgd.dll</HintPath>
@@ -104,7 +98,6 @@ Features:
       <HintPath>C:\Program Files\Autodesk\AutoCAD 2019\AcDbMgd.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <!-- AutoCAD UI库 -->
     <Reference Include="acmgd">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>C:\Program Files\Autodesk\AutoCAD 2019\acmgd.dll</HintPath>
@@ -117,23 +110,6 @@ Features:
     </Reference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- 检查版本号 -->
-  <Target Name="CheckAssemblyVersion" AfterTargets="Build">
-    <Message Text="检查编译后版本号信息..." Importance="high" />
-    <Message Text="项目: $(MSBuildProjectName)" Importance="high" />
-    <Message Text="输出路径: $(OutputPath)" Importance="high" />
-    <Message Text="配置: $(Configuration)" Importance="high" />
-    <Message Text="平台: $(Platform)" Importance="high" />
-    <Message Text="编译常量: $(DefineConstants)" Importance="high" />
-    <Message Text="--------------------------------------------------" Importance="high" />
-    <Message Text="如果版本号仍显示为0.0.0.0，请尝试以下解决方案:" Importance="high" />
-    <Message Text="1. 确保已将GenerateAssemblyInfo设置为false" Importance="high" />
-    <Message Text="2. 确保Deterministic设置为false" Importance="high" />
-    <Message Text="3. 确保在CommonAssemblyInfo.cs中使用[assembly: AssemblyVersion(&quot;1.0.*&quot;)]" Importance="high" />
-    <Message Text="4. 确保项目文件中正确引用了CommonAssemblyInfo.cs" Importance="high" />
-    <Message Text="5. 确保USE_DIRECTORY_PROPS常量已正确定义" Importance="high" />
-    <Message Text="--------------------------------------------------" Importance="high" />
-  </Target>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>This computer is missing NuGet packages referenced by this project. Use "NuGet Package Restore" to download these packages. For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
