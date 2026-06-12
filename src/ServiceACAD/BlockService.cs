@@ -92,7 +92,7 @@ namespace ServiceACAD
             }
         }
 
-        public void UpgradeOpen()
+        private void UpgradeOpen()
         {
             if (!CadBlkRef.IsWriteEnabled)
             {

@@ -35,8 +35,6 @@ namespace ServiceACAD
         /// <returns>删除成功返回 true</returns>
         OpResult<bool> EraseIfEmptyDefinition();
 
-        void UpgradeOpen();
-
         /// <summary>
         ///     为图块生成Xclip边界
         /// </summary>

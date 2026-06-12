@@ -82,23 +82,5 @@ namespace AddinsACAD.ServiceTests
 
             CadServiceManager._.ExecuteInTransactions("", Action);
         }
-
-        [Test]
-        public void TestUpgradeOpen_AllowsWrite()
-        {
-            void Action(ITransactionService tr)
-            {
-                var refId = BlockServiceTestUtils.CreateTestBlockForExplodeCommand(tr);
-                if (refId.IsNull) { Assert.Inconclusive("测试块创建失败"); return; }
-
-                var blkService = tr.Block.GetBlockService(refId);
-                blkService.UpgradeOpen();
-
-                blkService.ColorIndex = CadServiceManager.ColorIndexBlue;
-                Assert.AreEqual(CadServiceManager.ColorIndexBlue, blkService.ColorIndex);
-            }
-
-            CadServiceManager._.ExecuteInTransactions("", Action);
-        }
     }
 }
