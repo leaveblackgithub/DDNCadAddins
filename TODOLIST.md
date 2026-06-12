@@ -8,6 +8,7 @@
 - [ ] 审查继承层次结构，确保符合里氏替换原则(LSP)
 
 ## 2. 单元测试覆盖
+- [x] Core 层纯单元测试（DDNCadAddins.Core.Tests，VS Test Explorer，无需 CAD）
 - [ ] 为核心业务逻辑补充单元测试（BlockService、TransactionService 等仍有扩展空间）
 - [ ] 增加模拟(Mock)对象，隔离对AutoCAD API的依赖
 - [ ] 生成代码覆盖率报告（当前仅有 ExtentReports HTML 测试结果）
@@ -26,3 +27,5 @@
 | 2026-06-10 | 修复失败用例 | ConstructorUtils、PropertyUtils 实现修复；ExampleTests.TestFail 标记 Ignore |
 | 2026-06-10 | RUNTESTS 命令说明 | 补充 xclip.dwg 依赖说明与当前图纸检测提示 |
 | 2026-06-10 | RUNTESTS 异常处理 | 区分 AutoCAD API 异常与 System 异常 |
+| 2026-06-12 | Core 层 PoC 三步验证 | Core 编译、Core.Tests 12 项全通过、HELLO 命令集成通过 |
+| 2026-06-12 | 统一项目配置 | Directory.props / CommonAssemblyInfo 对齐各项目 AssemblyInfo 与 csproj |

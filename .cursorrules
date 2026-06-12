@@ -1,6 +1,6 @@
 # DDNCadAddins项目规则
-# 版本：1.1.0
-# 最后更新：2025-06-16
+# 版本：1.2.0
+# 最后更新：2026-06-12
 # 
 # 使用指南：
 # 本文件定义了Cursor AI在分析和生成代码时应遵循的项目规则。
@@ -79,6 +79,8 @@ SYSTEM_CONTEXT: |
   - 所有AutoCAD API调用应集中在服务层
   - CAD访问服务不应包含复杂业务逻辑，应仅作为AutoCAD API的简单封装
   - 复杂业务逻辑应放在专门的业务服务类中，由业务服务调用CAD访问服务
+  - ★ 数据库对象必须在 Transaction 内访问：通过 TransactionService.ExecuteInTransaction 或服务层 GetObject<T> 打开，禁止在事务外读写 DBObject
+  - ★ 禁止使用 dynamic 类型访问 AutoCAD 对象；必须使用强类型（Entity、BlockReference、LayerTableRecord 等），通过 Transaction.GetObject(id, OpenMode) 获取
   
   ## 异常处理规则
   - 捕获所有可能的异常，不允许任何异常传播到调用者
@@ -139,6 +141,8 @@ CODE_REVIEW_GUIDELINES: |
      - 在多处直接访问AutoCAD对象而不通过封装服务
      - CAD访问服务包含复杂业务逻辑
      - 业务逻辑和CAD访问逻辑混合在一起
+     - 在 Transaction 外打开或修改数据库对象（DBObject、Entity 等）
+     - 使用 dynamic、ExpandoObject 或反射动态访问 AutoCAD 对象属性，而非强类型 API
   
   3. 异常处理违规:
      - 允许异常传播到调用者而不捕获
@@ -185,6 +189,8 @@ AUTO_REFACTORING: |
      - 创建或使用统一的AcadService访问点
      - 移除CAD访问服务中的业务逻辑，将其移至业务服务类
      - 确保所有AutoCAD API调用通过封装服务
+     - 将事务外的 DB 操作移入 ExecuteInTransaction，统一通过 GetObject<T> 打开对象
+     - 将 dynamic 访问替换为 Transaction + 强类型（Entity、BlockReference 等）
   
   3. 异常处理重构:
      - 添加try-catch块捕获所有异常

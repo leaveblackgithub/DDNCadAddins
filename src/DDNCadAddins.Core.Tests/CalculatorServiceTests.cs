@@ -24,7 +24,7 @@ namespace DDNCadAddins.Core.Tests
             var result = _calculator.Add(2.0, 3.0);
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(5.0, result.Value, 1e-10);
+            Assert.AreEqual(5.0, result.Data, 1e-10);
         }
 
         [Test]
@@ -33,7 +33,7 @@ namespace DDNCadAddins.Core.Tests
             var result = _calculator.Add(-4.0, -6.0);
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(-10.0, result.Value, 1e-10);
+            Assert.AreEqual(-10.0, result.Data, 1e-10);
         }
 
         [Test]
@@ -42,7 +42,7 @@ namespace DDNCadAddins.Core.Tests
             var result = _calculator.Add(10.0, -3.0);
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(7.0, result.Value, 1e-10);
+            Assert.AreEqual(7.0, result.Data, 1e-10);
         }
 
         [Test]
@@ -51,7 +51,7 @@ namespace DDNCadAddins.Core.Tests
             var result = _calculator.Add(0.0, 0.0);
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(0.0, result.Value, 1e-10);
+            Assert.AreEqual(0.0, result.Data, 1e-10);
         }
 
         // --- Add 边界情况 ---
@@ -97,7 +97,7 @@ namespace DDNCadAddins.Core.Tests
             var result = _calculator.Subtract(10.0, 3.0);
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(7.0, result.Value, 1e-10);
+            Assert.AreEqual(7.0, result.Data, 1e-10);
         }
 
         [Test]
@@ -108,25 +108,25 @@ namespace DDNCadAddins.Core.Tests
             Assert.IsFalse(result.IsSuccess);
         }
 
-        // --- 验证 CalculationResult 工厂方法 ---
+        // --- OpResult 工厂方法 ---
 
         [Test]
-        public void CalculationResult_Success_SetsPropertiesCorrectly()
+        public void OpResult_Success_SetsPropertiesCorrectly()
         {
-            var result = CalculationResult.Success(42.0, "测试成功");
+            var result = OpResult<double>.Success(42.0, "测试成功");
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(42.0, result.Value, 1e-10);
+            Assert.AreEqual(42.0, result.Data, 1e-10);
             Assert.AreEqual("测试成功", result.Message);
         }
 
         [Test]
-        public void CalculationResult_Fail_SetsPropertiesCorrectly()
+        public void OpResult_Fail_SetsPropertiesCorrectly()
         {
-            var result = CalculationResult.Fail("错误信息");
+            var result = OpResult<double>.Fail("错误信息");
 
             Assert.IsFalse(result.IsSuccess);
-            Assert.AreEqual(0.0, result.Value, 1e-10);
+            Assert.AreEqual(0.0, result.Data, 1e-10);
             Assert.AreEqual("错误信息", result.Message);
         }
     }

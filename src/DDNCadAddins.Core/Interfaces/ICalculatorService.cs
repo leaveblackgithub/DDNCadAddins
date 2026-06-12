@@ -13,11 +13,11 @@ namespace DDNCadAddins.Core.Interfaces
         /// <param name="a">第一个操作数</param>
         /// <param name="b">第二个操作数</param>
         /// <returns>计算结果</returns>
-        CalculationResult Add(double a, double b);
+        OpResult<double> Add(double a, double b);
 
         /// <summary>
         ///     减法运算
         /// </summary>
-        CalculationResult Subtract(double a, double b);
+        OpResult<double> Subtract(double a, double b);
     }
 }
