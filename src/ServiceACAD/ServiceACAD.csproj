@@ -14,11 +14,8 @@ Features:
     <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
     <ProjectGuid>{F9A5342C-C55F-4220-AEF4-14522860A63D}</ProjectGuid>
     <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
-    <RootNamespace>ServiceACAD</RootNamespace>
-    <AssemblyName>ServiceACAD</AssemblyName>
   </PropertyGroup>
   <!-- Debug配置 -->
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">

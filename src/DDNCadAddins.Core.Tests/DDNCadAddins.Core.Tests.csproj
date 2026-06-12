@@ -6,8 +6,6 @@
     <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
     <ProjectGuid>{B2C3D4E5-F6A7-8901-BCDE-F2345678901A}</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>DDNCadAddins.Core.Tests</RootNamespace>
-    <AssemblyName>DDNCadAddins.Core.Tests</AssemblyName>
     <NuGetPackageImportStamp></NuGetPackageImportStamp>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">

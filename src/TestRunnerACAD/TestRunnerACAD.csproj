@@ -46,7 +46,7 @@ TestRunnerACAD.csproj - AutoCAD测试运行器库项目
   <ItemGroup>
     <ProjectReference Include="..\ServiceACAD\ServiceACAD.csproj">
       <Project>{f9a5342c-c55f-4220-aef4-14522860a63d}</Project>
-      <n>ServiceACAD</n>
+      <Name>ServiceACAD</Name>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>

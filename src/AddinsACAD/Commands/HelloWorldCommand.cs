@@ -43,7 +43,7 @@ namespace AddinsACAD.Commands
 
                 ed.WriteMessage("\n Core 层调用成功，分层架构验证通过！");
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 Logger._.Error($"HelloWorldCommand 执行失败: {ex.Message}");
                 CadServiceManager.ServiceEd.WriteMessage($"\n错误: {ex.Message}");

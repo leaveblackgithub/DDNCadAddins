@@ -9,11 +9,8 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
     <ProjectGuid>{0D9B48BE-20B0-4C41-880D-A42B2A491218}</ProjectGuid>
     <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
-    <RootNamespace>AddinsACAD</RootNamespace>
-    <AssemblyName>AddinsACAD</AssemblyName>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
   </PropertyGroup>
