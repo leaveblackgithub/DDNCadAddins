@@ -120,5 +120,37 @@ namespace DDNCadAddins.Core.Tests
             Assert.GreaterOrEqual(result.Data.IterationCount, 2);
             Assert.AreEqual(3, result.Data.TotalExplodedEntityCount);
         }
+
+        [Test]
+        public void CleanupNonXclippedBlocks_CancellationRequested_ReturnsFail()
+        {
+            var explodedCount = 0;
+            var options = new BlockCleanupOptions
+            {
+                IsCancellationRequested = () => explodedCount >= 1,
+                OnBlockExploded = _ => explodedCount++
+            };
+
+            var result = _service.CleanupNonXclippedBlocks(options);
+
+            Assert.IsFalse(result.IsSuccess);
+            Assert.AreEqual(BlockCleanupOptions.CancelledMessage, result.Message);
+            Assert.AreEqual(1, _repository.ExplodedBlockIds.Count);
+        }
+
+        [Test]
+        public void CleanupNonXclippedBlocks_OnBlockExploded_InvokesCallback()
+        {
+            var callbackCount = 0;
+            var options = new BlockCleanupOptions
+            {
+                OnBlockExploded = _ => callbackCount++
+            };
+
+            var result = _service.CleanupNonXclippedBlocks(options);
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(2, callbackCount);
+        }
     }
 }

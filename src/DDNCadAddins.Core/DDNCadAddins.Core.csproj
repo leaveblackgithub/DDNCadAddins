@@ -23,6 +23,7 @@
     <Compile Include="Interfaces\ILayerRepository.cs" />
     <Compile Include="Interfaces\IStyleValidationService.cs" />
     <Compile Include="Interfaces\IXClipBoundaryGeometryService.cs" />
+    <Compile Include="Models\BlockCleanupOptions.cs" />
     <Compile Include="Models\BlockCleanupResult.cs" />
     <Compile Include="Models\BlockExplodeResult.cs" />
     <Compile Include="Models\BlockInfo.cs" />

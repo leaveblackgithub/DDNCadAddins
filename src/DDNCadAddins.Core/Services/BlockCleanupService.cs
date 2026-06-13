@@ -28,21 +28,32 @@ namespace DDNCadAddins.Core.Services
         }
 
         /// <inheritdoc />
-        public OpResult<BlockCleanupResult> CleanupNonXclippedBlocks()
+        public OpResult<BlockCleanupResult> CleanupNonXclippedBlocks(BlockCleanupOptions options = null)
         {
             try
             {
+                if (IsCancellationRequested(options))
+                {
+                    return OpResult<BlockCleanupResult>.Fail(BlockCleanupOptions.CancelledMessage);
+                }
+
                 var cleanupResult = new BlockCleanupResult();
                 var skippedBlockIds = new HashSet<string>();
                 var hasMoreBlocks = true;
 
                 while (hasMoreBlocks)
                 {
+                    if (IsCancellationRequested(options))
+                    {
+                        return OpResult<BlockCleanupResult>.Fail(BlockCleanupOptions.CancelledMessage);
+                    }
+
                     cleanupResult.IterationCount++;
                     var roundResult = new BlockCleanupRoundResult
                     {
                         Iteration = cleanupResult.IterationCount
                     };
+                    options?.OnRoundStarted?.Invoke(roundResult.Iteration);
 
                     var blocksResult = GetNonXclippedBlocks(skippedBlockIds);
                     if (!blocksResult.IsSuccess)
@@ -62,6 +73,11 @@ namespace DDNCadAddins.Core.Services
 
                     for (var index = 0; index < blocks.Count; index++)
                     {
+                        if (IsCancellationRequested(options))
+                        {
+                            return OpResult<BlockCleanupResult>.Fail(BlockCleanupOptions.CancelledMessage);
+                        }
+
                         var block = blocks[index];
                         if (block == null || string.IsNullOrEmpty(block.Id))
                         {
@@ -99,11 +115,18 @@ namespace DDNCadAddins.Core.Services
 
                         var explodeStats = explodeResult.Data;
                         roundExploded += explodeStats.EntityCount;
-                        roundResult.ExplodeReports.Add(new BlockExplodeReport
+                        var report = new BlockExplodeReport
                         {
                             BlockName = block.Name,
                             Stats = explodeStats
-                        });
+                        };
+                        roundResult.ExplodeReports.Add(report);
+                        options?.OnBlockExploded?.Invoke(report);
+
+                        if (IsCancellationRequested(options))
+                        {
+                            return OpResult<BlockCleanupResult>.Fail(BlockCleanupOptions.CancelledMessage);
+                        }
                     }
 
                     roundResult.ExplodedEntityCount = roundExploded;
@@ -183,6 +206,23 @@ namespace DDNCadAddins.Core.Services
             else
             {
                 counts[key] = 1;
+            }
+        }
+
+        /// <summary>
+        ///     检查是否收到取消请求
+        /// </summary>
+        /// <param name="options">清理选项</param>
+        /// <returns>是否应取消</returns>
+        private static bool IsCancellationRequested(BlockCleanupOptions options)
+        {
+            try
+            {
+                return options?.IsCancellationRequested != null && options.IsCancellationRequested();
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
     }

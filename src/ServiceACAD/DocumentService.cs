@@ -78,27 +78,59 @@ namespace ServiceACAD
 
         public void ExecuteInTransaction(Action<ITransactionService> testAction)
         {
-            using (CadDoc.LockDocument())
-            using (var tr = CadDb.TransactionManager.StartTransaction())
+            ExecuteInCommandTransaction(serviceTrans =>
             {
-                try
+                testAction(serviceTrans);
+                return OpResult.Success();
+            });
+        }
+
+        /// <inheritdoc />
+        public OpResult ExecuteInCommandTransaction(Func<ITransactionService, OpResult> action)
+        {
+            if (action == null)
+            {
+                return OpResult.Fail("未提供命令逻辑");
+            }
+
+            try
+            {
+                using (CadDoc.LockDocument())
+                using (var tr = CadDb.TransactionManager.StartTransaction())
                 {
-                    var transactionService = new TransactionService(tr);
-                    testAction(transactionService);
-                    tr.Commit();
+                    try
+                    {
+                        var transactionService = new TransactionService(tr);
+                        var result = action(transactionService);
+                        if (result == null || !result.IsSuccess)
+                        {
+                            tr.Abort();
+                            return result ?? OpResult.Fail("操作失败");
+                        }
+
+                        tr.Commit();
+                        return OpResult.Success();
+                    }
+                    catch (AssertionException e)
+                    {
+                        Logger._.Warn($"断言失败异常被忽略: {e.Message}");
+                        tr.Commit();
+                        return OpResult.Success();
+                    }
+                    catch (Exception e)
+                    {
+                        Logger._.Error("处理文档时发生错误", e);
+                        tr.Abort();
+                        ServiceEd.WriteMessage($"\n操作失败: {e.Message}");
+                        ServiceEd.Update();
+                        return OpResult.Fail($"操作失败: {e.Message}");
+                    }
                 }
-                catch (AssertionException e)
-                {
-                    // 断言失败异常被忽略，仅记录不抛出
-                    Logger._.Warn($"断言失败异常被忽略: {e.Message}");
-                    tr.Commit();
-                }
-                catch (Exception e)
-                {
-                    Logger._.Error("处理文档时发生错误", e);
-                    ServiceEd.WriteMessage($"\n操作失败: {e.Message}");
-                    tr.Abort();
-                }
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error("启动命令事务时发生错误", ex);
+                return OpResult.Fail($"操作失败: {ex.Message}");
             }
         }
 

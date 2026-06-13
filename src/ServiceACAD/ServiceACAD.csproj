@@ -34,13 +34,14 @@ Features:
     <Compile Include="Adapters\AutoCadLayerRepository.cs" />
     <Compile Include="Adapters\LayerStateSnapshotConverter.cs" />
     <Compile Include="BlockService.cs" />
-    <Compile Include="MyMessageFilter.cs" />
+    <Compile Include="CommandCancellationScope.cs" />
     <Compile Include="HostApplicationServicesExtensions.cs" />
     <Compile Include="ConstructorUtils.cs" />
     <Compile Include="DocumentService.cs" />
     <Compile Include="CadServiceManager.cs" />
     <Compile Include="EditorService.cs" />
     <Compile Include="ExplodeAsShownResult.cs" />
+    <Compile Include="ICommandCancellation.cs" />
     <Compile Include="IBlockService.cs" />
     <Compile Include="IDocumentService.cs" />
     <Compile Include="IEditorService.cs" />

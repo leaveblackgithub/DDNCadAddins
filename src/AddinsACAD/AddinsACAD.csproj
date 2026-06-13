@@ -25,6 +25,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="Commands\HelloWorldCommand.cs" />
     <Compile Include="Commands\BlockCleanupCommand.cs" />
     <Compile Include="Commands\ExplodeAsShownCommand.cs" />
+    <Compile Include="Commands\ExplodeReportFormatter.cs" />
     <Compile Include="Commands\GenerateXclipBoundaryCommand.cs" />
     <Compile Include="TestCommands\CreateTestBlockForExplodeCommand.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

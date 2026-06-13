@@ -27,50 +27,73 @@ namespace AddinsACAD.Commands
 
             try
             {
-                CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
+                using (var cancellation = new CommandCancellationScope())
                 {
-                    var layerRepo = new AutoCadLayerRepository(serviceTrans);
-                    var layerService = new LayerManagementService(layerRepo);
-
-                    var snapshotResult = layerService.CaptureAllLayerStates();
-                    if (!snapshotResult.IsSuccess)
+                    var cleanupOptions = new BlockCleanupOptions
                     {
-                        statusMessage = $"\n无法记录图层状态: {snapshotResult.Message}";
-                        return;
-                    }
-
-                    var layerSnapshot = snapshotResult.Data;
-                    try
-                    {
-                        var unlockResult = layerService.UnlockAndThawAllLayers();
-                        if (!unlockResult.IsSuccess)
+                        IsCancellationRequested = () => cancellation.IsCancellationRequested,
+                        OnRoundStarted = iteration =>
                         {
-                            statusMessage = $"\n无法解锁解冻图层: {unlockResult.Message}";
-                            return;
+                            if (iteration > 1)
+                            {
+                                WriteOutput($"\n开始第 {iteration} 轮清理...");
+                            }
+                        },
+                        OnBlockExploded = report => WriteOutput(ExplodeReportFormatter.FormatBlockLine(report))
+                    };
+
+                    var transactionResult = CadServiceManager._.ExecuteInCommandTransaction(serviceTrans =>
+                    {
+                        var layerRepo = new AutoCadLayerRepository(serviceTrans);
+                        var layerService = new LayerManagementService(layerRepo);
+
+                        var snapshotResult = layerService.CaptureAllLayerStates();
+                        if (!snapshotResult.IsSuccess)
+                        {
+                            statusMessage = $"\n无法记录图层状态: {snapshotResult.Message}";
+                            return ServiceACAD.OpResult.Fail(snapshotResult.Message);
                         }
 
-                        var blockRepo = new AutoCadBlockRepository(serviceTrans);
-                        var blockCleanupService = new BlockCleanupService(blockRepo);
-                        var result = blockCleanupService.CleanupNonXclippedBlocks();
-                        if (!result.IsSuccess)
+                        var layerSnapshot = snapshotResult.Data;
+                        try
                         {
-                            statusMessage = $"\n图块清理失败: {result.Message}";
-                            return;
-                        }
+                            var unlockResult = layerService.UnlockAndThawAllLayers();
+                            if (!unlockResult.IsSuccess)
+                            {
+                                statusMessage = $"\n无法解锁解冻图层: {unlockResult.Message}";
+                                return ServiceACAD.OpResult.Fail(unlockResult.Message);
+                            }
 
-                        cleanupResult = result.Data;
-                    }
-                    finally
-                    {
-                        var restoreResult = layerService.RestoreLayerStates(layerSnapshot);
-                        if (!restoreResult.IsSuccess)
-                        {
-                            statusMessage = string.IsNullOrEmpty(statusMessage)
-                                ? $"\n恢复图层状态失败: {restoreResult.Message}"
-                                : statusMessage + $"\n恢复图层状态失败: {restoreResult.Message}";
+                            var blockRepo = new AutoCadBlockRepository(serviceTrans);
+                            var blockCleanupService = new BlockCleanupService(blockRepo);
+                            var result = blockCleanupService.CleanupNonXclippedBlocks(cleanupOptions);
+                            if (!result.IsSuccess)
+                            {
+                                statusMessage = $"\n{result.Message}";
+                                return ServiceACAD.OpResult.Fail(result.Message);
+                            }
+
+                            cleanupResult = result.Data;
+                            return ServiceACAD.OpResult.Success();
                         }
+                        finally
+                        {
+                            var restoreResult = layerService.RestoreLayerStates(layerSnapshot);
+                            if (!restoreResult.IsSuccess)
+                            {
+                                var restoreMessage = $"\n恢复图层状态失败: {restoreResult.Message}";
+                                statusMessage = string.IsNullOrEmpty(statusMessage)
+                                    ? restoreMessage
+                                    : statusMessage + restoreMessage;
+                            }
+                        }
+                    });
+
+                    if (!transactionResult.IsSuccess && string.IsNullOrEmpty(statusMessage))
+                    {
+                        statusMessage = $"\n{transactionResult.Message}";
                     }
-                });
+                }
 
                 if (!string.IsNullOrEmpty(statusMessage))
                 {
@@ -91,7 +114,7 @@ namespace AddinsACAD.Commands
         }
 
         /// <summary>
-        ///     将清理结果输出到命令行
+        ///     将清理汇总输出到命令行（逐块明细已在处理过程中实时输出）
         /// </summary>
         /// <param name="result">清理结果</param>
         private static void WriteCleanupSummary(BlockCleanupResult result)
@@ -106,19 +129,6 @@ namespace AddinsACAD.Commands
                 if (round.AttemptedCount == 0 && round.ExplodedEntityCount == 0 && round.FailureCounts.Count == 0)
                 {
                     continue;
-                }
-
-                if (result.IterationCount > 1)
-                {
-                    WriteOutput($"\n开始第 {round.Iteration} 轮清理...");
-                }
-
-                foreach (var report in round.ExplodeReports)
-                {
-                    var stats = report.Stats;
-                    WriteOutput(
-                        $"\n{report.BlockName}: 属性转文字 {stats?.AttributeTextCount ?? 0} 个，" +
-                        $"图层继承 {stats?.LayerAdjustedCount ?? 0} 个，颜色继承 {stats?.ColorAdjustedCount ?? 0} 个。");
                 }
 
                 WriteFailureSummary($"\n第 {round.Iteration} 轮跳过", round.FailureCounts);

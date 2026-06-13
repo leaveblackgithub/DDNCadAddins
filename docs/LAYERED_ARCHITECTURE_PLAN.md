@@ -479,6 +479,7 @@ public class FakeLayerRepository : ILayerRepository
 | 阶段5a | StyleValidationService 迁移，TransactionServiceForStyle 委托 |
 | 阶段5b | PropertyConversionUtils / PropertyComparisonUtils 迁移 |
 | 阶段5c | XClipBoundaryGeometryService 迁移，BlockService 委托 |
+| P0 | CommandCancellationScope、ExecuteInCommandTransaction、逐块实时输出 |
 
 
 
@@ -496,8 +497,8 @@ public class FakeLayerRepository : ILayerRepository
 
 | 优先级 | 任务 | 说明 | 状态 |
 |--------|------|------|------|
-| P0 | **命令中断回滚** | 用户 ESC / CANCEL 时中止事务并回滚，不在图面留下半成品实体 | ⏳ 待实现 |
-| P0 | **命令行同步输出** | 长耗时命令在处理过程中实时输出进度（非仅事务提交后批量输出） | 🔄 部分完成（ExplodeAsShown / BlockCleanup 已在事务后输出 + Update；BlockCleanup 多轮清理仍缺逐块实时输出） |
+| P0 | **命令中断回滚** | 用户 ESC / CANCEL 时中止事务并回滚，不在图面留下半成品实体 | ✅ 已实现（`CommandCancellationScope` + `ExecuteInCommandTransaction` Abort） |
+| P0 | **命令行同步输出** | 长耗时命令在处理过程中实时输出进度（非仅事务提交后批量输出） | ✅ 已实现（`ExplodeAsShown` / `BlockCleanup` 逐块 `WriteMessage` + `Update`） |
 | P1 | **ExplodeAsShown：XClip 转 Crop** | 对带 XClip 的块参照，爆炸后应保留裁剪效果（Crop），而非忽略 XClip 或仅生成边界 | ⏳ 待实现 |
 
 **关联命令**：`ExplodeAsShown`、`BlockCleanup`（经 `ExplodeAsShown` 间接调用）
