@@ -101,32 +101,27 @@ AddinsACAD → Core ← ServiceACAD/Adapters
 **验证结果**：
 - ✅ Core 项目编译成功，无 AutoCAD 引用
 - ✅ 全解决方案 5 个项目编译成功（0 错误）
-- ✅ 24 个 Core.Tests 用例（Calculator 12 + LayerManagement 12），可在 VS Test Explorer 秒级运行
-- ⏳ BlockCleanup 命令需在 CAD 中手动验证
+- ✅ 24 个 Core.Tests 用例（Calculator 12 + LayerManagement 14），可在 VS Test Explorer 秒级运行
+- ✅ BlockCleanup 命令已在 CAD 中手动验证（含 eInvalidLayer 跳过修复）
 
 ---
 
-### 阶段4：迁移块清理服务
+### ✅ 阶段4：迁移块清理服务（已完成）
 
-**目标**：将 `BlockCleanupService` 的爆炸和删除逻辑移入 Core。
+**目标**：将图块清理的多轮爆炸/删除逻辑移入 Core。
 
-**新增接口** `DDNCadAddins.Core/Interfaces/IBlockRepository.cs`：
+**完成内容**：
+1. Core 层新增 `BlockInfo`、`BlockCleanupResult` POCO 模型
+2. 新增 `IBlockRepository` 仓储接口和 `BlockCleanupService` 业务服务
+3. ServiceACAD 新增 `AutoCadBlockRepository` 适配器
+4. `BlockCleanupCommand` 主体逻辑改为调用 Core 层服务（命令层仅负责 I/O）
+5. Core.Tests 新增 `FakeBlockRepository` + 7 个 `BlockCleanupServiceTests`
 
-```csharp
-public interface IBlockRepository
-{
-    OpResult<IReadOnlyList<BlockInfo>> GetAllBlocksInCurrentSpace();
-    OpResult<bool> ExplodeBlock(string blockId);
-    OpResult<bool> EraseEmptyBlock(string blockId);
-}
-```
-
-**新增模型**：`BlockInfo`（POCO，无 CAD 类型）
-
-**业务服务**：`BlockCleanupService`
-- `CleanupEmptyBlocks()` → 删除空定义图块
-- `ExplodeAllXClippedBlocks()` → 爆炸被裁剪的图块
-- 多轮迭代逻辑（纯逻辑，不涉及 CAD API）
+**验证结果**：
+- ✅ Core 项目编译成功，无 AutoCAD 引用
+- ✅ 全解决方案 5 个项目编译成功（0 错误）
+- ✅ 33 个 Core.Tests 用例（Calculator 12 + LayerManagement 14 + BlockCleanup 7）
+- ⏳ BlockCleanup 命令需在 CAD 中再次手动验证
 
 ---
 
@@ -216,6 +211,7 @@ public class FakeLayerRepository : ILayerRepository
 | `38dcc77` | 添加架构计划文档 |
 | 阶段2 | OpResult 迁移到 Core，ServiceACAD 桥接，5个项目编译成功 |
 | 阶段3 | 图层服务迁移到 Core，AutoCadLayerRepository 适配器，BlockCleanup 集成 |
+| 阶段4 | 块清理服务迁移到 Core，AutoCadBlockRepository 适配器，7 个 Core 单元测试 |
 
 ---
 

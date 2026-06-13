@@ -17,13 +17,18 @@
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
     <Compile Include="Interfaces\ICalculatorService.cs" />
+    <Compile Include="Interfaces\IBlockCleanupService.cs" />
+    <Compile Include="Interfaces\IBlockRepository.cs" />
     <Compile Include="Interfaces\ILayerManagementService.cs" />
     <Compile Include="Interfaces\ILayerRepository.cs" />
+    <Compile Include="Models\BlockCleanupResult.cs" />
+    <Compile Include="Models\BlockInfo.cs" />
     <Compile Include="Models\CalculationResult.cs" />
     <Compile Include="Models\LayerInfo.cs" />
     <Compile Include="Models\LayerStateSnapshot.cs" />
     <Compile Include="Models\OpResult.cs" />
     <Compile Include="Services\CalculatorService.cs" />
+    <Compile Include="Services\BlockCleanupService.cs" />
     <Compile Include="Services\LayerManagementService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
