@@ -68,10 +68,10 @@ namespace DDNCadAddins.Core.Tests
             var localPoints = new List<Point2D> { new Point2D(0, 0), new Point2D(1, 1) };
             var translation = Matrix3D.FromArray(new[]
             {
-                1d, 0d, 0d, 0d,
-                0d, 1d, 0d, 0d,
+                1d, 0d, 0d, 5d,
+                0d, 1d, 0d, 6d,
                 0d, 0d, 1d, 0d,
-                5d, 6d, 0d, 1d
+                0d, 0d, 0d, 1d
             });
 
             var result = _service.BuildWcsBoundaryPoints(
@@ -95,6 +95,32 @@ namespace DDNCadAddins.Core.Tests
                 Matrix3D.Identity);
 
             Assert.IsFalse(result.IsSuccess);
+        }
+
+        [Test]
+        public void PreMultiplyBy_TranslationChain_MatchesAutoCadOrder()
+        {
+            var clipSpace = Matrix3D.Identity;
+            var originalInverse = Matrix3D.FromArray(new[]
+            {
+                1d, 0d, 0d, 1d,
+                0d, 1d, 0d, 2d,
+                0d, 0d, 1d, 0d,
+                0d, 0d, 0d, 1d
+            });
+            var blockTransform = Matrix3D.FromArray(new[]
+            {
+                1d, 0d, 0d, 10d,
+                0d, 1d, 0d, 20d,
+                0d, 0d, 1d, 0d,
+                0d, 0d, 0d, 1d
+            });
+
+            var combined = clipSpace.PreMultiplyBy(originalInverse).PreMultiplyBy(blockTransform);
+            var transformed = combined.TransformPlanarPoint(new Point2D(0, 0));
+
+            Assert.AreEqual(11, transformed.X, 1e-9);
+            Assert.AreEqual(22, transformed.Y, 1e-9);
         }
 
         [Test]

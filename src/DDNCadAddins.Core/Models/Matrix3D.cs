@@ -3,7 +3,7 @@ using System;
 namespace DDNCadAddins.Core.Models
 {
     /// <summary>
-    ///     4x4 变换矩阵（列主序，与 AutoCAD Matrix3d.ToArray() 布局一致）
+    ///     4x4 变换矩阵（行主序，与 AutoCAD Matrix3d.ToArray() 布局一致：r0c0..r0c3, r1c0..）
     /// </summary>
     public struct Matrix3D
     {
@@ -89,7 +89,7 @@ namespace DDNCadAddins.Core.Models
         }
 
         /// <summary>
-        ///     将局部平面点变换到 WCS 平面坐标
+        ///     将局部平面点变换到 WCS 平面坐标（与 Point3d.TransformBy 一致，z=0）
         /// </summary>
         /// <param name="localPoint">局部坐标点</param>
         /// <returns>WCS 坐标点</returns>
@@ -97,33 +97,43 @@ namespace DDNCadAddins.Core.Models
         {
             var x = localPoint.X;
             var y = localPoint.Y;
-            var transformedX = x * _e0 + y * _e4 + _e12;
-            var transformedY = x * _e1 + y * _e5 + _e13;
+            var transformedX = x * _e0 + y * _e1 + _e3;
+            var transformedY = x * _e4 + y * _e5 + _e7;
             return new Point2D(transformedX, transformedY);
         }
 
         private static Matrix3D Multiply(Matrix3D left, Matrix3D right)
         {
-            return new Matrix3D(
-                left._e0 * right._e0 + left._e4 * right._e1 + left._e8 * right._e2 + left._e12 * right._e3,
-                left._e1 * right._e0 + left._e5 * right._e1 + left._e9 * right._e2 + left._e13 * right._e3,
-                left._e2 * right._e0 + left._e6 * right._e1 + left._e10 * right._e2 + left._e14 * right._e3,
-                left._e3 * right._e0 + left._e7 * right._e1 + left._e11 * right._e2 + left._e15 * right._e3,
+            var leftValues = ToValueArray(left);
+            var rightValues = ToValueArray(right);
+            var resultValues = new double[16];
 
-                left._e0 * right._e4 + left._e4 * right._e5 + left._e8 * right._e6 + left._e12 * right._e7,
-                left._e1 * right._e4 + left._e5 * right._e5 + left._e9 * right._e6 + left._e13 * right._e7,
-                left._e2 * right._e4 + left._e6 * right._e5 + left._e10 * right._e6 + left._e14 * right._e7,
-                left._e3 * right._e4 + left._e7 * right._e5 + left._e11 * right._e6 + left._e15 * right._e7,
+            for (var row = 0; row < 4; row++)
+            {
+                for (var col = 0; col < 4; col++)
+                {
+                    var sum = 0d;
+                    for (var k = 0; k < 4; k++)
+                    {
+                        sum += leftValues[row * 4 + k] * rightValues[k * 4 + col];
+                    }
 
-                left._e0 * right._e8 + left._e4 * right._e9 + left._e8 * right._e10 + left._e12 * right._e11,
-                left._e1 * right._e8 + left._e5 * right._e9 + left._e9 * right._e10 + left._e13 * right._e11,
-                left._e2 * right._e8 + left._e6 * right._e9 + left._e10 * right._e10 + left._e14 * right._e11,
-                left._e3 * right._e8 + left._e7 * right._e9 + left._e11 * right._e10 + left._e15 * right._e11,
+                    resultValues[row * 4 + col] = sum;
+                }
+            }
 
-                left._e0 * right._e12 + left._e4 * right._e13 + left._e8 * right._e14 + left._e12 * right._e15,
-                left._e1 * right._e12 + left._e5 * right._e13 + left._e9 * right._e14 + left._e13 * right._e15,
-                left._e2 * right._e12 + left._e6 * right._e13 + left._e10 * right._e14 + left._e14 * right._e15,
-                left._e3 * right._e12 + left._e7 * right._e13 + left._e11 * right._e14 + left._e15 * right._e15);
+            return FromArray(resultValues);
+        }
+
+        private static double[] ToValueArray(Matrix3D matrix)
+        {
+            return new[]
+            {
+                matrix._e0, matrix._e1, matrix._e2, matrix._e3,
+                matrix._e4, matrix._e5, matrix._e6, matrix._e7,
+                matrix._e8, matrix._e9, matrix._e10, matrix._e11,
+                matrix._e12, matrix._e13, matrix._e14, matrix._e15
+            };
         }
     }
 }
