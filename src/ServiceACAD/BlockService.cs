@@ -4,6 +4,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.DatabaseServices.Filters;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.ApplicationServices;
+using DDNCadAddins.Core.Services;
 
 namespace ServiceACAD
 {
@@ -628,49 +629,6 @@ namespace ServiceACAD
             return stats;
         }
 
-        /// <summary>
-        ///     比较两个值是否相等，支持不同类型之间的比较
-        /// </summary>
-        /// <param name="value1">第一个值</param>
-        /// <param name="value2">第二个值</param>
-        /// <returns>如果两个值相等返回true，否则返回false</returns>
-        private static bool ValueEquals(object value1, object value2)
-        {
-            // 处理null值的情况
-            if (value1 == null && value2 == null)
-            {
-                return true;
-            }
-
-            if (value1 == null || value2 == null)
-            {
-                return false;
-            }
-
-            // 处理字符串和数值类型的比较
-            if (value1 is string strValue1 && value2 is string strValue2)
-            {
-                return string.Equals(strValue1, strValue2, StringComparison.OrdinalIgnoreCase);
-            }
-
-            // 如果两个值类型相同，直接比较
-            if (value1.GetType() == value2.GetType())
-            {
-                return value1.Equals(value2);
-            }
-
-            // 尝试将值转换为相同类型后比较
-            try
-            {
-                var convertedValue = Convert.ChangeType(value1, value2.GetType());
-                return convertedValue.Equals(value2);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
         public OpResult<object> MatchProp(Entity entTo, Entity entFr, string propName, object valueToFix) =>
             PropertyUtils.MatchPropValue(entTo, entFr, propName, (entT, entF) =>
             {
@@ -680,7 +638,7 @@ namespace ServiceACAD
                     return false;
                 }
 
-                return ValueEquals(getValueTo.Data, valueToFix);
+                return PropertyComparisonUtils.ValueEquals(getValueTo.Data, valueToFix);
             });
 
         /// <summary>

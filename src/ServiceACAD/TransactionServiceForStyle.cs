@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
+using DDNCadAddins.Core.Interfaces;
 using DDNCadAddins.Core.Services;
 using ServiceACAD.Adapters;
 
@@ -13,6 +14,7 @@ namespace ServiceACAD
     public class TransactionServiceForStyle : ITransactionServiceForStyle
     {
         private readonly TransactionService _transactionService;
+        private readonly IStyleValidationService _styleValidation = new StyleValidationService();
 
         /// <summary>
         ///     构造函数
@@ -51,11 +53,7 @@ namespace ServiceACAD
         {
             try
             {
-                if (string.IsNullOrEmpty(lineTypeName))
-                {
-                    Logger._.Warn($"线型名为空，将返回{CadServiceManager.Linetypes.Continuous}线型");
-                    return GetLineType(CadServiceManager.Linetypes.Continuous);
-                }
+                lineTypeName = _styleValidation.NormalizeLineTypeName(lineTypeName);
 
                 // 检查线型是否已存在
                 var ltRec = GetLineType(lineTypeName);
@@ -205,18 +203,7 @@ namespace ServiceACAD
         /// <returns>有效的颜色索引</returns>
         public short
             GetValidColorIndex(short colorIndex, short defaultColorIndex = CadServiceManager.Colors.White)
-        {
-            if (colorIndex < 0 || colorIndex > 255)
-            {
-                return defaultColorIndex < 0 || defaultColorIndex > 255
-                    ? CadServiceManager.Colors.White
-                    : defaultColorIndex;
-            }
-            else
-            {
-                return colorIndex;
-            }
-        }
+            => _styleValidation.GetValidColorIndex(colorIndex, defaultColorIndex);
 
         /// <summary>
         ///     获取有效的颜色

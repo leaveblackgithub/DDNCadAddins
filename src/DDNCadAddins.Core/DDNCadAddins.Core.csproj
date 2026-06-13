@@ -21,16 +21,21 @@
     <Compile Include="Interfaces\IBlockRepository.cs" />
     <Compile Include="Interfaces\ILayerManagementService.cs" />
     <Compile Include="Interfaces\ILayerRepository.cs" />
+    <Compile Include="Interfaces\IStyleValidationService.cs" />
     <Compile Include="Models\BlockCleanupResult.cs" />
     <Compile Include="Models\BlockExplodeResult.cs" />
     <Compile Include="Models\BlockInfo.cs" />
     <Compile Include="Models\CalculationResult.cs" />
+    <Compile Include="Models\CadStyleConstants.cs" />
     <Compile Include="Models\LayerInfo.cs" />
     <Compile Include="Models\LayerStateSnapshot.cs" />
     <Compile Include="Models\OpResult.cs" />
     <Compile Include="Services\CalculatorService.cs" />
     <Compile Include="Services\BlockCleanupService.cs" />
     <Compile Include="Services\LayerManagementService.cs" />
+    <Compile Include="Services\PropertyComparisonUtils.cs" />
+    <Compile Include="Services\PropertyConversionUtils.cs" />
+    <Compile Include="Services\StyleValidationService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

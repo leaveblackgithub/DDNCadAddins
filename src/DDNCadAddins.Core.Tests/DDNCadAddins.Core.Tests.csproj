@@ -21,6 +21,9 @@
     <Compile Include="Fakes\FakeBlockRepository.cs" />
     <Compile Include="Fakes\FakeLayerRepository.cs" />
     <Compile Include="LayerManagementServiceTests.cs" />
+    <Compile Include="PropertyComparisonUtilsTests.cs" />
+    <Compile Include="PropertyConversionUtilsTests.cs" />
+    <Compile Include="StyleValidationServiceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
