@@ -67,6 +67,12 @@ Features:
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\DDNCadAddins.Core\DDNCadAddins.Core.csproj">
+      <Project>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</Project>
+      <Name>DDNCadAddins.Core</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
     <!-- 系统引用 -->
     <Reference Include="System" />
     <Reference Include="System.Core" />
