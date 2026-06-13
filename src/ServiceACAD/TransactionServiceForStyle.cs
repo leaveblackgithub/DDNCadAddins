@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
+using DDNCadAddins.Core.Services;
+using ServiceACAD.Adapters;
 
 namespace ServiceACAD
 {
@@ -386,29 +388,15 @@ namespace ServiceACAD
         {
             try
             {
-                var layerTable = GetLayerTable(OpenMode.ForRead);
-                if (layerTable == null)
+                var layerService = CreateLayerManagementService();
+                var coreResult = layerService.CaptureAllLayerStates();
+                if (!coreResult.IsSuccess)
                 {
-                    return OpResult<LayerStateSnapshot>.Fail("无法获取图层表");
+                    return OpResult<LayerStateSnapshot>.Fail(coreResult.Message);
                 }
 
-                var snapshot = new LayerStateSnapshot();
-                foreach (ObjectId layerId in layerTable)
-                {
-                    var layer = _transactionService.GetObject<LayerTableRecord>(layerId, OpenMode.ForRead);
-                    if (layer == null)
-                    {
-                        continue;
-                    }
-
-                    snapshot.States[layerId] = new LayerStateEntry
-                    {
-                        IsLocked = layer.IsLocked,
-                        IsFrozen = layer.IsFrozen
-                    };
-                }
-
-                return OpResult<LayerStateSnapshot>.Success(snapshot);
+                var legacySnapshot = LayerStateSnapshotConverter.ToLegacy(coreResult.Data, _transactionService);
+                return OpResult<LayerStateSnapshot>.Success(legacySnapshot);
             }
             catch (Exception ex)
             {
@@ -425,37 +413,9 @@ namespace ServiceACAD
         {
             try
             {
-                var layerTable = GetLayerTable(OpenMode.ForRead);
-                if (layerTable == null)
-                {
-                    return OpResult<bool>.Fail("无法获取图层表");
-                }
-
-                foreach (ObjectId layerId in layerTable)
-                {
-                    try
-                    {
-                        if (!layerId.IsValid || layerId.IsErased)
-                        {
-                            continue;
-                        }
-
-                        var layer = _transactionService.GetObject<LayerTableRecord>(layerId, OpenMode.ForWrite);
-                        if (layer == null || layer.IsErased)
-                        {
-                            continue;
-                        }
-
-                        layer.IsLocked = false;
-                        layer.IsFrozen = false;
-                    }
-                    catch (Autodesk.AutoCAD.Runtime.Exception ex)
-                    {
-                        Logger._.Warn($"跳过无效图层 (ObjectId={layerId}): {ex.ErrorStatus}");
-                    }
-                }
-
-                return OpResult<bool>.Success(true);
+                var layerService = CreateLayerManagementService();
+                var coreResult = layerService.UnlockAndThawAllLayers();
+                return WrapCoreResult(coreResult);
             }
             catch (Exception ex)
             {
@@ -473,58 +433,41 @@ namespace ServiceACAD
         {
             try
             {
-                if (snapshot == null || snapshot.States.Count == 0)
-                {
-                    return OpResult<bool>.Success(true);
-                }
-
-                var db = HostApplicationServices.WorkingDatabase;
-                var currentLayerId = db.Clayer;
-
-                foreach (var layerState in snapshot.States)
-                {
-                    try
-                    {
-                        if (!layerState.Key.IsValid || layerState.Key.IsErased)
-                        {
-                            continue;
-                        }
-
-                        var layer = _transactionService.GetObject<LayerTableRecord>(layerState.Key, OpenMode.ForWrite);
-                        if (layer == null || layer.IsErased)
-                        {
-                            continue;
-                        }
-
-                        layer.IsLocked = layerState.Value.IsLocked;
-
-                        if (layerState.Value.IsFrozen)
-                        {
-                            if (layer.Name == "0" || layerState.Key == currentLayerId)
-                            {
-                                continue;
-                            }
-
-                            layer.IsFrozen = true;
-                        }
-                        else
-                        {
-                            layer.IsFrozen = false;
-                        }
-                    }
-                    catch (Autodesk.AutoCAD.Runtime.Exception ex)
-                    {
-                        Logger._.Warn($"跳过无效图层 (ObjectId={layerState.Key}): {ex.ErrorStatus}");
-                    }
-                }
-
-                return OpResult<bool>.Success(true);
+                var layerService = CreateLayerManagementService();
+                var coreSnapshot = LayerStateSnapshotConverter.ToCore(snapshot, _transactionService);
+                var coreResult = layerService.RestoreLayerStates(coreSnapshot);
+                return WrapCoreResult(coreResult);
             }
             catch (Exception ex)
             {
                 Logger._.Error($"恢复图层状态失败: {ex.Message}");
                 return OpResult<bool>.Fail($"恢复图层状态失败: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        ///     将 Core 层 OpResult 包装为 ServiceACAD OpResult
+        /// </summary>
+        /// <param name="coreResult">Core 层结果</param>
+        /// <returns>ServiceACAD 层结果</returns>
+        private static OpResult<bool> WrapCoreResult(DDNCadAddins.Core.Models.OpResult<bool> coreResult)
+        {
+            if (coreResult.IsSuccess)
+            {
+                return OpResult<bool>.Success(coreResult.Data, coreResult.Message);
+            }
+
+            return OpResult<bool>.Fail(coreResult.Message);
+        }
+
+        /// <summary>
+        ///     创建图层管理业务服务实例
+        /// </summary>
+        /// <returns>图层管理服务</returns>
+        private LayerManagementService CreateLayerManagementService()
+        {
+            var repository = new AutoCadLayerRepository(_transactionService);
+            return new LayerManagementService(repository);
         }
     }
 }

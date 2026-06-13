@@ -30,6 +30,8 @@ Features:
     <Compile Include="$(SolutionDir)CommonAssemblyInfo.cs">
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
+    <Compile Include="Adapters\AutoCadLayerRepository.cs" />
+    <Compile Include="Adapters\LayerStateSnapshotConverter.cs" />
     <Compile Include="BlockService.cs" />
     <Compile Include="MyMessageFilter.cs" />
     <Compile Include="HostApplicationServicesExtensions.cs" />

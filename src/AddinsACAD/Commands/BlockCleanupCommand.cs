@@ -4,7 +4,9 @@ using System.Linq;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
+using DDNCadAddins.Core.Services;
 using ServiceACAD;
+using ServiceACAD.Adapters;
 
 [assembly: CommandClass(typeof(AddinsACAD.Commands.BlockCleanupCommand))]
 
@@ -26,7 +28,10 @@ namespace AddinsACAD.Commands
                 // 使用事务服务执行操作
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
                 {
-                    var snapshotResult = serviceTrans.Style.CaptureAllLayerStates();
+                    var layerRepo = new AutoCadLayerRepository(serviceTrans);
+                    var layerService = new LayerManagementService(layerRepo);
+
+                    var snapshotResult = layerService.CaptureAllLayerStates();
                     if (!snapshotResult.IsSuccess)
                     {
                         CadServiceManager.ServiceEd.WriteMessage($"\n无法记录图层状态: {snapshotResult.Message}");
@@ -36,7 +41,7 @@ namespace AddinsACAD.Commands
                     var layerSnapshot = snapshotResult.Data;
                     try
                     {
-                        var unlockResult = serviceTrans.Style.UnlockAndThawAllLayers();
+                        var unlockResult = layerService.UnlockAndThawAllLayers();
                         if (!unlockResult.IsSuccess)
                         {
                             CadServiceManager.ServiceEd.WriteMessage($"\n无法解锁解冻图层: {unlockResult.Message}");
@@ -47,7 +52,7 @@ namespace AddinsACAD.Commands
                     }
                     finally
                     {
-                        var restoreResult = serviceTrans.Style.RestoreLayerStates(layerSnapshot);
+                        var restoreResult = layerService.RestoreLayerStates(layerSnapshot);
                         if (!restoreResult.IsSuccess)
                         {
                             CadServiceManager.ServiceEd.WriteMessage($"\n恢复图层状态失败: {restoreResult.Message}");

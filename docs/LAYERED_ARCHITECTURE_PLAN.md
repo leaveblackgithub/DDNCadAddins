@@ -86,73 +86,23 @@ AddinsACAD → Core ← ServiceACAD/Adapters
 
 ---
 
-### 阶段3：迁移图层服务（第一个真实业务模块）
+### ✅ 阶段3：迁移图层服务（第一个真实业务模块）（已完成）
 
 **目标**：将图层管理业务逻辑从 CAD 进程解放出来。
 
-#### 3.1 Core 层（新增）
+**完成内容**：
+1. Core 层新增 `LayerInfo`、`LayerStateSnapshot` POCO 模型
+2. 新增 `ILayerRepository` 仓储接口和 `LayerManagementService` 业务服务
+3. ServiceACAD 新增 `AutoCadLayerRepository` 适配器和 `LayerStateSnapshotConverter`
+4. `TransactionServiceForStyle` 图层状态方法委托至 Core 层（保持向后兼容）
+5. `BlockCleanupCommand` 改为直接使用 Core 层服务
+6. Core.Tests 新增 `FakeLayerRepository` + 12 个 `LayerManagementServiceTests`
 
-**POCO 模型** `DDNCadAddins.Core/Models/LayerInfo.cs`：
-
-```csharp
-public class LayerInfo
-{
-    public string Name { get; set; }
-    public bool IsLocked { get; set; }
-    public bool IsFrozen { get; set; }
-    public short ColorIndex { get; set; }
-    public string LinetypeName { get; set; }
-}
-
-public class LayerStateSnapshot
-{
-    public Dictionary<string, LayerStateEntry> States { get; set; }
-    public class LayerStateEntry { public bool IsLocked; public bool IsFrozen; }
-}
-```
-
-**仓储接口** `DDNCadAddins.Core/Interfaces/ILayerRepository.cs`：
-
-```csharp
-public interface ILayerRepository
-{
-    OpResult<LayerInfo> GetLayer(string name);
-    OpResult<IReadOnlyList<LayerInfo>> GetAllLayers();
-    OpResult UpdateLayer(LayerInfo layer);
-    OpResult<string> GetCurrentLayerName();
-}
-```
-
-**业务服务** `DDNCadAddins.Core/Services/LayerManagementService.cs`：
-- `CaptureAllLayerStates()` → 记录图层状态快照
-- `UnlockAndThawAllLayers()` → 解锁解冻（纯逻辑，调用仓储）
-- `RestoreLayerStates(snapshot)` → 恢复图层状态
-
-#### 3.2 CAD 适配器（新增）
-
-`ServiceACAD/Adapters/AutoCadLayerRepository.cs`：
-- 实现 `ILayerRepository` 接口
-- 内部调用现有 `TransactionServiceForStyle` 的图层方法
-- 负责 CAD 类型 ↔ POCO 的转换
-
-#### 3.3 Core.Tests（新增）
-
-`DDNCadAddins.Core.Tests/Fakes/FakeLayerRepository.cs` + `LayerManagementServiceTests.cs`：
-- 手写 `FakeLayerRepository` 实现 `ILayerRepository`
-- 测试 `CaptureAllLayerStates`：正常路径、空图层表
-- 测试 `UnlockAndThawAllLayers`：验证所有图层被解锁解冻
-- 测试 `RestoreLayerStates`：验证快照被正确恢复
-- 测试边界条件（null 快照、仓储返回失败）
-
-#### 3.4 命令层更新
-
-`AddinsACAD/Commands/BlockCleanupCommand.cs` 更新为使用新服务：
-
-```csharp
-var layerRepo = new AutoCadLayerRepository(trans);
-var layerService = new LayerManagementService(layerRepo);
-var snapshotResult = layerService.CaptureAllLayerStates();
-```
+**验证结果**：
+- ✅ Core 项目编译成功，无 AutoCAD 引用
+- ✅ 全解决方案 5 个项目编译成功（0 错误）
+- ✅ 24 个 Core.Tests 用例（Calculator 12 + LayerManagement 12），可在 VS Test Explorer 秒级运行
+- ⏳ BlockCleanup 命令需在 CAD 中手动验证
 
 ---
 
@@ -265,6 +215,7 @@ public class FakeLayerRepository : ILayerRepository
 | `b97cd13` | 修复 CalculationResult.cs 编译问题 |
 | `38dcc77` | 添加架构计划文档 |
 | 阶段2 | OpResult 迁移到 Core，ServiceACAD 桥接，5个项目编译成功 |
+| 阶段3 | 图层服务迁移到 Core，AutoCadLayerRepository 适配器，BlockCleanup 集成 |
 
 ---
 

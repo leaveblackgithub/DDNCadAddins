@@ -17,6 +17,8 @@
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
     <Compile Include="CalculatorServiceTests.cs" />
+    <Compile Include="Fakes\FakeLayerRepository.cs" />
+    <Compile Include="LayerManagementServiceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
