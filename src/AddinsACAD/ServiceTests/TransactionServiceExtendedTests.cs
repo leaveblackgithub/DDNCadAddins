@@ -90,23 +90,6 @@ namespace AddinsACAD.ServiceTests
         }
 
         [Test]
-        public void TestGetValidColorIndex_OutOfRange_ReturnsDefault()
-        {
-            void Action(ITransactionService tr)
-            {
-                var result1 = tr.Style.GetValidColorIndex(-1);
-                Assert.AreEqual(CadServiceManager.Colors.White, result1,
-                    "负数颜色索引应返回默认值");
-
-                var result2 = tr.Style.GetValidColorIndex(256);
-                Assert.AreEqual(CadServiceManager.Colors.White, result2,
-                    "超出范围的颜色索引应返回默认值");
-            }
-
-            CadServiceManager._.ExecuteInTransactions("", Action);
-        }
-
-        [Test]
         public void TestGetValidLayerName_EmptyString_ReturnsLayer0()
         {
             void Action(ITransactionService tr)
@@ -261,30 +244,6 @@ namespace AddinsACAD.ServiceTests
                 Assert.IsNotNull(layer1);
                 Assert.IsNotNull(layer2, "GetOrCreateLayer 对已存在图层名应返回对象而非 null");
                 Assert.AreEqual(layer1.Name, layer2.Name);
-            }
-
-            CadServiceManager._.ExecuteInTransactions("", Action);
-        }
-
-        [Test]
-        public void TestGetValidLineTypeName_EmptyString_ReturnsContinuous()
-        {
-            void Action(ITransactionService tr)
-            {
-                var name = tr.Style.GetValidLineTypeName(string.Empty);
-                Assert.IsNotEmpty(name, "空字符串应返回有效的线型名");
-            }
-
-            CadServiceManager._.ExecuteInTransactions("", Action);
-        }
-
-        [Test]
-        public void TestGetValidLineTypeName_InvalidName_ReturnsFallback()
-        {
-            void Action(ITransactionService tr)
-            {
-                var name = tr.Style.GetValidLineTypeName("__LINETYPE_NOT_EXISTS__");
-                Assert.IsNotEmpty(name, "无效线型名应返回回退值而非空字符串");
             }
 
             CadServiceManager._.ExecuteInTransactions("", Action);

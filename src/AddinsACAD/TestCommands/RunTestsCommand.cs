@@ -32,8 +32,8 @@ namespace AddinsACAD.TestCommands
                 WriteDrawingHint();
 
                 var assembly = Assembly.GetExecutingAssembly();
-                // 排除 BlockServiceTests（与扩展测试重复，且同样依赖 xclip.dwg）
-                TestUtils.Run(assembly, "", "AddinsACAD.ServiceTests.BlockServiceTests");
+                // 纯逻辑测试已迁至 Core.Tests；不在 AutoCAD 内运行 UnitTests
+                TestUtils.Run(assembly, "", "AddinsACAD.UnitTests");
 
                 CadServiceManager.ServiceEd.WriteMessage("\n测试完成，正在打开 HTML 报告...");
             }
