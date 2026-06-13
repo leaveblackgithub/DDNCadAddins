@@ -4,7 +4,11 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.DatabaseServices.Filters;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.ApplicationServices;
+using DDNCadAddins.Core.Interfaces;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
+using CoreMatrix3D = DDNCadAddins.Core.Models.Matrix3D;
+using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 
 namespace ServiceACAD
 {
@@ -19,6 +23,8 @@ namespace ServiceACAD
         public ITransactionService ServiceTrans { get; }
 
         public BlockReference CadBlkRef { get; }
+
+        private readonly IXClipBoundaryGeometryService _xclipBoundaryGeometry = new XClipBoundaryGeometryService();
 
         public bool IsXclipped()
         {
@@ -400,28 +406,26 @@ namespace ServiceACAD
                 if (localPoints == null || localPoints.Count == 0)
                     return OpResult<Point2dCollection>.Fail("XClip边界点为空");
 
-                // 裁剪创建时的逆块变换 + 当前块变换，才能正确处理旋转/移动后的图块
-                var clipToWcs = spatialFilter.ClipSpaceToWorldCoordinateSystemTransform
-                    .PreMultiplyBy(spatialFilter.OriginalInverseBlockTransform)
-                    .PreMultiplyBy(blockRef.BlockTransform);
-                var wcsPoints = new Point2dCollection();
-
-                if (localPoints.Count > 2)
+                var localPoco = new List<CorePoint2D>(localPoints.Count);
+                foreach (Point2d localPoint in localPoints)
                 {
-                    for (var i = 0; i < localPoints.Count; i++)
-                    {
-                        wcsPoints.Add(TransformClipPointToWcs(localPoints[i], clipToWcs));
-                    }
+                    localPoco.Add(new CorePoint2D(localPoint.X, localPoint.Y));
                 }
-                else
-                {
-                    var p1 = TransformClipPointToWcs(localPoints[0], clipToWcs);
-                    var p2 = TransformClipPointToWcs(localPoints[1], clipToWcs);
 
-                    wcsPoints.Add(p1);
-                    wcsPoints.Add(new Point2d(p1.X, p2.Y));
-                    wcsPoints.Add(p2);
-                    wcsPoints.Add(new Point2d(p2.X, p1.Y));
+                var boundaryResult = _xclipBoundaryGeometry.BuildWcsBoundaryPoints(
+                    localPoco,
+                    CoreMatrix3D.FromArray(spatialFilter.ClipSpaceToWorldCoordinateSystemTransform.ToArray()),
+                    CoreMatrix3D.FromArray(spatialFilter.OriginalInverseBlockTransform.ToArray()),
+                    CoreMatrix3D.FromArray(blockRef.BlockTransform.ToArray()));
+                if (!boundaryResult.IsSuccess)
+                {
+                    return OpResult<Point2dCollection>.Fail(boundaryResult.Message);
+                }
+
+                var wcsPoints = new Point2dCollection();
+                foreach (var wcsPoint in boundaryResult.Data)
+                {
+                    wcsPoints.Add(new Point2d(wcsPoint.X, wcsPoint.Y));
                 }
 
                 return OpResult<Point2dCollection>.Success(wcsPoints);
@@ -431,19 +435,6 @@ namespace ServiceACAD
                 Logger._.Error($"获取XClip边界点失败: {ex.Message}");
                 return OpResult<Point2dCollection>.Fail($"获取XClip边界点失败: {ex.Message}");
             }
-        }
-
-        /// <summary>
-        ///     将 XClip 局部坐标点变换到 WCS
-        /// </summary>
-        /// <param name="localPoint">局部坐标点</param>
-        /// <param name="clipToWcs">裁剪空间到 WCS 的完整变换矩阵</param>
-        /// <returns>WCS 下的二维点</returns>
-        private static Point2d TransformClipPointToWcs(Point2d localPoint, Matrix3d clipToWcs)
-        {
-            var pt3d = new Point3d(localPoint.X, localPoint.Y, 0);
-            pt3d = pt3d.TransformBy(clipToWcs);
-            return new Point2d(pt3d.X, pt3d.Y);
         }
 
         /// <summary>

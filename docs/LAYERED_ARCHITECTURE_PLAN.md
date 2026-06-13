@@ -256,7 +256,7 @@ AddinsACAD → Core ← ServiceACAD/Adapters
 
 
 
-### 🔄 阶段5：迁移其他模块（进行中）
+### ✅ 阶段5：迁移其他模块（已完成）
 
 
 
@@ -286,11 +286,13 @@ AddinsACAD → Core ← ServiceACAD/Adapters
 
 
 
-#### ⏳ 5c：XClip 边界生成服务（待开始）
+#### ✅ 5c：XClip 边界生成服务（已完成）
 
-
-
-- 将 `GenerateXclipBoundary` 中可独立的几何计算部分下沉 Core
+**完成内容**：
+1. Core 层新增 `Point2D`、`Matrix3D` POCO 模型
+2. 新增 `IXClipBoundaryGeometryService` / `XClipBoundaryGeometryService`（局部点扩展、矩阵变换到 WCS）
+3. `BlockService.GetXClipBoundaryPointsWcs` 委托至 Core 层
+4. Core.Tests 新增 5 个 `XClipBoundaryGeometryServiceTests`
 
 
 
@@ -304,7 +306,7 @@ AddinsACAD → Core ← ServiceACAD/Adapters
 
 | `ExplodeAsShown` | 爆炸 + 属性转文字，CAD 密集 |
 
-| `GenerateXclipBoundary` | XClip 边界生成 |
+| `GenerateXclipBoundary` | CAD 读取 SpatialFilter + 写多段线；几何计算已迁 Core |
 
 | `PropertyUtils` | 反射读写仍留 ServiceACAD；比较/转换逻辑已迁 Core |
 
@@ -432,9 +434,9 @@ public class FakeLayerRepository : ILayerRepository
 
 
 
-- [x] Core 项目编译成功，无 AutoCAD 引用（阶段 1–5b）
+- [x] Core 项目编译成功，无 AutoCAD 引用（阶段 1–5c）
 
-- [x] Core.Tests 全部通过，无需 CAD 环境（阶段 1–5b，49 用例）
+- [x] Core.Tests 全部通过，无需 CAD 环境（阶段 1–5c，54 用例）
 
 - [ ] 现有 CAD 内 RunTests 测试全部仍通过（无回归）
 
@@ -476,6 +478,7 @@ public class FakeLayerRepository : ILayerRepository
 
 | 阶段5a | StyleValidationService 迁移，TransactionServiceForStyle 委托 |
 | 阶段5b | PropertyConversionUtils / PropertyComparisonUtils 迁移 |
+| 阶段5c | XClipBoundaryGeometryService 迁移，BlockService 委托 |
 
 
 

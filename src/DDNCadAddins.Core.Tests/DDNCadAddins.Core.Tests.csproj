@@ -24,6 +24,7 @@
     <Compile Include="PropertyComparisonUtilsTests.cs" />
     <Compile Include="PropertyConversionUtilsTests.cs" />
     <Compile Include="StyleValidationServiceTests.cs" />
+    <Compile Include="XClipBoundaryGeometryServiceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
