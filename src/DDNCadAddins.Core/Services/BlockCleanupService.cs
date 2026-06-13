@@ -97,7 +97,13 @@ namespace DDNCadAddins.Core.Services
                             continue;
                         }
 
-                        roundExploded += explodeResult.Data;
+                        var explodeStats = explodeResult.Data;
+                        roundExploded += explodeStats.EntityCount;
+                        roundResult.ExplodeReports.Add(new BlockExplodeReport
+                        {
+                            BlockName = block.Name,
+                            Stats = explodeStats
+                        });
                     }
 
                     roundResult.ExplodedEntityCount = roundExploded;

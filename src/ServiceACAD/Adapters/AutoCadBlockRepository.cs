@@ -68,34 +68,41 @@ namespace ServiceACAD.Adapters
         }
 
         /// <inheritdoc />
-        DDNCadAddins.Core.Models.OpResult<int> IBlockRepository.ExplodeBlock(string blockId)
+        DDNCadAddins.Core.Models.OpResult<BlockExplodeResult> IBlockRepository.ExplodeBlock(string blockId)
         {
             try
             {
                 if (!TryResolveBlockId(blockId, out var objectId))
                 {
-                    return DDNCadAddins.Core.Models.OpResult<int>.Fail("图块不存在");
+                    return DDNCadAddins.Core.Models.OpResult<BlockExplodeResult>.Fail("图块不存在");
                 }
 
                 var blockService = _transactionService.Block.GetBlockService(objectId);
                 if (blockService == null)
                 {
-                    return DDNCadAddins.Core.Models.OpResult<int>.Fail("无法获取图块服务");
+                    return DDNCadAddins.Core.Models.OpResult<BlockExplodeResult>.Fail("无法获取图块服务");
                 }
 
                 var explodeResult = blockService.ExplodeAsShown();
                 if (!explodeResult.IsSuccess)
                 {
-                    return DDNCadAddins.Core.Models.OpResult<int>.Fail(explodeResult.Message);
+                    return DDNCadAddins.Core.Models.OpResult<BlockExplodeResult>.Fail(explodeResult.Message);
                 }
 
-                var entityCount = explodeResult.Data == null ? 0 : explodeResult.Data.Count;
-                return DDNCadAddins.Core.Models.OpResult<int>.Success(entityCount);
+                var stats = explodeResult.Data;
+                var entityCount = stats?.EntityIds == null ? 0 : stats.EntityIds.Count;
+                return DDNCadAddins.Core.Models.OpResult<BlockExplodeResult>.Success(new BlockExplodeResult
+                {
+                    EntityCount = entityCount,
+                    AttributeTextCount = stats?.AttributeTextCount ?? 0,
+                    LayerAdjustedCount = stats?.LayerAdjustedCount ?? 0,
+                    ColorAdjustedCount = stats?.ColorAdjustedCount ?? 0
+                });
             }
             catch (Exception ex)
             {
                 Logger._.Error($"爆炸图块异常: {ex.Message}");
-                return DDNCadAddins.Core.Models.OpResult<int>.Fail($"爆炸图块失败: {ex.Message}");
+                return DDNCadAddins.Core.Models.OpResult<BlockExplodeResult>.Fail($"爆炸图块失败: {ex.Message}");
             }
         }
 

@@ -40,6 +40,7 @@ Features:
     <Compile Include="DocumentService.cs" />
     <Compile Include="CadServiceManager.cs" />
     <Compile Include="EditorService.cs" />
+    <Compile Include="ExplodeAsShownResult.cs" />
     <Compile Include="IBlockService.cs" />
     <Compile Include="IDocumentService.cs" />
     <Compile Include="IEditorService.cs" />

@@ -1,8 +1,5 @@
 using System.Collections.Generic;
-using System.Linq;
 using AddinsACAD.Commands;
-using Autodesk.AutoCAD.DatabaseServices;
-using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using ServiceACAD;
 using Exception = System.Exception;
@@ -17,6 +14,15 @@ namespace AddinsACAD.Commands
     public class ExplodeAsShownCommand
     {
         /// <summary>
+        ///     单个图块爆炸报告
+        /// </summary>
+        private sealed class BlockExplodeReport
+        {
+            public string BlockName { get; set; }
+            public ExplodeAsShownResult Stats { get; set; }
+        }
+
+        /// <summary>
         ///     执行图块爆炸命令
         /// </summary>
         [CommandMethod("ExplodeAsShown")]
@@ -24,65 +30,98 @@ namespace AddinsACAD.Commands
         {
             try
             {
-                // 使用事务服务执行操作
+                // 1. 输入获取：在事务外选择图块，避免选择提示与命令行输出被事务锁定影响
+                var blockRefIds = CadServiceManager.ServiceEd.GetSelectedBlockReferences("\n选择要炸开的图块：");
+                if (blockRefIds.Count == 0)
+                {
+                    WriteOutput("\n未选择图块或选择被取消。");
+                    return;
+                }
+
+                var successReports = new List<BlockExplodeReport>();
+                var failedBlocks = new List<string>();
+
+                // 2. 主体逻辑：在事务内执行爆炸
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
                 {
-                    // 2. 主体逻辑：执行爆炸操作
-                    var success = 0;
-                    var totalExploded = 0;
-                    var failedBlocks = new List<string>();
-
-                    // 1. 输入获取：获取要爆炸的图块
-                    var blockRefIds = CadServiceManager.ServiceEd.GetSelectedBlockReferences("选择要炸开的图块：");
-                    if (blockRefIds.Count == 0 )
+                    foreach (var blockRefId in blockRefIds)
                     {
-                        CadServiceManager.ServiceEd.WriteMessage("\n未选择图块或选择被取消。");
-                        return;
-                    }
-
-                    
-                    for (var i=0;i<blockRefIds.Count;i++)
-                    {
-                        var blockRefId = blockRefIds[i];
                         var blockService = serviceTrans.Block.GetBlockService(blockRefId);
                         if (blockService == null)
                         {
                             failedBlocks.Add($"无法获取图块服务: {blockRefId}");
                             continue;
                         }
-                        
 
+                        var blockName = blockService.Name;
                         var explodeResult = blockService.ExplodeAsShown();
                         if (!explodeResult.IsSuccess)
                         {
-                            failedBlocks.Add($"爆炸图块失败: {explodeResult.Message}");
+                            failedBlocks.Add($"爆炸图块 {blockName} 失败: {explodeResult.Message}");
                             continue;
                         }
 
-                        success++;
-                        totalExploded += explodeResult.Data.Count;
-                    }
-
-
-                    CadServiceManager.ServiceEd.WriteMessage($"\n成功爆炸 {success} 个图块，生成了 {totalExploded} 个实体。");
-
-                    // 3. 输出显示：显示操作结果
-                    if (failedBlocks.Count > 0)
-                    {
-                        CadServiceManager.ServiceEd.WriteMessage("\n以下图块爆炸失败：");
-                        foreach (var error in failedBlocks)
+                        successReports.Add(new BlockExplodeReport
                         {
-                            CadServiceManager.ServiceEd.WriteMessage($"\n{error}");
-                        }
+                            BlockName = blockName,
+                            Stats = explodeResult.Data
+                        });
                     }
                 });
+
+                // 3. 输出显示：事务提交后再写入命令行
+                WriteExplodeReports(successReports, failedBlocks);
             }
             catch (Exception ex)
             {
                 var message = $"执行图块爆炸命令时发生错误: {ex.Message}";
-                CadServiceManager.ServiceEd.WriteMessage($"\n{message}");
+                WriteOutput($"\n{message}");
                 Logger._.Error(message);
             }
+        }
+
+        /// <summary>
+        ///     将爆炸结果输出到命令行
+        /// </summary>
+        /// <param name="successReports">成功爆炸的图块报告</param>
+        /// <param name="failedBlocks">失败信息列表</param>
+        private static void WriteExplodeReports(
+            IReadOnlyList<BlockExplodeReport> successReports,
+            IReadOnlyList<string> failedBlocks)
+        {
+            var totalExploded = 0;
+            foreach (var report in successReports)
+            {
+                var stats = report.Stats;
+                var entityCount = stats?.EntityIds?.Count ?? 0;
+                totalExploded += entityCount;
+                WriteOutput(
+                    $"\n{report.BlockName}: 属性转文字 {stats?.AttributeTextCount ?? 0} 个，" +
+                    $"图层继承 {stats?.LayerAdjustedCount ?? 0} 个，颜色继承 {stats?.ColorAdjustedCount ?? 0} 个。");
+            }
+
+            WriteOutput($"\n成功爆炸 {successReports.Count} 个图块，生成了 {totalExploded} 个实体。");
+
+            if (failedBlocks == null || failedBlocks.Count == 0)
+            {
+                return;
+            }
+
+            WriteOutput("\n以下图块爆炸失败：");
+            foreach (var error in failedBlocks)
+            {
+                WriteOutput($"\n{error}");
+            }
+        }
+
+        /// <summary>
+        ///     写入命令行并刷新显示
+        /// </summary>
+        /// <param name="message">要输出的消息</param>
+        private static void WriteOutput(string message)
+        {
+            CadServiceManager.ServiceEd.WriteMessage(message);
+            CadServiceManager.ServiceEd.Update();
         }
     }
 }

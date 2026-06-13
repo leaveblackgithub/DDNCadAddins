@@ -22,6 +22,7 @@
     <Compile Include="Interfaces\ILayerManagementService.cs" />
     <Compile Include="Interfaces\ILayerRepository.cs" />
     <Compile Include="Models\BlockCleanupResult.cs" />
+    <Compile Include="Models\BlockExplodeResult.cs" />
     <Compile Include="Models\BlockInfo.cs" />
     <Compile Include="Models\CalculationResult.cs" />
     <Compile Include="Models\LayerInfo.cs" />

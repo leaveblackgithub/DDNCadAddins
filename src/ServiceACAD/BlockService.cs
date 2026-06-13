@@ -126,17 +126,17 @@ namespace ServiceACAD
         /// <summary>
         ///     爆炸块参照并将其属性转换为文本
         /// </summary>
-        /// <returns>如果爆炸成功返回true，否则返回false</returns>
-        public OpResult<List<ObjectId>> ExplodeAsShown()
+        /// <returns>爆炸结果及统计信息</returns>
+        public OpResult<ExplodeAsShownResult> ExplodeAsShown()
         {
             if (CadBlkRef == null)
             {
-                return OpResult<List<ObjectId>>.Fail("CadBlkRef is null");
+                return OpResult<ExplodeAsShownResult>.Fail("CadBlkRef is null");
             }
 
             // if (!HasAttributes())
             // {
-            //     return OpResult<List<ObjectId>>.Fail("块参照不包含属性");
+            //     return OpResult<ExplodeAsShownResult>.Fail("块参照不包含属性");
             // }
 
             try
@@ -147,48 +147,68 @@ namespace ServiceACAD
                     CadBlkRef.UpgradeOpen();
                 }
 
+                var stats = new ExplodeAsShownResult();
+
                 // 创建一个集合，用于收集需要添加到模型空间的实体
                 var entitiesToAdd = new List<Entity>();
 
                 // 处理所有属性引用，转换为文本
                 var textList = ProcessAttributeReferences(CadBlkRef);
-                // if (textList.Count == 0)
-                // {
-                //     return OpResult<List<ObjectId>>.Fail("未能从块参照中提取属性");
-                // }
+                foreach (var text in textList)
+                {
+                    if (text == null)
+                    {
+                        continue;
+                    }
 
-                // 将文本添加到实体列表
-                entitiesToAdd.AddRange(textList);
+                    stats.AttributeTextCount++;
+                    var adjustStats = SetChildPropsAsBlk(text, CadBlkRef);
+                    if (adjustStats.LayerAdjusted)
+                    {
+                        stats.LayerAdjustedCount++;
+                    }
+
+                    if (adjustStats.ColorAdjusted)
+                    {
+                        stats.ColorAdjustedCount++;
+                    }
+
+                    entitiesToAdd.Add(text);
+                }
 
                 // 执行爆炸操作
                 var explodedResult = ProcessExplodedEntities(CadBlkRef);
                 if (!explodedResult.IsSuccess)
                 {
-                    return OpResult<List<ObjectId>>.Fail(explodedResult.Message);
+                    return OpResult<ExplodeAsShownResult>.Fail(explodedResult.Message);
                 }
 
-                entitiesToAdd.AddRange(explodedResult.Data);
+                stats.LayerAdjustedCount += explodedResult.Data.LayerAdjustedCount;
+                stats.ColorAdjustedCount += explodedResult.Data.ColorAdjustedCount;
+                entitiesToAdd.AddRange(explodedResult.Data.Entities);
                 if (entitiesToAdd.Count == 0)
                 {
-                    return OpResult<List<ObjectId>>.Fail("无法获取爆炸后实体");
+                    return OpResult<ExplodeAsShownResult>.Fail("无法获取爆炸后实体");
                 }
 
                 // 将所有实体添加到当前空间
                 var addedEntities = ServiceTrans.AppendEntitiesToCurrentSpace(entitiesToAdd);
                 if (addedEntities.Count == 0)
                 {
-                    return OpResult<List<ObjectId>>.Fail("未能将实体添加到当前空间");
+                    return OpResult<ExplodeAsShownResult>.Fail("未能将实体添加到当前空间");
                 }
+
+                stats.EntityIds = addedEntities;
 
                 // 删除原块参照
                 CadBlkRef.Erase();
 
-                return OpResult<List<ObjectId>>.Success(addedEntities);
+                return OpResult<ExplodeAsShownResult>.Success(stats);
             }
             catch (Exception ex)
             {
                 Logger._.Error($"爆炸块参照失败: {ex.Message}");
-                return OpResult<List<ObjectId>>.Fail(FormatExplodeErrorMessage(ex.Message));
+                return OpResult<ExplodeAsShownResult>.Fail(FormatExplodeErrorMessage(ex.Message));
             }
         }
 
@@ -510,7 +530,6 @@ namespace ServiceACAD
 
                         // 创建DBText并添加到列表
                         var text = ConvertAttributeToText(attRef);
-                        SetChildPropsAsBlk(text, CadBlkRef);
                         textList.Add(text);
                     }
                     catch (Exception ex)
@@ -562,59 +581,51 @@ namespace ServiceACAD
         }
 
         /// <summary>
+        ///     子实体属性继承统计
+        /// </summary>
+        private struct ChildPropAdjustStats
+        {
+            public bool LayerAdjusted;
+            public bool ColorAdjusted;
+        }
+
+        /// <summary>
         ///     处理实体的图层和属性设置
         /// </summary>
         /// <param name="entChild">要修改的实体</param>
         /// <param name="entBlk">参考实体</param>
-        private void SetChildPropsAsBlk(Entity entChild, Entity entBlk)
+        /// <returns>图层与颜色是否被调整</returns>
+        private ChildPropAdjustStats SetChildPropsAsBlk(Entity entChild, Entity entBlk)
         {
+            var stats = new ChildPropAdjustStats();
             if (entChild == null || entBlk == null)
             {
-                return;
+                return stats;
             }
 
             try
             {
-                // 处理0图层的对象
-                // var nameLayer = "Layer";
-                // if (HasProperty(entFr, nameLayer) && HasProperty(entTo, nameLayer) &&
-                //     (entFr is AttributeReference || entTo.Layer == "0"))
-                // {
-                //     entTo.Layer = entFr.Layer;
-                // }
+                if (MatchProp(entChild, entBlk, CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default)
+                    .IsSuccess)
+                {
+                    stats.LayerAdjusted = true;
+                }
 
-                MatchProp(entChild, entBlk, CadServiceManager.PropNames.Layer, CadServiceManager.Layers.Default);
-                // 处理BYBLOCK颜色
-                // var nameColor = "ColorIndex";
-                // if (HasProperty(entFr, nameColor) && HasProperty(entTo, nameColor) &&
-                //     (entFr is AttributeReference || entTo.ColorIndex == 0))
-                // {
-                //     entTo.ColorIndex = entFr.ColorIndex;
-                // }
-                MatchProp(entChild, entBlk, CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock);
-                // 处理BYBLOCK线型
-                // var nameLinetype = "Linetype";
-                // if (HasProperty(entFr, nameLinetype) && HasProperty(entTo, nameLinetype) &&
-                //     (entFr is AttributeReference || entTo.Linetype == "BYBLOCK"))
-                //
-                // {
-                //     entTo.LinetypeId = entFr.LinetypeId;
-                // }
+                if (MatchProp(entChild, entBlk, CadServiceManager.PropNames.ColorIndex, CadServiceManager.Colors.ByBlock)
+                    .IsSuccess)
+                {
+                    stats.ColorAdjusted = true;
+                }
+
                 MatchProp(entChild, entBlk, CadServiceManager.PropNames.Linetype, CadServiceManager.Linetypes.ByBlock);
-
-                // 处理BYBLOCK线宽
-                // if (HasProperty(entFr, "LineWeight") && HasProperty(entTo, "LineWeight") &&
-                //     (entFr is AttributeReference || entTo.LineWeight == LineWeight.ByBlock))
-                //
-                // {
-                //     entTo.LineWeight = entFr.LineWeight;
-                // }
                 MatchProp(entChild, entBlk, CadServiceManager.PropNames.LineWeight, LineWeight.ByBlock);
             }
             catch (Exception ex)
             {
                 Logger._.Warn($"\n警告: 处理实体属性时发生异常: {ex.Message}");
             }
+
+            return stats;
         }
 
         /// <summary>
@@ -673,11 +684,21 @@ namespace ServiceACAD
             });
 
         /// <summary>
+        ///     爆炸后实体批次结果
+        /// </summary>
+        private class ExplodedEntitiesBatch
+        {
+            public List<Entity> Entities { get; } = new List<Entity>();
+            public int LayerAdjustedCount { get; set; }
+            public int ColorAdjustedCount { get; set; }
+        }
+
+        /// <summary>
         ///     处理爆炸后的实体，将非属性定义的实体添加到实体列表
         /// </summary>
         /// <param name="blockRef">块参照</param>
-        /// <param name="entitiesToAdd">实体收集列表</param>
-        private OpResult<List<Entity>> ProcessExplodedEntities(BlockReference blockRef)
+        /// <returns>爆炸实体及属性调整统计</returns>
+        private OpResult<ExplodedEntitiesBatch> ProcessExplodedEntities(BlockReference blockRef)
         {
             try
             {
@@ -685,7 +706,7 @@ namespace ServiceACAD
                 if (!blockRef.ObjectId.IsValid)
                 {
                     Logger._.Error("块参照无效");
-                    return OpResult<List<Entity>>.Fail("块参照无效");
+                    return OpResult<ExplodedEntitiesBatch>.Fail("块参照无效");
                 }
 
                 // 2. 确保以写方式打开
@@ -695,7 +716,7 @@ namespace ServiceACAD
                     if (!blockRef.IsWriteEnabled)
                     {
                         Logger._.Error("无法以写方式打开块参照");
-                        return OpResult<List<Entity>>.Fail("无法以写方式打开块参照");
+                        return OpResult<ExplodedEntitiesBatch>.Fail("无法以写方式打开块参照");
                     }
                 }
 
@@ -704,7 +725,7 @@ namespace ServiceACAD
                 if (blockDef == null || !blockRef.BlockTableRecord.IsValid)
                 {
                     Logger._.Error("块定义无效");
-                    return OpResult<List<Entity>>.Fail("块定义无效");
+                    return OpResult<ExplodedEntitiesBatch>.Fail("块定义无效");
                 }
 
                 // 4. 检查图层是否锁定
@@ -712,7 +733,7 @@ namespace ServiceACAD
                 if (layer != null && layer.IsLocked)
                 {
                     Logger._.Error($"图块所在图层已锁定: {layer.Name}");
-                    return OpResult<List<Entity>>.Fail("图块所在图层已锁定");
+                    return OpResult<ExplodedEntitiesBatch>.Fail("图块所在图层已锁定");
                 }
 
                 // 5. 检查块定义中的实体数量
@@ -720,7 +741,7 @@ namespace ServiceACAD
                 if (entityIds.Count == 0)
                 {
                     Logger._.Error("块定义不含实体");
-                    return OpResult<List<Entity>>.Fail("块定义不含实体");
+                    return OpResult<ExplodedEntitiesBatch>.Fail("块定义不含实体");
                 }
 
                 Logger._.Info($"块定义中的实体数量: {entityIds.Count}");
@@ -730,24 +751,24 @@ namespace ServiceACAD
                 if (blockRef.ScaleFactors.X == 0 || blockRef.ScaleFactors.Y == 0 || blockRef.ScaleFactors.Z == 0)
                 {
                     Logger._.Error("块参照的缩放比例无效");
-                    return OpResult<List<Entity>>.Fail("块参照的缩放比例无效");
+                    return OpResult<ExplodedEntitiesBatch>.Fail("块参照的缩放比例无效");
                 }
 
                 if (double.IsNaN(blockRef.Rotation))
                 {
                     Logger._.Error("块参照的旋转角度无效");
-                    return OpResult<List<Entity>>.Fail("块参照的旋转角度无效");
+                    return OpResult<ExplodedEntitiesBatch>.Fail("块参照的旋转角度无效");
                 }
 
                 // 7. 执行爆炸操作
-                var entitiesToAdd = new List<Entity>();
+                var batch = new ExplodedEntitiesBatch();
                 var explodedEntities = new DBObjectCollection();
 
                 blockRef.Explode(explodedEntities);
                 if (explodedEntities.Count == 0)
                 {
                     Logger._.Error("爆炸后实体数量为0");
-                    return OpResult<List<Entity>>.Fail("爆炸后实体数量为0");
+                    return OpResult<ExplodedEntitiesBatch>.Fail("爆炸后实体数量为0");
                 }
 
                 Logger._.Info($"爆炸后实体数量: {explodedEntities.Count}");
@@ -766,8 +787,18 @@ namespace ServiceACAD
                     }
                     else if (obj is Entity entity)
                     {
-                        SetChildPropsAsBlk(entity, blockRef);
-                        entitiesToAdd.Add(entity);
+                        var adjustStats = SetChildPropsAsBlk(entity, blockRef);
+                        if (adjustStats.LayerAdjusted)
+                        {
+                            batch.LayerAdjustedCount++;
+                        }
+
+                        if (adjustStats.ColorAdjusted)
+                        {
+                            batch.ColorAdjustedCount++;
+                        }
+
+                        batch.Entities.Add(entity);
                     }
                     else
                     {
@@ -779,12 +810,12 @@ namespace ServiceACAD
                     }
                 }
 
-                return OpResult<List<Entity>>.Success(entitiesToAdd);
+                return OpResult<ExplodedEntitiesBatch>.Success(batch);
             }
             catch (Exception ex)
             {
                 Logger._.Error($"爆炸块参照时发生异常: {ex.Message}");
-                return OpResult<List<Entity>>.Fail(FormatExplodeErrorMessage(ex.Message));
+                return OpResult<ExplodedEntitiesBatch>.Fail(FormatExplodeErrorMessage(ex.Message));
             }
         }
 

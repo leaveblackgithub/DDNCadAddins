@@ -26,8 +26,8 @@ namespace ServiceACAD
         /// <summary>
         ///     爆炸块参照并将其属性转换为文本
         /// </summary>
-        /// <returns>如果爆炸成功返回true，否则返回false</returns>
-        OpResult<List<ObjectId>> ExplodeAsShown();
+        /// <returns>爆炸结果及统计信息</returns>
+        OpResult<ExplodeAsShownResult> ExplodeAsShown();
 
         /// <summary>
         ///     删除块定义不含任何实体的图块参照

@@ -98,7 +98,7 @@ namespace AddinsACAD.ServiceTests
 
                 Assert.IsTrue(result.IsSuccess, $"爆炸应成功，实际消息: {result.Message}");
                 Assert.IsNotNull(result.Data);
-                Assert.Greater(result.Data.Count, 0, "爆炸后应产生至少1个实体");
+                Assert.Greater(result.Data.EntityIds.Count, 0, "爆炸后应产生至少1个实体");
             }
 
             CadServiceManager._.ExecuteInTransactions("", Action);
@@ -126,7 +126,7 @@ namespace AddinsACAD.ServiceTests
                 }
 
                 // 爆炸结果中应包含属性值 "属性值1"
-                var textIds = tr.FilterObjects<DBText>(result.Data,
+                var textIds = tr.FilterObjects<DBText>(result.Data.EntityIds,
                     t => t.TextString == BlockServiceTestUtils.StrValue1);
                 Assert.AreEqual(1, textIds.Count, "应有1个文本对象的值等于 StrValue1");
             }
@@ -147,9 +147,9 @@ namespace AddinsACAD.ServiceTests
 
                 if (!result.IsSuccess) return;
 
-                handles = new long[result.Data.Count];
-                for (var i = 0; i < result.Data.Count; i++)
-                    handles[i] = result.Data[i].Handle.Value;
+                handles = new long[result.Data.EntityIds.Count];
+                for (var i = 0; i < result.Data.EntityIds.Count; i++)
+                    handles[i] = result.Data.EntityIds[i].Handle.Value;
             }
 
             void Action2(ITransactionService tr)
@@ -191,7 +191,7 @@ namespace AddinsACAD.ServiceTests
                 }
 
                 // Layer0 的子实体应继承 TestLayer
-                var layerMatches = tr.FilterObjects<Entity>(result.Data,
+                var layerMatches = tr.FilterObjects<Entity>(result.Data.EntityIds,
                     e => e.Layer == BlockServiceTestUtils.NameTestLayer);
                 Assert.Greater(layerMatches.Count, 0,
                     "应有实体继承了块参照的图层 TestLayer");

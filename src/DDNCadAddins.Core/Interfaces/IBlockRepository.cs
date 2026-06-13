@@ -18,8 +18,8 @@ namespace DDNCadAddins.Core.Interfaces
         ///     爆炸指定图块
         /// </summary>
         /// <param name="blockId">图块标识</param>
-        /// <returns>爆炸后生成的实体数量</returns>
-        OpResult<int> ExplodeBlock(string blockId);
+        /// <returns>爆炸结果统计</returns>
+        OpResult<BlockExplodeResult> ExplodeBlock(string blockId);
 
         /// <summary>
         ///     删除空定义图块参照

@@ -34,6 +34,22 @@ namespace DDNCadAddins.Core.Models
     }
 
     /// <summary>
+    ///     单轮图块清理中单个图块的爆炸报告
+    /// </summary>
+    public class BlockExplodeReport
+    {
+        /// <summary>
+        ///     图块名称
+        /// </summary>
+        public string BlockName { get; set; }
+
+        /// <summary>
+        ///     爆炸统计
+        /// </summary>
+        public BlockExplodeResult Stats { get; set; }
+    }
+
+    /// <summary>
     ///     单轮图块清理结果
     /// </summary>
     public class BlockCleanupRoundResult
@@ -52,6 +68,11 @@ namespace DDNCadAddins.Core.Models
         ///     本轮爆炸生成的实体数
         /// </summary>
         public int ExplodedEntityCount { get; set; }
+
+        /// <summary>
+        ///     本轮各图块爆炸明细
+        /// </summary>
+        public List<BlockExplodeReport> ExplodeReports { get; } = new List<BlockExplodeReport>();
 
         /// <summary>
         ///     本轮失败原因统计

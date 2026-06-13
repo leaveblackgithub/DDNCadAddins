@@ -73,21 +73,21 @@ namespace DDNCadAddins.Core.Tests.Fakes
         }
 
         /// <inheritdoc />
-        public OpResult<int> ExplodeBlock(string blockId)
+        public OpResult<BlockExplodeResult> ExplodeBlock(string blockId)
         {
             if (string.IsNullOrEmpty(blockId) || Blocks.All(block => block.Id != blockId))
             {
-                return OpResult<int>.Fail("图块不存在");
+                return OpResult<BlockExplodeResult>.Fail("图块不存在");
             }
 
             if (EmptyDefinitionBlockIds.Contains(blockId))
             {
-                return OpResult<int>.Fail(BlockCleanupService.EmptyDefinitionMessage);
+                return OpResult<BlockExplodeResult>.Fail(BlockCleanupService.EmptyDefinitionMessage);
             }
 
             if (ExplodeFailBlockIds.Contains(blockId))
             {
-                return OpResult<int>.Fail("模拟爆炸失败");
+                return OpResult<BlockExplodeResult>.Fail("模拟爆炸失败");
             }
 
             ExplodedBlockIds.Add(blockId);
@@ -99,7 +99,10 @@ namespace DDNCadAddins.Core.Tests.Fakes
             }
 
             var entityCount = ExplodeEntityCounts.ContainsKey(blockId) ? ExplodeEntityCounts[blockId] : 1;
-            return OpResult<int>.Success(entityCount);
+            return OpResult<BlockExplodeResult>.Success(new BlockExplodeResult
+            {
+                EntityCount = entityCount
+            });
         }
 
         /// <inheritdoc />

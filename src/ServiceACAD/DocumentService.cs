@@ -96,6 +96,7 @@ namespace ServiceACAD
                 catch (Exception e)
                 {
                     Logger._.Error("处理文档时发生错误", e);
+                    ServiceEd.WriteMessage($"\n操作失败: {e.Message}");
                     tr.Abort();
                 }
             }
