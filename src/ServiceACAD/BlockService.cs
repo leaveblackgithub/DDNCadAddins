@@ -149,6 +149,8 @@ namespace ServiceACAD
 
         public string Name => CadBlkRef.Name;
 
+        public ObjectId ObjectId => CadBlkRef.ObjectId;
+
         /// <summary>
         ///     爆炸块参照并将其属性转换为文本
         /// </summary>
@@ -823,7 +825,7 @@ namespace ServiceACAD
             }
         }
 
-        private void CopyXclipState(BlockReference source, BlockReference target)
+        public void CopyXclipState(BlockReference source, BlockReference target)
         {
             try
             {

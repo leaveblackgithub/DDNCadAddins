@@ -5,6 +5,7 @@ namespace ServiceACAD
 {
     public interface IBlockService
     {
+        ObjectId ObjectId { get; }
 
         string Name { get; }
         string Layer { get; set; }

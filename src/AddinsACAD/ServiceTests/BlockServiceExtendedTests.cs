@@ -46,15 +46,27 @@ namespace AddinsACAD.ServiceTests
         }
 
         [Test]
-        public void TestGetBlockService_NullId_ReturnsNull()
+        public void TestCopyXclipState_XclippedBlock_CloneRetainsXclip()
         {
             void Action(ITransactionService tr)
             {
-                var service = tr.Block.GetBlockService(ObjectId.Null);
-                Assert.IsNull(service, "传入 ObjectId.Null 应返回 null");
+                var blkService = CommonTestMethods.GetFirstBlkServiceOf23432(tr);
+                Assert.IsNotNull(blkService, "未能找到名为 23432 的 XCLIP 图块");
+                Assert.IsTrue(blkService.IsXclipped(), "源图块应是 XClipped");
+
+                var sourceBlkRef = tr.GetObject<BlockReference>(blkService.ObjectId, OpenMode.ForRead);
+
+                var clonedBlock = new BlockReference(sourceBlkRef.Position, sourceBlkRef.BlockTableRecord);
+                clonedBlock.ScaleFactors = sourceBlkRef.ScaleFactors;
+                clonedBlock.Rotation = sourceBlkRef.Rotation;
+
+                var blockService = new BlockService(tr, clonedBlock);
+                blockService.CopyXclipState(sourceBlkRef, clonedBlock);
+
+                Assert.IsTrue(blockService.IsXclipped(), "克隆后的图块应保留 XCLIP 状态");
             }
 
-            CadServiceManager._.ExecuteInTransactions("", Action);
+            CadServiceManager._.ExecuteInTransactions("xclip", Action);
         }
     }
 }
