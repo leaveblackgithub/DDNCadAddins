@@ -15,6 +15,13 @@ namespace DDNCadAddins.Core.Interfaces
         OpResult<IReadOnlyList<BlockInfo>> GetAllBlocksInCurrentSpace();
 
         /// <summary>
+        ///     检查指定图块是否被 XCLIP 裁剪
+        /// </summary>
+        /// <param name="blockId">图块标识</param>
+        /// <returns>是否被 XCLIP 裁剪</returns>
+        OpResult<bool> IsBlockXclipped(string blockId);
+
+        /// <summary>
         ///     爆炸指定图块
         /// </summary>
         /// <param name="blockId">图块标识</param>

@@ -33,8 +33,11 @@ namespace ServiceACAD
                 return false;
             }
 
-            // 检查块参照是否有X裁剪
-            // 在AutoCAD .NET API中，通过检查扩展字典中是否包含"ACAD_FILTER"字典和"SPATIAL"项来判断
+            // 检查块参照是否已被删除
+            if (CadBlkRef.IsErased)
+            {
+                return false;
+            }
 
             // 检查是否存在扩展字典
             if (CadBlkRef.ExtensionDictionary == ObjectId.Null)
@@ -48,6 +51,7 @@ namespace ServiceACAD
                 var extDict = ServiceTrans.GetObject<DBDictionary>(CadBlkRef.ExtensionDictionary);
                 if (extDict == null)
                 {
+                    Logger._.Warn($"块参照 {CadBlkRef.Name} 扩展字典为空");
                     return false;
                 }
 
@@ -57,18 +61,33 @@ namespace ServiceACAD
                     return false;
                 }
 
+                // 获取ACAD_FILTER字典的ObjectId
+                var acadFilterId = extDict.GetAt("ACAD_FILTER");
+                if (acadFilterId == ObjectId.Null)
+                {
+                    Logger._.Warn($"块参照 {CadBlkRef.Name} ACAD_FILTER字典ID无效");
+                    return false;
+                }
+
                 // 打开ACAD_FILTER字典
-                var filterDict = ServiceTrans.GetObject<DBDictionary>(extDict.GetAt("ACAD_FILTER"));
+                var filterDict = ServiceTrans.GetObject<DBDictionary>(acadFilterId);
                 if (filterDict == null)
                 {
+                    Logger._.Warn($"块参照 {CadBlkRef.Name} 无法打开ACAD_FILTER字典");
                     return false;
                 }
 
                 // 检查是否包含SPATIAL项，如果包含则表示有X裁剪
-                return filterDict.Contains("SPATIAL");
+                var hasSpatial = filterDict.Contains("SPATIAL");
+                if (hasSpatial)
+                {
+                    Logger._.Info($"块参照 {CadBlkRef.Name} 已识别为XCLIP块");
+                }
+                return hasSpatial;
             }
-            catch
+            catch (Exception ex)
             {
+                Logger._.Error($"检测块参照 {CadBlkRef.Name} 的XCLIP状态时发生异常: {ex.Message}");
                 return false;
             }
         }
@@ -145,6 +164,11 @@ namespace ServiceACAD
             // {
             //     return OpResult<ExplodeAsShownResult>.Fail("块参照不包含属性");
             // }
+
+            if (IsXclipped())
+            {
+                return OpResult<ExplodeAsShownResult>.Fail("XCLIP 图块不应被爆炸，需后续处理");
+            }
 
             try
             {
@@ -709,22 +733,17 @@ namespace ServiceACAD
                     return OpResult<ExplodedEntitiesBatch>.Fail("块参照的旋转角度无效");
                 }
 
-                // 7. 执行爆炸操作
+                // 7. 执行爆炸操作（只炸开一层，保留嵌套图块及其XCLIP状态）
                 var batch = new ExplodedEntitiesBatch();
-                var explodedEntities = new DBObjectCollection();
-
-                blockRef.Explode(explodedEntities);
-                if (explodedEntities.Count == 0)
+                
+                foreach (ObjectId entityId in entityIds)
                 {
-                    Logger._.Error("爆炸后实体数量为0");
-                    return OpResult<ExplodedEntitiesBatch>.Fail("爆炸后实体数量为0");
-                }
+                    if (!entityId.IsValid)
+                    {
+                        continue;
+                    }
 
-                Logger._.Info($"爆炸后实体数量: {explodedEntities.Count}");
-
-                // 8. 处理爆炸后的实体
-                foreach (DBObject obj in explodedEntities)
-                {
+                    DBObject obj = ServiceTrans.GetObject<DBObject>(entityId);
                     if (obj == null)
                     {
                         continue;
@@ -733,8 +752,44 @@ namespace ServiceACAD
                     if (obj is AttributeDefinition)
                     {
                         obj.Dispose();
+                        continue;
                     }
-                    else if (obj is Entity entity)
+
+                    Entity entity;
+                    if (obj is BlockReference nestedBlockRef)
+                    {
+                        var transformedPosition = nestedBlockRef.Position.TransformBy(blockRef.BlockTransform);
+                        
+                        var newBlockRef = new BlockReference(transformedPosition, nestedBlockRef.BlockTableRecord);
+                        newBlockRef.ScaleFactors = new Scale3d(
+                            nestedBlockRef.ScaleFactors.X * blockRef.ScaleFactors.X,
+                            nestedBlockRef.ScaleFactors.Y * blockRef.ScaleFactors.Y,
+                            nestedBlockRef.ScaleFactors.Z * blockRef.ScaleFactors.Z);
+                        newBlockRef.Rotation = nestedBlockRef.Rotation + blockRef.Rotation;
+                        newBlockRef.Layer = nestedBlockRef.Layer;
+                        newBlockRef.Color = nestedBlockRef.Color;
+                        newBlockRef.Linetype = nestedBlockRef.Linetype;
+                        
+                        CopyXclipState(nestedBlockRef, newBlockRef);
+                        
+                        entity = newBlockRef;
+                    }
+                    else if (obj is Entity sourceEntity)
+                    {
+                        entity = sourceEntity.Clone() as Entity;
+                        if (entity != null)
+                        {
+                            entity.TransformBy(blockRef.BlockTransform);
+                        }
+                    }
+                    else
+                    {
+                        Logger._.Warn($"遇到未处理的对象类型: {obj.GetType().Name}");
+                        obj.Dispose();
+                        continue;
+                    }
+
+                    if (entity != null)
                     {
                         var adjustStats = SetChildPropsAsBlk(entity, blockRef);
                         if (adjustStats.LayerAdjusted)
@@ -749,14 +804,14 @@ namespace ServiceACAD
 
                         batch.Entities.Add(entity);
                     }
-                    else
-                    {
-                        Logger._.Warn($"遇到未处理的对象类型: {obj.GetType().Name}");
-                        if (obj is DBObject dbObj && !dbObj.IsDisposed)
-                        {
-                            dbObj.Dispose();
-                        }
-                    }
+                    
+                    obj.Dispose();
+                }
+
+                if (batch.Entities.Count == 0)
+                {
+                    Logger._.Error("爆炸后实体数量为0");
+                    return OpResult<ExplodedEntitiesBatch>.Fail("爆炸后实体数量为0");
                 }
 
                 return OpResult<ExplodedEntitiesBatch>.Success(batch);
@@ -765,6 +820,80 @@ namespace ServiceACAD
             {
                 Logger._.Error($"爆炸块参照时发生异常: {ex.Message}");
                 return OpResult<ExplodedEntitiesBatch>.Fail(FormatExplodeErrorMessage(ex.Message));
+            }
+        }
+
+        private void CopyXclipState(BlockReference source, BlockReference target)
+        {
+            try
+            {
+                const string filterDictName = "ACAD_FILTER";
+                const string spatialName = "SPATIAL";
+
+                var sourceExtDictId = source.ExtensionDictionary;
+                if (!sourceExtDictId.IsValid)
+                {
+                    return;
+                }
+
+                var sourceExtDict = ServiceTrans.GetObject<DBDictionary>(sourceExtDictId);
+                if (sourceExtDict == null || !sourceExtDict.Contains(filterDictName))
+                {
+                    return;
+                }
+
+                var filterDictId = sourceExtDict.GetAt(filterDictName);
+                var filterDict = ServiceTrans.GetObject<DBDictionary>(filterDictId);
+                if (filterDict == null || !filterDict.Contains(spatialName))
+                {
+                    return;
+                }
+
+                var spatialFilterId = filterDict.GetAt(spatialName);
+                var spatialFilter = ServiceTrans.GetObject<Autodesk.AutoCAD.DatabaseServices.Filters.SpatialFilter>(spatialFilterId);
+                if (spatialFilter == null)
+                {
+                    return;
+                }
+
+                if (!target.ExtensionDictionary.IsValid)
+                {
+                    target.CreateExtensionDictionary();
+                }
+
+                var targetExtDict = ServiceTrans.GetObject<DBDictionary>(target.ExtensionDictionary);
+                if (targetExtDict == null)
+                {
+                    return;
+                }
+
+                DBDictionary targetFilterDict;
+                if (targetExtDict.Contains(filterDictName))
+                {
+                    targetFilterDict = ServiceTrans.GetObject<DBDictionary>(targetExtDict.GetAt(filterDictName));
+                }
+                else
+                {
+                    targetFilterDict = new DBDictionary();
+                    targetExtDict.SetAt(filterDictName, targetFilterDict);
+                    ServiceTrans.AddNewlyCreatedDBObject(targetFilterDict, true);
+                }
+
+                var newFilter = new Autodesk.AutoCAD.DatabaseServices.Filters.SpatialFilter();
+                newFilter.Definition = spatialFilter.Definition;
+
+                if (targetFilterDict.Contains(spatialName))
+                {
+                    targetFilterDict.Remove(spatialName);
+                }
+                targetFilterDict.SetAt(spatialName, newFilter);
+                ServiceTrans.AddNewlyCreatedDBObject(newFilter, true);
+
+                spatialFilter.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Logger._.Warn($"复制XCLIP状态失败: {ex.Message}");
             }
         }
 

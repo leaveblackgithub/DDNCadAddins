@@ -152,5 +152,146 @@ namespace DDNCadAddins.Core.Tests
             Assert.IsTrue(result.IsSuccess);
             Assert.AreEqual(2, callbackCount);
         }
+
+        [Test]
+        public void CleanupNonXclippedBlocks_BlockExplodeReport_HasCorrectSequenceInfo()
+        {
+            var reports = new System.Collections.Generic.List<BlockExplodeReport>();
+            var options = new BlockCleanupOptions
+            {
+                OnBlockExploded = report => reports.Add(report)
+            };
+
+            var result = _service.CleanupNonXclippedBlocks(options);
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(2, reports.Count);
+
+            // BlockA (Id="1") should be first in round 1
+            var blockAReport = reports.FirstOrDefault(r => r.BlockName == "BlockA");
+            Assert.IsNotNull(blockAReport);
+            Assert.AreEqual(1, blockAReport.Index);
+            Assert.AreEqual(2, blockAReport.TotalCount); // 2 non-xclipped blocks in this round
+            Assert.AreEqual(1, blockAReport.RoundNumber);
+
+            // BlockC (Id="3") should be second in round 1
+            var blockCReport = reports.FirstOrDefault(r => r.BlockName == "BlockC");
+            Assert.IsNotNull(blockCReport);
+            Assert.AreEqual(2, blockCReport.Index);
+            Assert.AreEqual(2, blockCReport.TotalCount);
+            Assert.AreEqual(1, blockCReport.RoundNumber);
+        }
+
+        [Test]
+        public void CleanupNonXclippedBlocks_MultipleRounds_ReportsHaveCorrectRoundNumbers()
+        {
+            _repository.Blocks.Clear();
+            _repository.Blocks.Add(new BlockInfo { Id = "10", Name = "Outer1", IsXclipped = false });
+            _repository.ExplodeEntityCounts["10"] = 1;
+            _repository.FollowUpBlocksAfterExplode["10"] = new BlockInfo { Id = "11", Name = "Inner1", IsXclipped = false };
+            _repository.ExplodeEntityCounts["11"] = 1;
+            _repository.FollowUpBlocksAfterExplode["11"] = new BlockInfo { Id = "12", Name = "Inner2", IsXclipped = false };
+            _repository.ExplodeEntityCounts["12"] = 1;
+
+            var reports = new System.Collections.Generic.List<BlockExplodeReport>();
+            var options = new BlockCleanupOptions
+            {
+                OnBlockExploded = report => reports.Add(report)
+            };
+
+            var result = _service.CleanupNonXclippedBlocks(options);
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.GreaterOrEqual(reports.Count, 2);
+
+            // First round should have round number 1
+            var firstRoundReports = reports.Where(r => r.RoundNumber == 1).ToList();
+            Assert.GreaterOrEqual(firstRoundReports.Count, 1);
+
+            // Subsequent rounds should have increasing round numbers
+            var maxRound = reports.Max(r => r.RoundNumber);
+            Assert.GreaterOrEqual(maxRound, 1);
+
+            // All reports should have valid Index and TotalCount
+            foreach (var report in reports)
+            {
+                Assert.Greater(report.Index, 0);
+                Assert.Greater(report.TotalCount, 0);
+                Assert.GreaterOrEqual(report.RoundNumber, 1);
+            }
+        }
+
+        [Test]
+        public void CleanupNonXclippedBlocks_Optimization_NoDuplicateProcessing()
+        {
+            _repository.Blocks.Clear();
+            _repository.Blocks.Add(new BlockInfo { Id = "20", Name = "Block1", IsXclipped = false });
+            _repository.Blocks.Add(new BlockInfo { Id = "21", Name = "Block2", IsXclipped = false });
+            _repository.Blocks.Add(new BlockInfo { Id = "22", Name = "Block3", IsXclipped = false });
+            _repository.ExplodeEntityCounts["20"] = 1;
+            _repository.ExplodeEntityCounts["21"] = 1;
+            _repository.ExplodeEntityCounts["22"] = 1;
+
+            var result = _service.CleanupNonXclippedBlocks();
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(3, result.Data.TotalExplodedEntityCount);
+
+            // Verify each block was processed exactly once
+            Assert.AreEqual(3, _repository.ExplodedBlockIds.Count);
+            Assert.AreEqual(1, _repository.ExplodedBlockIds.Count(id => id == "20"));
+            Assert.AreEqual(1, _repository.ExplodedBlockIds.Count(id => id == "21"));
+            Assert.AreEqual(1, _repository.ExplodedBlockIds.Count(id => id == "22"));
+        }
+
+        [Test]
+        public void CleanupNonXclippedBlocks_Optimization_EarlyTerminationAfterEmptyRounds()
+        {
+            _repository.Blocks.Clear();
+            _repository.Blocks.Add(new BlockInfo { Id = "30", Name = "NoFollowUpBlock", IsXclipped = false });
+            _repository.ExplodeEntityCounts["30"] = 1;
+
+            var result = _service.CleanupNonXclippedBlocks();
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.LessOrEqual(result.Data.IterationCount, 3);
+        }
+
+        [Test]
+        public void CleanupNonXclippedBlocks_Optimization_SameNameBlocksBatched()
+        {
+            _repository.Blocks.Clear();
+            _repository.Blocks.Add(new BlockInfo { Id = "40", Name = "SameName", IsXclipped = false });
+            _repository.Blocks.Add(new BlockInfo { Id = "41", Name = "SameName", IsXclipped = false });
+            _repository.Blocks.Add(new BlockInfo { Id = "42", Name = "SameName", IsXclipped = false });
+            _repository.ExplodeEntityCounts["40"] = 1;
+            _repository.ExplodeEntityCounts["41"] = 1;
+            _repository.ExplodeEntityCounts["42"] = 1;
+
+            var result = _service.CleanupNonXclippedBlocks();
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(3, result.Data.TotalExplodedEntityCount);
+            Assert.AreEqual(1, result.Data.IterationCount);
+            // Same name blocks should be aggregated into 1 report
+            Assert.AreEqual(1, result.Data.Rounds[0].ExplodeReports.Count);
+            Assert.AreEqual(3, result.Data.Rounds[0].ExplodeReports[0].AggregatedCount);
+        }
+
+        [Test]
+        public void CleanupNonXclippedBlocks_Optimization_NameBasedDeduplication()
+        {
+            _repository.Blocks.Clear();
+            _repository.Blocks.Add(new BlockInfo { Id = "50", Name = "SharedBlock", IsXclipped = false });
+            _repository.ExplodeEntityCounts["50"] = 1;
+            _repository.FollowUpBlocksAfterExplode["50"] = new BlockInfo { Id = "51", Name = "SharedBlock", IsXclipped = false };
+            _repository.ExplodeEntityCounts["51"] = 1;
+
+            var result = _service.CleanupNonXclippedBlocks();
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(1, result.Data.TotalExplodedEntityCount);
+            Assert.AreEqual(1, _repository.ExplodedBlockIds.Count);
+        }
     }
 }

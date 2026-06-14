@@ -47,6 +47,26 @@ namespace DDNCadAddins.Core.Models
         ///     爆炸统计
         /// </summary>
         public BlockExplodeResult Stats { get; set; }
+
+        /// <summary>
+        ///     本轮中的图块序号（从1开始）
+        /// </summary>
+        public int Index { get; set; }
+
+        /// <summary>
+        ///     本轮图块总数
+        /// </summary>
+        public int TotalCount { get; set; }
+
+        /// <summary>
+        ///     当前轮次编号（从1开始）
+        /// </summary>
+        public int RoundNumber { get; set; }
+
+        /// <summary>
+        ///     同名图块聚合数量（多个同名引用合并时记录）
+        /// </summary>
+        public int AggregatedCount { get; set; }
     }
 
     /// <summary>

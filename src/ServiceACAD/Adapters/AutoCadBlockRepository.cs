@@ -68,6 +68,31 @@ namespace ServiceACAD.Adapters
         }
 
         /// <inheritdoc />
+        DDNCadAddins.Core.Models.OpResult<bool> IBlockRepository.IsBlockXclipped(string blockId)
+        {
+            try
+            {
+                if (!TryResolveBlockId(blockId, out var objectId))
+                {
+                    return DDNCadAddins.Core.Models.OpResult<bool>.Success(false);
+                }
+
+                var blockService = _transactionService.Block.GetBlockService(objectId);
+                if (blockService == null)
+                {
+                    return DDNCadAddins.Core.Models.OpResult<bool>.Success(false);
+                }
+
+                return DDNCadAddins.Core.Models.OpResult<bool>.Success(blockService.IsXclipped());
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"检查图块 XCLIP 状态失败: {ex.Message}");
+                return DDNCadAddins.Core.Models.OpResult<bool>.Success(false);
+            }
+        }
+
+        /// <inheritdoc />
         DDNCadAddins.Core.Models.OpResult<BlockExplodeResult> IBlockRepository.ExplodeBlock(string blockId)
         {
             try

@@ -39,7 +39,7 @@ namespace AddinsACAD.Commands
                                 WriteOutput($"\n开始第 {iteration} 轮清理...");
                             }
                         },
-                        OnBlockExploded = report => WriteOutput(ExplodeReportFormatter.FormatBlockLine(report))
+                        OnBlockExploded = report => WriteOutput(ExplodeReportFormatter.FormatBlockLineWithSequence(report))
                     };
 
                     var transactionResult = CadServiceManager._.ExecuteInCommandTransaction(serviceTrans =>

@@ -38,8 +38,12 @@ namespace DDNCadAddins.Core.Services
                 }
 
                 var cleanupResult = new BlockCleanupResult();
+                var processedBlockIds = new HashSet<string>();
                 var skippedBlockIds = new HashSet<string>();
+                var processedBlockNames = new HashSet<string>();
                 var hasMoreBlocks = true;
+                var consecutiveEmptyRounds = 0;
+                const int maxConsecutiveEmptyRounds = 2;
 
                 while (hasMoreBlocks)
                 {
@@ -55,7 +59,7 @@ namespace DDNCadAddins.Core.Services
                     };
                     options?.OnRoundStarted?.Invoke(roundResult.Iteration);
 
-                    var blocksResult = GetNonXclippedBlocks(skippedBlockIds);
+                    var blocksResult = GetNonXclippedBlocks(processedBlockIds, skippedBlockIds, processedBlockNames);
                     if (!blocksResult.IsSuccess)
                     {
                         return OpResult<BlockCleanupResult>.Fail(blocksResult.Message);
@@ -69,79 +73,134 @@ namespace DDNCadAddins.Core.Services
                         continue;
                     }
 
+                    consecutiveEmptyRounds = 0;
                     var roundExploded = 0;
+                    var currentRoundProcessedIds = new HashSet<string>();
+                    var currentRoundProcessedNames = new HashSet<string>();
 
-                    for (var index = 0; index < blocks.Count; index++)
+                    var blocksByName = blocks.GroupBy(b => b.Name).ToList();
+                    var totalBlocksInRound = blocks.Count;
+                    var currentBlockIndex = 0;
+
+                    foreach (var nameGroup in blocksByName)
                     {
                         if (IsCancellationRequested(options))
                         {
                             return OpResult<BlockCleanupResult>.Fail(BlockCleanupOptions.CancelledMessage);
                         }
 
-                        var block = blocks[index];
-                        if (block == null || string.IsNullOrEmpty(block.Id))
-                        {
-                            continue;
-                        }
+                        var blockName = nameGroup.Key;
+                        var blockRefs = nameGroup.ToList();
+                        var groupSuccessCount = 0;
+                        var groupAggregatedStats = new BlockExplodeResult();
 
-                        if (skippedBlockIds.Contains(block.Id))
+                        foreach (var block in blockRefs)
                         {
-                            continue;
-                        }
-
-                        roundResult.AttemptedCount++;
-                        var explodeResult = _blockRepository.ExplodeBlock(block.Id);
-                        if (!explodeResult.IsSuccess)
-                        {
-                            if (explodeResult.Message == EmptyDefinitionMessage)
+                            if (block == null || string.IsNullOrEmpty(block.Id))
                             {
-                                var eraseResult = _blockRepository.EraseEmptyBlock(block.Id);
-                                if (eraseResult.IsSuccess)
+                                continue;
+                            }
+
+                            if (processedBlockIds.Contains(block.Id) || skippedBlockIds.Contains(block.Id))
+                            {
+                                continue;
+                            }
+
+                            var isXclippedResult = _blockRepository.IsBlockXclipped(block.Id);
+                            if (isXclippedResult.IsSuccess && isXclippedResult.Data)
+                            {
+                                skippedBlockIds.Add(block.Id);
+                                continue;
+                            }
+
+                            roundResult.AttemptedCount++;
+                            currentBlockIndex++;
+
+                            var explodeResult = _blockRepository.ExplodeBlock(block.Id);
+                            if (!explodeResult.IsSuccess)
+                            {
+                                if (explodeResult.Message != null && explodeResult.Message.IndexOf("XCLIP", System.StringComparison.OrdinalIgnoreCase) >= 0)
                                 {
-                                    cleanupResult.TotalErasedEmptyBlockCount++;
+                                    skippedBlockIds.Add(block.Id);
                                     continue;
                                 }
 
-                                RecordFailure(eraseResult.Message, roundResult.FailureCounts, cleanupResult.FailureCounts);
-                            }
-                            else
-                            {
-                                RecordFailure(explodeResult.Message, roundResult.FailureCounts, cleanupResult.FailureCounts);
+                                if (explodeResult.Message == EmptyDefinitionMessage)
+                                {
+                                    var eraseResult = _blockRepository.EraseEmptyBlock(block.Id);
+                                    if (eraseResult.IsSuccess)
+                                    {
+                                        cleanupResult.TotalErasedEmptyBlockCount++;
+                                        currentRoundProcessedIds.Add(block.Id);
+                                        continue;
+                                    }
+
+                                    RecordFailure(eraseResult.Message, roundResult.FailureCounts, cleanupResult.FailureCounts);
+                                }
+                                else
+                                {
+                                    RecordFailure(explodeResult.Message, roundResult.FailureCounts, cleanupResult.FailureCounts);
+                                }
+
+                                skippedBlockIds.Add(block.Id);
+                                continue;
                             }
 
-                            skippedBlockIds.Add(block.Id);
-                            continue;
+                            groupSuccessCount++;
+                            var explodeStats = explodeResult.Data;
+                            roundExploded += explodeStats.EntityCount;
+                            groupAggregatedStats.Add(explodeStats);
+                            currentRoundProcessedIds.Add(block.Id);
                         }
 
-                        var explodeStats = explodeResult.Data;
-                        roundExploded += explodeStats.EntityCount;
-                        var report = new BlockExplodeReport
+                        if (groupSuccessCount > 0)
                         {
-                            BlockName = block.Name,
-                            Stats = explodeStats
-                        };
-                        roundResult.ExplodeReports.Add(report);
-                        options?.OnBlockExploded?.Invoke(report);
+                            currentRoundProcessedNames.Add(blockName);
+                            var report = new BlockExplodeReport
+                            {
+                                BlockName = blockName,
+                                Stats = groupAggregatedStats,
+                                Index = currentBlockIndex - blockRefs.Count + 1,
+                                TotalCount = totalBlocksInRound,
+                                RoundNumber = roundResult.Iteration,
+                                AggregatedCount = groupSuccessCount
+                            };
+                            roundResult.ExplodeReports.Add(report);
+                            options?.OnBlockExploded?.Invoke(report);
+                        }
 
                         if (IsCancellationRequested(options))
                         {
                             return OpResult<BlockCleanupResult>.Fail(BlockCleanupOptions.CancelledMessage);
                         }
                     }
+
+                    processedBlockIds.UnionWith(currentRoundProcessedIds);
+                    processedBlockNames.UnionWith(currentRoundProcessedNames);
 
                     roundResult.ExplodedEntityCount = roundExploded;
                     cleanupResult.TotalExplodedEntityCount += roundExploded;
                     cleanupResult.Rounds.Add(roundResult);
 
-                    var remainingResult = GetNonXclippedBlocks(skippedBlockIds);
-                    if (!remainingResult.IsSuccess)
+                    if (roundExploded == 0)
                     {
-                        return OpResult<BlockCleanupResult>.Fail(remainingResult.Message);
+                        consecutiveEmptyRounds++;
+                        if (consecutiveEmptyRounds >= maxConsecutiveEmptyRounds)
+                        {
+                            hasMoreBlocks = false;
+                        }
                     }
-
-                    if (remainingResult.Data.Count == 0 || roundExploded == 0)
+                    else
                     {
-                        hasMoreBlocks = false;
+                        var remainingResult = GetNonXclippedBlocks(processedBlockIds, skippedBlockIds, processedBlockNames);
+                        if (!remainingResult.IsSuccess)
+                        {
+                            hasMoreBlocks = false;
+                        }
+                        else if (remainingResult.Data.Count == 0)
+                        {
+                            hasMoreBlocks = false;
+                        }
                     }
                 }
 
@@ -154,11 +213,16 @@ namespace DDNCadAddins.Core.Services
         }
 
         /// <summary>
-        ///     获取当前空间中未跳过且非 XCLIP 的图块
+        ///     获取当前空间中未处理且非 XCLIP 的图块（按名称去重优化）
         /// </summary>
+        /// <param name="processedBlockIds">已处理图块 ID 集合</param>
         /// <param name="skippedBlockIds">已跳过图块 ID 集合</param>
+        /// <param name="processedBlockNames">已处理图块名称集合（跨轮复用）</param>
         /// <returns>图块列表</returns>
-        private OpResult<IReadOnlyList<BlockInfo>> GetNonXclippedBlocks(HashSet<string> skippedBlockIds)
+        private OpResult<IReadOnlyList<BlockInfo>> GetNonXclippedBlocks(
+            HashSet<string> processedBlockIds,
+            HashSet<string> skippedBlockIds,
+            HashSet<string> processedBlockNames)
         {
             var allBlocksResult = _blockRepository.GetAllBlocksInCurrentSpace();
             if (!allBlocksResult.IsSuccess)
@@ -170,7 +234,9 @@ namespace DDNCadAddins.Core.Services
                 .Where(block => block != null
                     && !string.IsNullOrEmpty(block.Id)
                     && !block.IsXclipped
-                    && !skippedBlockIds.Contains(block.Id))
+                    && !processedBlockIds.Contains(block.Id)
+                    && !skippedBlockIds.Contains(block.Id)
+                    && !processedBlockNames.Contains(block.Name))
                 .ToList();
 
             return OpResult<IReadOnlyList<BlockInfo>>.Success(blocks.AsReadOnly());

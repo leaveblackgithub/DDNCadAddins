@@ -35,7 +35,13 @@ namespace ServiceACAD
 
             if (_transactionService.BlockServiceDict.TryGetValue(objectId, out var blockService))
             {
-                return blockService;
+                // 检查缓存的块服务是否仍然有效（图块可能已被删除）
+                if (!objectId.IsErased)
+                {
+                    return blockService;
+                }
+                // 缓存已过期，移除它
+                _transactionService.BlockServiceDict.Remove(objectId);
             }
 
             try

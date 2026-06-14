@@ -73,11 +73,29 @@ namespace DDNCadAddins.Core.Tests.Fakes
         }
 
         /// <inheritdoc />
+        public OpResult<bool> IsBlockXclipped(string blockId)
+        {
+            if (string.IsNullOrEmpty(blockId))
+            {
+                return OpResult<bool>.Success(false);
+            }
+
+            var block = Blocks.FirstOrDefault(b => b.Id == blockId);
+            return OpResult<bool>.Success(block?.IsXclipped ?? false);
+        }
+
+        /// <inheritdoc />
         public OpResult<BlockExplodeResult> ExplodeBlock(string blockId)
         {
-            if (string.IsNullOrEmpty(blockId) || Blocks.All(block => block.Id != blockId))
+            if (string.IsNullOrEmpty(blockId) || Blocks.All(b => b.Id != blockId))
             {
                 return OpResult<BlockExplodeResult>.Fail("图块不存在");
+            }
+
+            var targetBlock = Blocks.FirstOrDefault(b => b.Id == blockId);
+            if (targetBlock != null && targetBlock.IsXclipped)
+            {
+                return OpResult<BlockExplodeResult>.Fail("XCLIP 图块不应被爆炸，需后续处理");
             }
 
             if (EmptyDefinitionBlockIds.Contains(blockId))
@@ -91,7 +109,7 @@ namespace DDNCadAddins.Core.Tests.Fakes
             }
 
             ExplodedBlockIds.Add(blockId);
-            Blocks.RemoveAll(block => block.Id == blockId);
+            Blocks.RemoveAll(b => b.Id == blockId);
 
             if (FollowUpBlocksAfterExplode.ContainsKey(blockId))
             {
