@@ -60,10 +60,16 @@ namespace AddinsACAD.ServiceTests
                 clonedBlock.ScaleFactors = sourceBlkRef.ScaleFactors;
                 clonedBlock.Rotation = sourceBlkRef.Rotation;
 
+                // CreateExtensionDictionary 要求对象已入库，必须先 Append 再复制 XCLIP
+                var cloneId = tr.AppendEntityToModelSpace(clonedBlock);
+                Assert.IsFalse(cloneId.IsNull, "克隆图块应能加入模型空间");
+
                 var blockService = new BlockService(tr, clonedBlock);
                 blockService.CopyXclipState(sourceBlkRef, clonedBlock);
 
                 Assert.IsTrue(blockService.IsXclipped(), "克隆后的图块应保留 XCLIP 状态");
+
+                tr.GetObject<BlockReference>(cloneId, OpenMode.ForWrite).Erase();
             }
 
             CadServiceManager._.ExecuteInTransactions("xclip", Action);

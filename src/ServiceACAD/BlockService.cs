@@ -40,7 +40,7 @@ namespace ServiceACAD
             }
 
             // 检查是否存在扩展字典
-            if (CadBlkRef.ExtensionDictionary == ObjectId.Null)
+            if (!CadBlkRef.ExtensionDictionary.IsValid)
             {
                 return false;
             }
@@ -48,7 +48,7 @@ namespace ServiceACAD
             try
             {
                 // 打开扩展字典
-                var extDict = ServiceTrans.GetObject<DBDictionary>(CadBlkRef.ExtensionDictionary);
+                var extDict = GetDictionaryObject(CadBlkRef.ExtensionDictionary);
                 if (extDict == null)
                 {
                     Logger._.Warn($"块参照 {CadBlkRef.Name} 扩展字典为空");
@@ -70,7 +70,7 @@ namespace ServiceACAD
                 }
 
                 // 打开ACAD_FILTER字典
-                var filterDict = ServiceTrans.GetObject<DBDictionary>(acadFilterId);
+                var filterDict = GetDictionaryObject(acadFilterId);
                 if (filterDict == null)
                 {
                     Logger._.Warn($"块参照 {CadBlkRef.Name} 无法打开ACAD_FILTER字典");
@@ -478,14 +478,14 @@ namespace ServiceACAD
                 }
 
                 // 打开扩展字典
-                var extDict = ServiceTrans.GetObject<DBDictionary>(CadBlkRef.ExtensionDictionary);
+                var extDict = GetDictionaryObject(CadBlkRef.ExtensionDictionary);
                 if (extDict == null || !extDict.Contains("ACAD_FILTER"))
                 {
                     return null;
                 }
 
                 // 打开ACAD_FILTER字典
-                var filterDict = ServiceTrans.GetObject<DBDictionary>(extDict.GetAt("ACAD_FILTER"));
+                var filterDict = GetDictionaryObject(extDict.GetAt("ACAD_FILTER"));
                 if (filterDict == null || !filterDict.Contains("SPATIAL"))
                 {
                     return null;
@@ -855,20 +855,27 @@ namespace ServiceACAD
                 }
 
                 var spatialFilterId = filterDict.GetAt(spatialName);
-                var spatialFilter = ServiceTrans.GetObject<Autodesk.AutoCAD.DatabaseServices.Filters.SpatialFilter>(spatialFilterId);
+                var spatialFilter = ServiceTrans.GetObject<SpatialFilter>(spatialFilterId);
                 if (spatialFilter == null)
                 {
                     Logger._.Warn("CopyXclipState: 无法获取源 SPATIAL 过滤器");
                     return;
                 }
 
-                // 如果目标还没有扩展字典，则创建
+                var targetInDatabase = target.ObjectId.IsValid;
+                if (targetInDatabase)
+                {
+                    if (!target.IsWriteEnabled)
+                    {
+                        target.UpgradeOpen();
+                    }
+                }
+
                 if (!target.ExtensionDictionary.IsValid)
                 {
                     target.CreateExtensionDictionary();
                 }
 
-                // 重新获取目标扩展字典（创建后可能需要刷新）
                 var targetExtDictId = target.ExtensionDictionary;
                 if (!targetExtDictId.IsValid)
                 {
@@ -876,17 +883,22 @@ namespace ServiceACAD
                     return;
                 }
 
-                var targetExtDict = ServiceTrans.GetObject<DBDictionary>(targetExtDictId);
+                var targetExtDict = GetDictionaryObject(targetExtDictId, OpenMode.ForWrite);
                 if (targetExtDict == null)
                 {
                     Logger._.Warn("CopyXclipState: 无法打开目标扩展字典");
                     return;
                 }
 
+                if (!targetInDatabase)
+                {
+                    ServiceTrans.AddNewlyCreatedDBObject(targetExtDict, true);
+                }
+
                 DBDictionary targetFilterDict;
                 if (targetExtDict.Contains(filterDictName))
                 {
-                    targetFilterDict = ServiceTrans.GetObject<DBDictionary>(targetExtDict.GetAt(filterDictName));
+                    targetFilterDict = GetDictionaryObject(targetExtDict.GetAt(filterDictName), OpenMode.ForWrite);
                 }
                 else
                 {
@@ -895,22 +907,58 @@ namespace ServiceACAD
                     ServiceTrans.AddNewlyCreatedDBObject(targetFilterDict, true);
                 }
 
-                // 克隆 SpatialFilter 并添加到目标
-                var clonedFilter = (Autodesk.AutoCAD.DatabaseServices.Filters.SpatialFilter)spatialFilter.Clone();
+                if (targetFilterDict == null)
+                {
+                    Logger._.Warn("CopyXclipState: 无法打开目标 ACAD_FILTER 字典");
+                    return;
+                }
+
+                // 新建 SpatialFilter 并复制 Definition（Clone 在内存图块上不可靠）
+                var clonedFilter = new SpatialFilter
+                {
+                    Definition = spatialFilter.Definition
+                };
 
                 if (targetFilterDict.Contains(spatialName))
                 {
                     targetFilterDict.Remove(spatialName);
                 }
+
                 targetFilterDict.SetAt(spatialName, clonedFilter);
                 ServiceTrans.AddNewlyCreatedDBObject(clonedFilter, true);
 
-                Logger._.Info($"CopyXclipState: 成功复制 XCLIP 状态到目标图块");
+                Logger._.Info("CopyXclipState: 成功复制 XCLIP 状态到目标图块");
             }
             catch (Exception ex)
             {
                 Logger._.Error($"复制XCLIP状态时发生异常: {ex.Message}", ex);
             }
+        }
+
+        /// <summary>
+        ///     打开扩展字典对象；新建子对象优先 ObjectId.GetObject，已入库对象走事务
+        /// </summary>
+        private DBDictionary GetDictionaryObject(ObjectId dictionaryId, OpenMode openMode = OpenMode.ForRead)
+        {
+            if (!dictionaryId.IsValid)
+            {
+                return null;
+            }
+
+            try
+            {
+                var directDictionary = dictionaryId.GetObject(openMode) as DBDictionary;
+                if (directDictionary != null)
+                {
+                    return directDictionary;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger._.Warn($"直接打开扩展字典失败: {ex.Message}");
+            }
+
+            return ServiceTrans.GetObject<DBDictionary>(dictionaryId, openMode);
         }
 
         /// <summary>
