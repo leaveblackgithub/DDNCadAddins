@@ -1,4 +1,8 @@
-B# AutoCAD资源管理规则
+---
+description: AutoCAD 资源管理规则，明确区分必须释放和不应释放的 AutoCAD 对象
+globs: "*.cs"
+---
+# AutoCAD资源管理规则
 # 版本：1.0.0
 # 最后更新：2024-06-28
 # 
@@ -119,4 +123,4 @@ finally
 - 锁定时间应尽可能短
 - 避免在锁定区域执行UI操作或等待用户输入
 - 确保在异常情况下也能解锁（try-finally）
-- 考虑使用DisableUndoRecording简化非关键操作 
+- 考虑使用DisableUndoRecording简化非关键操作

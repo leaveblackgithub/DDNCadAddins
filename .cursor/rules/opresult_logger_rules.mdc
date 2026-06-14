@@ -1,0 +1,163 @@
+---
+description: OpResult 和 Logger 使用规范，确保 AutoCAD 异常安全性和日志覆盖完整性
+globs: "*.cs"
+---
+# OpResult 与 Logger 使用规范
+# 版本：1.0.0
+# 最后更新：2026-06-14
+# 
+# 使用指南：
+# 本文件定义 OpResult/OpResult<T> 返回类型和 Logger 日志记录的详细使用规范。
+# 与 .cursorrules 中"最高原则：AutoCAD 异常安全"配合使用。
+
+## 一、OpResult 使用规范
+
+### 1. 所有方法必须返回 OpResult 或 OpResult<T>
+- 禁止使用 void 作为公共方法返回类型
+- 禁止直接抛出异常
+- 禁止在 catch 块中重新抛出异常
+
+### 2. OpResult 结构
+```csharp
+public class OpResult
+{
+    public bool IsSuccess { get; }
+    public string Message { get; }
+    public static OpResult Ok(string message = null);
+    public static OpResult Fail(string message);
+}
+
+public class OpResult<T> : OpResult
+{
+    public T Data { get; }
+    public static OpResult<T> Ok(T data, string message = null);
+    public static OpResult<T> Fail(string message);
+}
+```
+
+### 3. 标准方法模板
+```csharp
+public OpResult DoSomething(string input)
+{
+    try
+    {
+        // 参数验证
+        if (string.IsNullOrEmpty(input))
+        {
+            Logger._.Warn("DoSomething: input 为空");
+            return OpResult.Fail("输入参数不能为空");
+        }
+
+        // 业务逻辑
+        // ...
+
+        return OpResult.Ok("操作成功");
+    }
+    catch (Exception ex)
+    {
+        Logger._.Error(ex, "DoSomething 执行失败, input={Input}", input);
+        return OpResult.Fail($"操作失败: {ex.Message}");
+    }
+}
+```
+
+### 4. 带返回值的方法模板
+```csharp
+public OpResult<List<string>> GetItems(string filter)
+{
+    try
+    {
+        // 参数验证
+        if (string.IsNullOrEmpty(filter))
+        {
+            return OpResult<List<string>>.Fail("筛选条件不能为空");
+        }
+
+        // 业务逻辑
+        var items = new List<string>();
+
+        return OpResult<List<string>>.Ok(items, "查询成功");
+    }
+    catch (Exception ex)
+    {
+        Logger._.Error(ex, "GetItems 查询失败, filter={Filter}", filter);
+        return OpResult<List<string>>.Fail($"查询失败: {ex.Message}");
+    }
+}
+```
+
+### 5. 调用方处理规范
+```csharp
+public OpResult CallServiceMethod()
+{
+    try
+    {
+        var result = service.DoSomething(input);
+        if (!result.IsSuccess)
+        {
+            // 记录或传递错误
+            return OpResult.Fail(result.Message);
+        }
+        return OpResult.Ok();
+    }
+    catch (Exception ex)
+    {
+        Logger._.Error(ex, "CallServiceMethod 失败");
+        return OpResult.Fail($"调用失败: {ex.Message}");
+    }
+}
+```
+
+## 二、Logger 使用规范
+
+### 1. 日志级别使用规则
+
+| 级别 | 使用场景 | 示例 |
+|------|----------|------|
+| `Logger._.Error()` | 异常捕获、操作失败 | 所有 catch 块中必须调用 |
+| `Logger._.Warn()` | 参数无效、边界情况 | 输入验证失败但不抛异常 |
+| `Logger._.Info()` | 操作开始/结束、关键步骤 | 命令开始执行、执行完成 |
+| `Logger._.Debug()` | 详细调试信息 | 参数值、中间计算结果 |
+| `Logger._.Fatal()` | 致命错误（极少使用） | 应用无法继续运行 |
+
+### 2. Error 日志标准格式
+```csharp
+// 所有 catch 块必须遵循此格式
+catch (Exception ex)
+{
+    Logger._.Error(ex, "{MethodName} 失败, {KeyParam}={Value}",
+        nameof(MyMethod), "paramName", paramValue);
+    return OpResult.Fail($"操作失败: {ex.Message}");
+}
+```
+
+### 3. Info 日志使用规范
+```csharp
+// 方法入口
+Logger._.Info("{MethodName} 开始执行, Param1={Value1}", nameof(MyMethod), param1);
+
+// 方法出口（成功）
+Logger._.Info("{MethodName} 执行完成, 耗时={Elapsed}ms", nameof(MyMethod), elapsed);
+```
+
+### 4. 日志禁止事项
+- 禁止在日志中记录密码、Token 等敏感信息
+- 禁止在 Info 级别记录循环内的每步细节（应使用 Debug 级别）
+- 禁止在用户界面中显示完整的异常堆栈（应统一使用简洁错误消息）
+
+## 三、代码审查检查点
+
+### 方法级别检查
+- [ ] 方法是否被 try-catch(Exception) 完全包裹？
+- [ ] catch 块中是否调用了 Logger._.Error？
+- [ ] 方法是否返回 OpResult/OpResult<T> 而非 void？
+- [ ] catch 块中是否没有 throw/throw ex？
+
+### 日志检查
+- [ ] 每个 catch 块都有 Logger._.Error 调用？
+- [ ] 关键操作入口/出口都有 Logger._.Info 记录？
+- [ ] 参数验证失败时是否使用了 Logger._.Warn？
+
+### 调用链检查
+- [ ] 调用 OpResult 方法后是否检查了 IsSuccess？
+- [ ] 失败时是否返回了有意义的错误消息？

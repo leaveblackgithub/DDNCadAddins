@@ -1,43 +1,50 @@
+---
+description: 检测 C# 文件中未使用的代码元素，包括私有方法、字段、局部变量、参数和 using 指令
+globs: "*.cs"
+---
 # Unused Code Detector
+# 版本：1.1.0
+# 最后更新：2026-06-14
 
-This rule detects and highlights unused code in C# files, including:
+本规则用于检测 C# 代码中的未使用元素，帮助保持代码库整洁。
 
-1. Unused private methods
-2. Unused private fields
-3. Unused local variables
-4. Unused parameters
-5. Unused using directives
+## 检测范围
 
-## How to Use
+1. 未使用的私有方法
+2. 未使用的私有字段
+3. 未使用的局部变量
+4. 未使用的参数
+5. 未使用的 using 指令
 
-Cursor will automatically highlight unused code with warnings. You can:
+## 项目特定规则
 
-1. Hover over the highlighted code to see the warning
-2. Use the quick fix menu (Ctrl+.) to remove the unused code
-3. Run the "Remove Unused Code" action to automatically clean up all detected issues
+### 必须保留的特殊情况
+- 由反射调用的私有方法（如 AutoCAD CommandMethod 标记的方法）不在检测范围内
+- Unity 序列化字段（`[SerializeField]`）不被视为未使用
+- 事件处理器的 `sender` 参数即使未在方法体中引用也应保留
 
-## Configuration
+### 清理规范
+- 发现未使用的 using 指令应立即移除
+- 未使用的私有字段应在确认无反射引用后删除
+- 临时注释掉的代码块应在提交前清理
 
-This rule is enabled by default. No additional configuration is required.
+## 检测示例
 
-## Examples
-
-### Unused Private Method
-
+### 未使用的私有方法
 ```csharp
+// 检测：如果 UnusedMethod 没有被任何代码调用
 private void UnusedMethod() {
     // This method is never called
 }
 ```
 
-### Unused Private Field
-
+### 未使用的私有字段
 ```csharp
+// 检测：如果 _unusedField 只在声明处赋值
 private int _unusedField;
 ```
 
-### Unused Local Variable
-
+### 未使用的局部变量
 ```csharp
 void Method() {
     string unusedVariable = "unused";
@@ -45,16 +52,14 @@ void Method() {
 }
 ```
 
-### Unused Parameter
-
+### 未使用的参数
 ```csharp
 void Method(string unusedParam) {
     Console.WriteLine("Hello");
 }
 ```
 
-### Unused Using Directive
-
+### 未使用的 using 指令
 ```csharp
-using System.Linq; // Never used
-``` 
+// 检测：如果项目中未使用 LINQ 扩展方法
+using System.Linq;
