@@ -835,12 +835,14 @@ namespace ServiceACAD
                 var sourceExtDictId = source.ExtensionDictionary;
                 if (!sourceExtDictId.IsValid)
                 {
+                    Logger._.Warn("CopyXclipState: 源图块没有扩展字典");
                     return;
                 }
 
                 var sourceExtDict = ServiceTrans.GetObject<DBDictionary>(sourceExtDictId);
                 if (sourceExtDict == null || !sourceExtDict.Contains(filterDictName))
                 {
+                    Logger._.Warn("CopyXclipState: 源扩展字典不包含 ACAD_FILTER");
                     return;
                 }
 
@@ -848,6 +850,7 @@ namespace ServiceACAD
                 var filterDict = ServiceTrans.GetObject<DBDictionary>(filterDictId);
                 if (filterDict == null || !filterDict.Contains(spatialName))
                 {
+                    Logger._.Warn("CopyXclipState: 源过滤器字典不包含 SPATIAL");
                     return;
                 }
 
@@ -855,17 +858,28 @@ namespace ServiceACAD
                 var spatialFilter = ServiceTrans.GetObject<Autodesk.AutoCAD.DatabaseServices.Filters.SpatialFilter>(spatialFilterId);
                 if (spatialFilter == null)
                 {
+                    Logger._.Warn("CopyXclipState: 无法获取源 SPATIAL 过滤器");
                     return;
                 }
 
+                // 如果目标还没有扩展字典，则创建
                 if (!target.ExtensionDictionary.IsValid)
                 {
                     target.CreateExtensionDictionary();
                 }
 
-                var targetExtDict = ServiceTrans.GetObject<DBDictionary>(target.ExtensionDictionary);
+                // 重新获取目标扩展字典（创建后可能需要刷新）
+                var targetExtDictId = target.ExtensionDictionary;
+                if (!targetExtDictId.IsValid)
+                {
+                    Logger._.Warn("CopyXclipState: 目标扩展字典创建失败");
+                    return;
+                }
+
+                var targetExtDict = ServiceTrans.GetObject<DBDictionary>(targetExtDictId);
                 if (targetExtDict == null)
                 {
+                    Logger._.Warn("CopyXclipState: 无法打开目标扩展字典");
                     return;
                 }
 
@@ -881,21 +895,21 @@ namespace ServiceACAD
                     ServiceTrans.AddNewlyCreatedDBObject(targetFilterDict, true);
                 }
 
-                var newFilter = new Autodesk.AutoCAD.DatabaseServices.Filters.SpatialFilter();
-                newFilter.Definition = spatialFilter.Definition;
+                // 克隆 SpatialFilter 并添加到目标
+                var clonedFilter = (Autodesk.AutoCAD.DatabaseServices.Filters.SpatialFilter)spatialFilter.Clone();
 
                 if (targetFilterDict.Contains(spatialName))
                 {
                     targetFilterDict.Remove(spatialName);
                 }
-                targetFilterDict.SetAt(spatialName, newFilter);
-                ServiceTrans.AddNewlyCreatedDBObject(newFilter, true);
+                targetFilterDict.SetAt(spatialName, clonedFilter);
+                ServiceTrans.AddNewlyCreatedDBObject(clonedFilter, true);
 
-                spatialFilter.Dispose();
+                Logger._.Info($"CopyXclipState: 成功复制 XCLIP 状态到目标图块");
             }
             catch (Exception ex)
             {
-                Logger._.Warn($"复制XCLIP状态失败: {ex.Message}");
+                Logger._.Error($"复制XCLIP状态时发生异常: {ex.Message}", ex);
             }
         }
 
