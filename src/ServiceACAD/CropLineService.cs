@@ -201,6 +201,7 @@ namespace ServiceACAD
 
         /// <summary>
         ///     按交点拆分直线，保留符合条件的段，删除其余段.
+        ///     先判断所有段是否在同侧（全部保留或全部删除），避免不必要拆分.
         /// </summary>
         /// <param name="line">待拆分的直线.</param>
         /// <param name="intersections">直线与边界的交点列表.</param>
@@ -230,7 +231,49 @@ namespace ServiceACAD
 
                 nodes.Add(end3d);
 
-                // 逐段用中点判断在内/在外，决定保留还是裁掉，不依赖 GetSplitCurves（受浮点误差影响易失败）
+                // 第一步：检查所有段的中点是否在同侧，决定保留/删除/拆分
+                var allInside = true;
+                var allOutside = true;
+                var segmentChecks = new bool[nodes.Count - 1];
+                for (var i = 0; i < nodes.Count - 1; i++)
+                {
+                    var a = nodes[i];
+                    var b = nodes[i + 1];
+                    if (a.DistanceTo(b) < 1e-9)
+                    {
+                        segmentChecks[i] = false;
+                        continue;
+                    }
+
+                    var midPt = new CorePoint2D((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0);
+                    var isInside = this._cropGeometry.IsPointInPolygon(midPt, boundaryPoints);
+                    segmentChecks[i] = isInside;
+
+                    if (isInside)
+                    {
+                        allOutside = false;
+                    }
+                    else
+                    {
+                        allInside = false;
+                    }
+                }
+
+                // 所有段都在目标侧：整条直线保留，无需拆分
+                if ((keepInside && allInside) || (!keepInside && allOutside))
+                {
+                    result.KeptCount++;
+                    return;
+                }
+
+                // 所有段都在非目标侧：整条直线删除
+                if ((keepInside && allOutside) || (!keepInside && allInside))
+                {
+                    this.DeleteLine(line, result);
+                    return;
+                }
+
+                // 第二步：混合情况，需要拆分
                 var segmentsToKeep = new List<Line>();
                 for (var i = 0; i < nodes.Count - 1; i++)
                 {
@@ -241,8 +284,7 @@ namespace ServiceACAD
                         continue;
                     }
 
-                    var midPt = new CorePoint2D((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0);
-                    var isInside = this._cropGeometry.IsPointInPolygon(midPt, boundaryPoints);
+                    var isInside = segmentChecks[i];
                     if ((keepInside && isInside) || (!keepInside && !isInside))
                     {
                         segmentsToKeep.Add(new Line(a, b)
