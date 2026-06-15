@@ -18,6 +18,9 @@
 - [ ] 使用根目录的 build.bat 执行完整构建（或确认与 VS 构建流程一致）
 - [ ] 在 AutoCAD 中验证全部命令（不仅 RUNTESTS）正常加载与运行
 
+## 4. 已知问题 (Known Issues / BUG)
+- [ ] **ExplodeAsShown 丢失嵌套子图块的 XCLIP 状态** — 当爆炸包含嵌套子图块的图块时，子图块上的 XCLIP 裁剪状态会丢失。当前 ExplodeAsShown 只能保护最外层图块的 XCLIP，无法递归保留嵌套子图块的 XCLIP，需要进一步分析深度递归复制策略。
+
 ## 进度记录
 | 日期 | 完成任务 | 备注 |
 |------|----------|------|
@@ -29,3 +32,4 @@
 | 2026-06-10 | RUNTESTS 异常处理 | 区分 AutoCAD API 异常与 System 异常 |
 | 2026-06-12 | Core 层 PoC 三步验证 | Core 编译、Core.Tests 12 项全通过、HELLO 命令集成通过 |
 | 2026-06-12 | 统一项目配置 | Directory.props / CommonAssemblyInfo 对齐各项目 AssemblyInfo 与 csproj |
+| 2026-06-15 | 撤销 CROP 功能回滚 | 删除了 CROPINSIDE/CROPOUTSIDE 所有相关文件，保留 XCLIP/CopyXclipState 功能 |

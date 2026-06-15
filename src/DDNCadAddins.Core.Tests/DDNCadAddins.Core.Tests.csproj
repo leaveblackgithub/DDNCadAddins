@@ -26,6 +26,7 @@
     <Compile Include="StyleValidationServiceTests.cs" />
     <Compile Include="OpResultTests.cs" />
     <Compile Include="XClipBoundaryGeometryServiceTests.cs" />
+    <Compile Include="CropGeometryServiceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -42,6 +42,9 @@ Features:
     <Compile Include="EditorService.cs" />
     <Compile Include="ExplodeAsShownResult.cs" />
     <Compile Include="ICommandCancellation.cs" />
+    <Compile Include="CropService.cs" />
+    <Compile Include="CropLineService.cs" />
+    <Compile Include="ICropService.cs" />
     <Compile Include="IBlockService.cs" />
     <Compile Include="IDocumentService.cs" />
     <Compile Include="IEditorService.cs" />
