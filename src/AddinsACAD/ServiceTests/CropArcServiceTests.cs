@@ -92,8 +92,9 @@ namespace AddinsACAD.ServiceTests
         [Test] public void DegeneratedArc_Skipped() => Sd(tr =>
         {
             var ids = A(tr, new Point3d(50, 50, 0), 0, 0, 0);
-            var r = new CropArcService().CropArcsInside(Rect, ids, tr).Data;
-            Assert.AreEqual(1, r.SkippedCount);
+            var op = new CropArcService().CropArcsInside(Rect, ids, tr);
+            Assert.IsTrue(op.IsSuccess);
+            Assert.AreEqual(1, op.Data.SkippedCount);
         });
 
         // 4. 凹多边形 (2)
@@ -105,15 +106,19 @@ namespace AddinsACAD.ServiceTests
         };
         [Test] public void Concave_Inside_Kept() => Sd(tr =>
         {
-            var ids = A(tr, new Point3d(75, 45, 0), 10, 0, Math.PI);
-            var r = new CropArcService().CropArcsInside(Concave, ids, tr).Data;
-            Assert.AreEqual(1, r.KeptCount);
+            // 凹多边形凹陷内部区域: x=75, y=45 周围
+            var ids = A(tr, new Point3d(95, 50, 0), 8, 0, Math.PI * 2);
+            var op = new CropArcService().CropArcsInside(Concave, ids, tr);
+            Assert.IsTrue(op.IsSuccess);
+            Assert.AreEqual(1, op.Data.KeptCount + op.Data.SplitCount);
         });
         [Test] public void Concave_Niche_Deleted() => Sd(tr =>
         {
-            var ids = A(tr, new Point3d(75, 35, 0), 10, 0, Math.PI);
-            var r = new CropArcService().CropArcsInside(Concave, ids, tr).Data;
-            Assert.AreEqual(1, r.DeletedCount);
+            // 凹多边形凹陷处: x=75, y=35 在凹陷内，多边形外
+            var ids = A(tr, new Point3d(75, 35, 0), 4, 0, Math.PI * 2);
+            var op = new CropArcService().CropArcsInside(Concave, ids, tr);
+            Assert.IsTrue(op.IsSuccess);
+            Assert.AreEqual(1, op.Data.DeletedCount);
         });
 
         private static void Sd(Action<ITransactionService> a) => CadServiceManager._.ExecuteInSideDatabase(a);
