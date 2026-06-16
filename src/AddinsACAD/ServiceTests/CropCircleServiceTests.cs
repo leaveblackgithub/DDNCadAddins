@@ -53,8 +53,8 @@ namespace AddinsACAD.ServiceTests
         // 2. 拆分 (3)
         [Test] public void CrossBoundary_Split() => Sd(tr =>
         {
-            // 圆心 (50, 50)，半径 120 → 圆必然完全包围 100x100 边界
-            var ids = C(tr, new Point3d(50, 50, 0), 120);
+            // 圆心 (50, 50)，半径 60 → 圆跨越 100x100 边界四条边，交点落在边界线段上
+            var ids = C(tr, new Point3d(50, 50, 0), 60);
             var op = new CropCircleService().CropCirclesInside(Rect, ids, tr);
             Assert.IsTrue(op.IsSuccess);
             Assert.GreaterOrEqual(op.Data.SplitCount + op.Data.KeptCount, 1);

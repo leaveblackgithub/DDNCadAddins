@@ -49,7 +49,7 @@ namespace AddinsACAD.Commands
                 var ed = doc.Editor;
 
                 // 1. 选择边界（单选）
-                var boundaryPoints = this.SelectSingleBoundaryCurve(ed);
+                var boundaryPoints = this.SelectSingleBoundaryCurve(ed, out var boundaryId);
                 if (boundaryPoints == null || boundaryPoints.Count < 3)
                 {
                     return;
@@ -72,6 +72,10 @@ namespace AddinsACAD.Commands
                         return;
                     }
 
+                    // 排除边界自身
+                    autoPolylineIds.RemoveAll(id => id == boundaryId);
+                    if (autoPolylineIds.Count == 0) { ed.WriteMessage("\n排除边界后没有其他多段线。"); return; }
+                    ed.WriteMessage($"\n已排除边界多段线，剩余 {autoPolylineIds.Count} 条。");
                     polylineIds = autoPolylineIds;
                     ed.WriteMessage($"\n已自动选择 {polylineIds.Count} 条多段线。");
                 }
@@ -175,7 +179,7 @@ namespace AddinsACAD.Commands
         ///     选择一条闭合曲线作为裁剪边界（单选）.
         /// </summary>
         /// <returns>边界顶点列表（WCS），如果取消或选择无效则返回 null.</returns>
-        private List<DDNCadAddins.Core.Models.Point2D> SelectSingleBoundaryCurve(Editor ed)
+        private List<DDNCadAddins.Core.Models.Point2D> SelectSingleBoundaryCurve(Editor ed, out ObjectId boundaryId)
         {
             try
             {
@@ -198,12 +202,13 @@ namespace AddinsACAD.Commands
                 if (promptResult.Status != PromptStatus.OK)
                 {
                     ed.WriteMessage("\n未选择边界曲线或选择被取消。");
+                    boundaryId = ObjectId.Null;
                     return null;
                 }
 
                 var curveId = promptResult.ObjectId;
+                boundaryId = curveId;
                 var points = new List<DDNCadAddins.Core.Models.Point2D>();
-
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
                 {
                     var curve = serviceTrans.GetObject<Curve>(curveId);
@@ -262,6 +267,7 @@ namespace AddinsACAD.Commands
             {
                 Logger._.Error($"选择边界曲线失败: {ex.Message}", ex);
                 ed.WriteMessage($"\n选择边界曲线失败: {ex.Message}");
+                boundaryId = ObjectId.Null;
                 return null;
             }
         }

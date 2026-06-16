@@ -133,6 +133,11 @@ namespace DDNCadAddins.Core.Services
                 {
                     result.Add(intersection);
                 }
+                else
+                {
+                    var overlapPts = GetCollinearOverlap(segStart, segEnd, pj, pi);
+                    if (overlapPts != null) { result.AddRange(overlapPts); }
+                }
             }
 
             return this.SortPointsAlongLine(segStart, result);
@@ -264,6 +269,41 @@ namespace DDNCadAddins.Core.Services
             var dx = a.X - b.X;
             var dy = a.Y - b.Y;
             return (dx * dx) + (dy * dy);
+        }
+
+        /// <summary>
+        ///     检测两段是否共线重叠，返回重叠端点作为交点.
+        ///     多段线与边界边平行时，非重叠部分的中点能正确判定内外.
+        /// </summary>
+        private static List<Point2D> GetCollinearOverlap(Point2D p1, Point2D p2, Point2D p3, Point2D p4)
+        {
+            var d1x = p2.X - p1.X;
+            var d1y = p2.Y - p1.Y;
+            var lenSq = d1x * d1x + d1y * d1y;
+            if (lenSq < Tolerance) return null;
+
+            // p3, p4 是否在 p1→p2 直线上
+            if (Math.Abs(d1x * (p3.Y - p1.Y) - d1y * (p3.X - p1.X)) > Tolerance) return null;
+            if (Math.Abs(d1x * (p4.Y - p1.Y) - d1y * (p4.X - p1.X)) > Tolerance) return null;
+
+            // 投影到 p1→p2 方向
+            var t3 = ((p3.X - p1.X) * d1x + (p3.Y - p1.Y) * d1y) / lenSq;
+            var t4 = ((p4.X - p1.X) * d1x + (p4.Y - p1.Y) * d1y) / lenSq;
+            if (t3 > t4) { var tmp = t3; t3 = t4; t4 = tmp; }
+
+            // 与 [0,1] 求交
+            var tMin = Math.Max(0, t3);
+            var tMax = Math.Min(1, t4);
+            if (tMax - tMin < Tolerance) return null;
+
+            var result = new List<Point2D>();
+            // 重叠起点（非段起点时添加，避免与 segStart 重复）
+            if (tMin > Tolerance)
+                result.Add(new Point2D(p1.X + tMin * d1x, p1.Y + tMin * d1y));
+            // 重叠终点（非段终点时添加）
+            if (tMax < 1.0 - Tolerance)
+                result.Add(new Point2D(p1.X + tMax * d1x, p1.Y + tMax * d1y));
+            return result.Count > 0 ? result : null;
         }
     }
 }

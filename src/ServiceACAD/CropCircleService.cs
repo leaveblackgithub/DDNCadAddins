@@ -100,7 +100,12 @@ namespace ServiceACAD
                 }
 
                 var total = result.DeletedCount + result.SplitCount + result.KeptCount;
-                if (total == 0) return OpResultOfCropCircleResult.Fail("没有圆被处理");
+                if (total == 0)
+                {
+                    if (result.SkippedCount > 0)
+                        return OpResultOfCropCircleResult.Success(result);
+                    return OpResultOfCropCircleResult.Fail("没有圆被处理");
+                }
                 return OpResultOfCropCircleResult.Success(result);
             }
             catch (System.Exception ex)
@@ -115,7 +120,7 @@ namespace ServiceACAD
             ITransactionService transactionService, CropCircleResult result)
         {
             var extents = circle.GeometricExtents;
-            if (extents.MinPoint.DistanceTo(extents.MaxPoint) < 1e-9) { result.SkippedCount++; return; }
+            if (extents.MinPoint.DistanceTo(extents.MaxPoint) < 1e-9) return;
 
             var minPt = new CorePoint2D(extents.MinPoint.X, extents.MinPoint.Y);
             var maxPt = new CorePoint2D(extents.MaxPoint.X, extents.MaxPoint.Y);

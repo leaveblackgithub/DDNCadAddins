@@ -212,6 +212,8 @@ namespace ServiceACAD
 
                 if (result.DeletedCount == 0 && result.SplitCount == 0 && result.KeptCount == 0)
                 {
+                    if (result.SkippedCount > 0)
+                        return OpResultOfCropLineResult.Success(result);
                     return OpResultOfCropLineResult.Fail("没有直线被处理");
                 }
 

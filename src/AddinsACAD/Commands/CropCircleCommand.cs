@@ -35,8 +35,8 @@ namespace AddinsACAD.Commands
                 var doc = Autodesk.AutoCAD.ApplicationServices.Core.Application.DocumentManager.MdiActiveDocument;
                 var ed = doc.Editor;
 
-                var boundaryPoints = this.SelectSingleBoundaryCurve(ed);
-                if (boundaryPoints == null || boundaryPoints.Count < 3) return;
+                var boundaryPoints = this.SelectSingleBoundaryCurve(ed, out var boundaryId);
+                if (boundaryPoints == null || boundaryPoints.Count < 3) { boundaryId = ObjectId.Null; return; }
 
                 List<ObjectId> ids;
                 if (selectAll)
@@ -49,8 +49,11 @@ namespace AddinsACAD.Commands
                         ed.WriteMessage("\n图纸中没有找到任何圆。");
                         return;
                     }
+                    // 排除边界自身
+                    autoIds.RemoveAll(id => id == boundaryId);
+                    if (autoIds.Count == 0) { ed.WriteMessage("\n排除边界后没有其他圆。"); return; }
                     ids = autoIds;
-                    ed.WriteMessage($"\n已自动选择 {ids.Count} 个圆。");
+                    ed.WriteMessage($"\n已排除边界圆，剩余 {ids.Count} 个。");
                 }
                 else
                 {
@@ -117,7 +120,7 @@ namespace AddinsACAD.Commands
             }
         }
 
-        private List<DDNCadAddins.Core.Models.Point2D> SelectSingleBoundaryCurve(Editor ed)
+        private List<DDNCadAddins.Core.Models.Point2D> SelectSingleBoundaryCurve(Editor ed, out ObjectId boundaryId)
         {
             try
             {
@@ -125,12 +128,13 @@ namespace AddinsACAD.Commands
                 options.SetRejectMessage("\n请选择圆、椭圆、闭合多段线或闭合样条线作为裁剪边界。");
                 options.AddAllowedClass(typeof(Curve), false);
                 var promptResult = ed.GetEntity(options);
-                if (promptResult.Status != PromptStatus.OK) { ed.WriteMessage("\n未选择边界。"); return null; }
-                var curveId = promptResult.ObjectId;
+                if (promptResult.Status != PromptStatus.OK) { ed.WriteMessage("\n未选择边界。"); boundaryId = ObjectId.Null; return null; }
+                boundaryId = promptResult.ObjectId;
+                var capturedId = boundaryId;
                 var points = new List<DDNCadAddins.Core.Models.Point2D>();
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
                 {
-                    var curve = serviceTrans.GetObject<Curve>(curveId);
+                    var curve = serviceTrans.GetObject<Curve>(capturedId);
                     if (curve == null || !curve.Closed) { ed.WriteMessage("\n边界曲线未闭合。"); return; }
                     const int sampleCount = 64;
                     for (var i = 0; i < sampleCount; i++)
@@ -146,6 +150,7 @@ namespace AddinsACAD.Commands
             catch (System.Exception ex)
             {
                 Logger._.Error($"选择边界失败: {ex.Message}", ex);
+                boundaryId = ObjectId.Null;
                 return null;
             }
         }
