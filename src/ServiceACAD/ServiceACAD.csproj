@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
 ServiceACAD.csproj - AutoCAD Service Library Project File
 
@@ -34,6 +34,7 @@ Features:
     <Compile Include="Adapters\AutoCadLayerRepository.cs" />
     <Compile Include="Adapters\LayerStateSnapshotConverter.cs" />
     <Compile Include="BlockService.cs" />
+    <Compile Include="BlockExploder.cs" />
     <Compile Include="CommandCancellationScope.cs" />
     <Compile Include="HostApplicationServicesExtensions.cs" />
     <Compile Include="DocumentService.cs" />
