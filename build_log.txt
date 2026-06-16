@@ -1,0 +1,21 @@
+
+  DDNCadAddins.Core -> D:\leaveblackgithub\DDNCadAddins\src\bin\Debug\DDNCadAddins.Core.dll
+  DDNCadAddins.Core.Tests -> D:\leaveblackgithub\DDNCadAddins\src\bin\Debug\DDNCadAddins.Core.Tests.dll
+D:\leaveblackgithub\DDNCadAddins\src\ServiceACAD\CropUtils.cs(31,26): warning CS0649: 从未对字段“CropUtils.CurveResult.KeptCount”赋值，字段将一直保持其默认值 0 [D:\leaveblackgithub\DDNCadAddins\src\ServiceACAD\ServiceACAD.csproj]
+  ServiceACAD -> D:\leaveblackgithub\DDNCadAddins\src\bin\Debug\ServiceACAD.dll
+  检查编译后版本号信息...
+  项目: ServiceACAD
+  输出路径: D:\leaveblackgithub\DDNCadAddins\src\bin\Debug\
+  配置: Debug
+  平台: x64
+  编译常量: DEBUG;TRACE;IN_APP;IN_ACCORE;USE_DIRECTORY_PROPS
+  --------------------------------------------------
+  如果版本号仍显示为0.0.0.0，请尝试以下解决方案:
+  1. 确保已将GenerateAssemblyInfo设置为false
+  2. 确保Deterministic设置为false
+  3. 确保在CommonAssemblyInfo.cs中使用[assembly: AssemblyVersion("1.0.*")]
+  4. 确保项目文件中正确引用了CommonAssemblyInfo.cs
+  5. 确保USE_DIRECTORY_PROPS常量已正确定义
+  --------------------------------------------------
+  TestRunnerACAD -> D:\leaveblackgithub\DDNCadAddins\src\bin\Debug\TestRunnerACAD.dll
+  AddinsACAD -> D:\leaveblackgithub\DDNCadAddins\src\bin\Debug\AddinsACAD.dll

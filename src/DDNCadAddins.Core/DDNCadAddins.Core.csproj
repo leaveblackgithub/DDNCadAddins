@@ -36,11 +36,14 @@
     <Compile Include="Models\Matrix3D.cs" />
     <Compile Include="Models\OpResult.cs" />
     <Compile Include="Models\Point2D.cs" />
+    <Compile Include="Models\CropTestRecord.cs" />
     <Compile Include="Services\CalculatorService.cs" />
     <Compile Include="Services\BlockCleanupService.cs" />
     <Compile Include="Services\LayerManagementService.cs" />
     <Compile Include="Services\PropertyComparisonUtils.cs" />
     <Compile Include="Services\PropertyConversionUtils.cs" />
+    <Compile Include="Services\ConstructorUtils.cs" />
+    <Compile Include="Services\PropertyUtils.cs" />
     <Compile Include="Services\StyleValidationService.cs" />
     <Compile Include="Services\CropGeometryService.cs" />
     <Compile Include="Services\XClipBoundaryGeometryService.cs" />

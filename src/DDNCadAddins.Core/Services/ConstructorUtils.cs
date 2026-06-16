@@ -60,22 +60,14 @@ namespace ServiceACAD
 
                 if (!validConstructor)
                 {
-                    Logger._.Error($"创建实例失败: {typeName} 找不到匹配的构造函数，参数类型不兼容");
                     return null;
                 }
 
                 var obj = Activator.CreateInstance(objType, paramValues.ToArray());
-                if (obj != null)
-                {
-                    return obj;
-                }
-
-                Logger._.Error($"无法创建实例: {typeName}");
-                return null;
+                return obj;
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                Logger._.Error($"创建实例失败: {e.Message}");
                 return null;
             }
         }

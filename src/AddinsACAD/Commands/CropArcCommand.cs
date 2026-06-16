@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using ServiceACAD;
 
@@ -37,7 +39,7 @@ namespace AddinsACAD.Commands
                 var doc = Autodesk.AutoCAD.ApplicationServices.Core.Application.DocumentManager.MdiActiveDocument;
                 var ed = doc.Editor;
 
-                var boundaryPoints = this.SelectSingleBoundaryCurve(ed);
+                var boundaryPoints = this.SelectSingleBoundaryCurve(ed, out var boundaryId);
                 if (boundaryPoints == null || boundaryPoints.Count < 3) return;
 
                 List<ObjectId> arcIds = null;
@@ -54,6 +56,10 @@ namespace AddinsACAD.Commands
                         ed.WriteMessage("\n图纸中没有找到任何圆弧。");
                         return;
                     }
+                    // 排除边界自身
+                    autoArcIds.RemoveAll(id => id == boundaryId);
+                    if (autoArcIds.Count == 0) { ed.WriteMessage("\n排除边界后没有其他圆弧。"); return; }
+                    ed.WriteMessage($"\n已排除边界圆弧，剩余 {autoArcIds.Count} 条。");
                     arcIds = autoArcIds;
                     ed.WriteMessage($"\n已自动选择 {arcIds.Count} 条圆弧。");
                 }
@@ -61,11 +67,19 @@ namespace AddinsACAD.Commands
                 {
                     arcIds = this.SelectArcsToCrop(ed);
                     if (arcIds == null || arcIds.Count == 0) return;
+                    // 手动选择也排除边界自身
+                    arcIds.RemoveAll(id => id == boundaryId);
                 }
 
                 bool? keepInside = this.AskCropDirection(ed);
                 if (!keepInside.HasValue) return;
 
+                // ── 采集 UCS ──
+                ServiceACAD.TestRecorder.CaptureUcs(out var ucsOrigin, out var ucsX, out var ucsY);
+                var capturedUcsOrigin = ucsOrigin;
+                var capturedUcsX = ucsX;
+                var capturedUcsY = ucsY;
+                var capturedBoundaryVerts = boundaryPoints;
                 var capturedArcIds = arcIds;
                 var capturedKeepInside = keepInside.Value;
                 CadServiceManager._.ExecuteInCommandTransaction(serviceTrans =>
@@ -83,7 +97,29 @@ namespace AddinsACAD.Commands
                         }
                         var cropResult = result.Data;
                         string commandName = selectAllArcs ? "CROPALLARCS" : "CROPARC";
-                        string direction = keepInside.Value ? "内部" : "外部";
+                        string direction = capturedKeepInside ? "内部" : "外部";
+
+                        // ── 完整几何测试记录 ──
+                        var record = new CropTestRecord
+                        {
+                            Command = commandName,
+                            Direction = capturedKeepInside ? "Inside" : "Outside",
+                            IsSuccess = true,
+                            UcsOrigin = capturedUcsOrigin,
+                            UcsXAxis = capturedUcsX,
+                            UcsYAxis = capturedUcsY,
+                            BoundaryVertices = capturedBoundaryVerts,
+                            BoundaryVertexCount = capturedBoundaryVerts.Count,
+                            TotalEntityCount = capturedArcIds.Count,
+                            DeletedCount = cropResult.DeletedCount,
+                            SplitCount = cropResult.SplitCount,
+                            KeptCount = cropResult.KeptCount,
+                            SkippedCount = cropResult.SkippedCount,
+                        };
+                        record.Entities = ServiceACAD.TestRecorder.CollectSnapshots(
+                            serviceTrans, capturedArcIds, boundaryPoints, new CropGeometryService());
+                        var uid = ServiceACAD.TestRecorder.Record(record);
+                        ed.WriteMessage($"\n[TestRecorder] UID: {uid}");
                         ed.WriteMessage($"\n{commandName} 完成 ({direction}): 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个");
                         return ServiceACAD.OpResult.Success();
                     }
@@ -128,7 +164,7 @@ namespace AddinsACAD.Commands
             }
         }
 
-        private List<DDNCadAddins.Core.Models.Point2D> SelectSingleBoundaryCurve(Editor ed)
+        private List<DDNCadAddins.Core.Models.Point2D> SelectSingleBoundaryCurve(Editor ed, out ObjectId boundaryId)
         {
             try
             {
@@ -139,13 +175,15 @@ namespace AddinsACAD.Commands
                 if (promptResult.Status != PromptStatus.OK)
                 {
                     ed.WriteMessage("\n未选择边界曲线或选择被取消。");
+                    boundaryId = ObjectId.Null;
                     return null;
                 }
-                var curveId = promptResult.ObjectId;
+                boundaryId = promptResult.ObjectId;
+                var capturedId = boundaryId;
                 var points = new List<DDNCadAddins.Core.Models.Point2D>();
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
                 {
-                    var curve = serviceTrans.GetObject<Curve>(curveId);
+                    var curve = serviceTrans.GetObject<Curve>(capturedId);
                     if (curve == null || !curve.Closed)
                     {
                         ed.WriteMessage("\n所选的边界曲线未闭合，请选择闭合曲线。");
@@ -182,6 +220,7 @@ namespace AddinsACAD.Commands
             {
                 Logger._.Error($"选择边界曲线失败: {ex.Message}", ex);
                 ed.WriteMessage($"\n选择边界曲线失败: {ex.Message}");
+                boundaryId = ObjectId.Null;
                 return null;
             }
         }

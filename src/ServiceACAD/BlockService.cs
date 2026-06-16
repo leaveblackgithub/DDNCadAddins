@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.DatabaseServices.Filters;
@@ -646,7 +646,7 @@ namespace ServiceACAD
             return stats;
         }
 
-        public OpResult<object> MatchProp(Entity entTo, Entity entFr, string propName, object valueToFix) =>
+        public DDNCadAddins.Core.Models.OpResult<object> MatchProp(Entity entTo, Entity entFr, string propName, object valueToFix) =>
             PropertyUtils.MatchPropValue(entTo, entFr, propName, (entT, entF) =>
             {
                 var getValueTo = PropertyUtils.GetPropertyValue(entT, propName);

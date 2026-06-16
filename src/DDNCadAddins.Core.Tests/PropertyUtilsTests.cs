@@ -2,7 +2,7 @@ using System;
 using NUnit.Framework;
 using ServiceACAD;
 
-namespace AddinsACAD.UnitTests
+namespace DDNCadAddins.Core.Tests
 {
     /// <summary>
     ///     PropertyUtils 的纯单元测试，不依赖 AutoCAD 运行环境
@@ -152,27 +152,27 @@ namespace AddinsACAD.UnitTests
         [Test]
         public void SetPropertyValue_StringProperty_SetsCorrectly()
         {
-            var obj = new SampleEntity();
-            var result = PropertyUtils.SetPropertyValue(obj, "Name", "World");
+            var obj = new SampleEntity { Name = "Old" };
+            var result = PropertyUtils.SetPropertyValue(obj, "Name", "New");
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual("World", obj.Name);
+            Assert.AreEqual("New", obj.Name);
         }
 
         [Test]
         public void SetPropertyValue_IntProperty_SetsCorrectly()
         {
-            var obj = new SampleEntity();
-            var result = PropertyUtils.SetPropertyValue(obj, "Age", 30);
+            var obj = new SampleEntity { Age = 10 };
+            var result = PropertyUtils.SetPropertyValue(obj, "Age", 20);
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(30, obj.Age);
+            Assert.AreEqual(20, obj.Age);
         }
 
         [Test]
         public void SetPropertyValue_NullObject_ReturnsFail()
         {
-            var result = PropertyUtils.SetPropertyValue(null, "Name", "x");
+            var result = PropertyUtils.SetPropertyValue(null, "Name", "value");
 
             Assert.IsFalse(result.IsSuccess);
         }
@@ -181,7 +181,7 @@ namespace AddinsACAD.UnitTests
         public void SetPropertyValue_NonExistentProperty_ReturnsFail()
         {
             var obj = new SampleEntity();
-            var result = PropertyUtils.SetPropertyValue(obj, "Ghost", "x");
+            var result = PropertyUtils.SetPropertyValue(obj, "GhostProp", "value");
 
             Assert.IsFalse(result.IsSuccess);
         }
@@ -190,9 +190,43 @@ namespace AddinsACAD.UnitTests
         public void SetPropertyValue_ReadOnlyProperty_ReturnsFail()
         {
             var obj = new SampleEntity();
-            var result = PropertyUtils.SetPropertyValue(obj, "ReadOnlyProp", "x");
+            var result = PropertyUtils.SetPropertyValue(obj, "ReadOnlyProp", "value");
 
             Assert.IsFalse(result.IsSuccess);
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // CanBeConvertedFrom
+        // ────────────────────────────────────────────────────────────────
+
+        [Test]
+        public void CanBeConvertedFrom_SameType_ReturnsTrue()
+        {
+            Assert.IsTrue(PropertyUtils.CanBeConvertedFrom(typeof(int), typeof(int)));
+        }
+
+        [Test]
+        public void CanBeConvertedFrom_ByteToInt_ReturnsTrue()
+        {
+            Assert.IsTrue(PropertyUtils.CanBeConvertedFrom(typeof(int), typeof(byte)));
+        }
+
+        [Test]
+        public void CanBeConvertedFrom_IntToByte_ReturnsFalse()
+        {
+            Assert.IsFalse(PropertyUtils.CanBeConvertedFrom(typeof(byte), typeof(int)));
+        }
+
+        [Test]
+        public void CanBeConvertedFrom_StringToEnum_ReturnsTrue()
+        {
+            Assert.IsTrue(PropertyUtils.CanBeConvertedFrom(typeof(DayOfWeek), typeof(string)));
+        }
+
+        [Test]
+        public void CanBeConvertedFrom_InterfaceImplementation_ReturnsTrue()
+        {
+            Assert.IsTrue(PropertyUtils.CanBeConvertedFrom(typeof(ISampleInterface), typeof(ImplementsSample)));
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -200,90 +234,104 @@ namespace AddinsACAD.UnitTests
         // ────────────────────────────────────────────────────────────────
 
         [Test]
-        public void MatchPropValue_CopiesPropertyFromSourceToTarget()
+        public void MatchPropValue_SameValue_ReturnsSuccess()
         {
-            var source = new SampleEntity { Name = "SourceName" };
-            var target = new SampleEntity { Name = "TargetName" };
-
-            var result = PropertyUtils.MatchPropValue(target, source, "Name");
+            var to = new SampleEntity { Name = "Alice" };
+            var fr = new SampleEntity { Name = "Bob" };
+            var result = PropertyUtils.MatchPropValue(to, fr, "Name");
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual("SourceName", target.Name);
-        }
-
-        [Test]
-        public void MatchPropValue_WithFilterReturnsFalse_DoesNotCopy()
-        {
-            var source = new SampleEntity { Age = 99 };
-            var target = new SampleEntity { Age = 10 };
-
-            var result = PropertyUtils.MatchPropValue(target, source, "Age",
-                (t, f) => false);
-
-            Assert.IsFalse(result.IsSuccess);
-            Assert.AreEqual(10, target.Age);
-        }
-
-        [Test]
-        public void MatchPropValue_WithFilterReturnsTrue_Copies()
-        {
-            var source = new SampleEntity { Age = 99 };
-            var target = new SampleEntity { Age = 10 };
-
-            var result = PropertyUtils.MatchPropValue(target, source, "Age",
-                (t, f) => true);
-
-            Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(99, target.Age);
-        }
-
-        [Test]
-        public void MatchPropValue_NullSource_ReturnsFail()
-        {
-            var target = new SampleEntity();
-            var result = PropertyUtils.MatchPropValue(target, null, "Name");
-
-            Assert.IsFalse(result.IsSuccess);
+            Assert.AreEqual("Bob", to.Name);
         }
 
         [Test]
         public void MatchPropValue_NullTarget_ReturnsFail()
         {
-            var source = new SampleEntity { Name = "x" };
-            var result = PropertyUtils.MatchPropValue(null, source, "Name");
+            var fr = new SampleEntity { Name = "Bob" };
+            var result = PropertyUtils.MatchPropValue(null, fr, "Name");
 
             Assert.IsFalse(result.IsSuccess);
         }
 
-        // ────────────────────────────────────────────────────────────────
-        // MatchPropValues（批量复制）
-        // ────────────────────────────────────────────────────────────────
-
         [Test]
-        public void MatchPropValues_CopiesAllMatchingProperties()
+        public void MatchPropValue_NullSource_ReturnsFail()
         {
-            var source = new SampleEntity { Name = "S", Age = 5, Score = 9.5, Active = true };
-            var target = new SampleEntity();
+            var to = new SampleEntity { Name = "Alice" };
+            var result = PropertyUtils.MatchPropValue(to, null, "Name");
 
-            var result = PropertyUtils.MatchPropValues(target, source);
-
-            Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual("S", target.Name);
-            Assert.AreEqual(5, target.Age);
-            Assert.AreEqual(9.5, target.Score, 1e-10);
-            Assert.IsTrue(target.Active);
+            Assert.IsFalse(result.IsSuccess);
         }
 
         [Test]
-        public void MatchPropValues_IgnoresSpecifiedProperties()
+        public void MatchPropValue_WithFilterReturnsTrue_UpdatesValue()
         {
-            var source = new SampleEntity { Name = "S", Age = 99 };
-            var target = new SampleEntity { Name = "T", Age = 0 };
+            var to = new SampleEntity { Name = "Alice", Age = 30 };
+            var fr = new SampleEntity { Name = "Bob", Age = 30 };
+            // 仅当 Age 相同时才匹配 Name
+            var result = PropertyUtils.MatchPropValue(to, fr, "Name",
+                (t, f) => ((SampleEntity)t).Age == ((SampleEntity)f).Age);
 
-            PropertyUtils.MatchPropValues(target, source, "Name");
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual("Bob", to.Name);
+        }
 
-            Assert.AreEqual("T", target.Name, "Name should be ignored");
-            Assert.AreEqual(99, target.Age, "Age should be copied");
+        [Test]
+        public void MatchPropValue_WithFilterReturnsFalse_SkipsUpdate()
+        {
+            var to = new SampleEntity { Name = "Alice", Age = 30 };
+            var fr = new SampleEntity { Name = "Bob", Age = 25 };
+            var result = PropertyUtils.MatchPropValue(to, fr, "Name",
+                (t, f) => ((SampleEntity)t).Age == ((SampleEntity)f).Age);
+
+            Assert.IsFalse(result.IsSuccess);
+            Assert.AreEqual("Alice", to.Name);
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // MatchPropValues
+        // ────────────────────────────────────────────────────────────────
+
+        [Test]
+        public void MatchPropValues_AllPropertiesMatched_ReturnsSuccess()
+        {
+            var to = new SampleEntity { Name = "Old", Age = 1, Score = 0.5 };
+            var fr = new SampleEntity { Name = "New", Age = 99, Score = 99.9 };
+            var result = PropertyUtils.MatchPropValues(to, fr);
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual("New", to.Name);
+            Assert.AreEqual(99, to.Age);
+            Assert.AreEqual(99.9, to.Score, 1e-9);
+        }
+
+        [Test]
+        public void MatchPropValues_WithIgnoredProperties_KeepsOriginalValue()
+        {
+            var to = new SampleEntity { Name = "Keep", Age = 10 };
+            var fr = new SampleEntity { Name = "Ignore", Age = 99 };
+            var result = PropertyUtils.MatchPropValues(to, fr, "Name");
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual("Keep", to.Name);
+            Assert.AreEqual(99, to.Age);
+        }
+
+        [Test]
+        public void MatchPropValues_NullTarget_ReturnsFail()
+        {
+            var fr = new SampleEntity { Name = "Bob" };
+            var result = PropertyUtils.MatchPropValues(null, fr);
+
+            Assert.IsFalse(result.IsSuccess);
+        }
+
+        [Test]
+        public void MatchPropValues_NullSource_ReturnsFail()
+        {
+            var to = new SampleEntity { Name = "Alice" };
+            var result = PropertyUtils.MatchPropValues(to, null);
+
+            Assert.IsFalse(result.IsSuccess);
         }
     }
 }

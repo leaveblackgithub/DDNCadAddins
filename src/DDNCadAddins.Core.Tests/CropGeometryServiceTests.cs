@@ -235,6 +235,120 @@ namespace DDNCadAddins.Core.Tests
             Assert.AreEqual(ContainmentResult.Intersects, result);
         }
 
+        // ========== FindLineSegmentIntersections 共线检测测试 ==========
+
+        [Test]
+        public void FindLineSegmentIntersections_CollinearOverlap_PartialOverlap_ReturnsOverlapEndpoints()
+        {
+            // 线段 A(0,5)→B(15,5) 与边界边 (5,5)→(10,5) 共线重叠 → 返回5和10
+            var rect = new List<Point2D>
+            {
+                new Point2D(0, 0),
+                new Point2D(10, 0),
+                new Point2D(10, 10),
+                new Point2D(0, 10),
+            };
+            // 让边界包含一条 (5,5)→(10,5) 的对角穿过边
+            // 实际共线边是矩形底边(0,0)→(10,0)
+            var seg = new List<Point2D>
+            {
+                new Point2D(-5, 0),
+                new Point2D(15, 0),
+            };
+            var pts = this._service.FindLineSegmentIntersections(seg[0], seg[1], rect);
+            // 与底边 (0,0)→(10,0) 共线重叠 → 应返回 0 和 10
+            Assert.AreEqual(2, pts.Count, "应与矩形底边共线重叠返回两端点");
+            Assert.AreEqual(0, pts[0].X, 1e-6);
+            Assert.AreEqual(10, pts[1].X, 1e-6);
+        }
+
+        [Test]
+        public void FindLineSegmentIntersections_Collinear_FullyInsideEdge_ReturnsTwoEndpoints()
+        {
+            // 线段 (2,0)→(8,0) 完全在矩形底边 (0,0)→(10,0) 内部
+            var rect = new List<Point2D>
+            {
+                new Point2D(0, 0),
+                new Point2D(10, 0),
+                new Point2D(10, 10),
+                new Point2D(0, 10),
+            };
+            var pts = this._service.FindLineSegmentIntersections(
+                new Point2D(2, 0), new Point2D(8, 0), rect);
+            Assert.AreEqual(2, pts.Count);
+            Assert.AreEqual(2, pts[0].X, 1e-6);
+            Assert.AreEqual(8, pts[1].X, 1e-6);
+        }
+
+        [Test]
+        public void FindLineSegmentIntersections_Collinear_JustTouchingAtEndpoint_ReturnsOnePoint()
+        {
+            // 线段 (10,0)→(15,0) 与矩形右下角 (10,0) 刚好接触
+            var rect = new List<Point2D>
+            {
+                new Point2D(0, 0),
+                new Point2D(10, 0),
+                new Point2D(10, 10),
+                new Point2D(0, 10),
+            };
+            var pts = this._service.FindLineSegmentIntersections(
+                new Point2D(10, 0), new Point2D(15, 0), rect);
+            Assert.AreEqual(1, pts.Count);
+            Assert.AreEqual(10, pts[0].X, 1e-6);
+        }
+
+        [Test]
+        public void FindLineSegmentIntersections_CollinearNoOverlap_ReturnsEmpty()
+        {
+            var rect = new List<Point2D>
+            {
+                new Point2D(0, 0),
+                new Point2D(10, 0),
+                new Point2D(10, 10),
+                new Point2D(0, 10),
+            };
+            // 线段 (12,0)→(20,0) 与底边无重叠
+            var pts = this._service.FindLineSegmentIntersections(
+                new Point2D(12, 0), new Point2D(20, 0), rect);
+            Assert.AreEqual(0, pts.Count);
+        }
+
+        // ========== ClassifyBoundingBox 边界测试 ==========
+
+        [Test]
+        public void ClassifyBoundingBox_BoxExactlyOnEdge_ReturnsOnBoundary()
+        {
+            // 正方形 (5,0)→(5,5) 左边刚好压在底边上
+            var result = this._service.ClassifyBoundingBox(
+                new Point2D(2, 0),
+                new Point2D(8, 5),
+                this._rectangle);
+            // 底边在 y=0，2-8 一部分在内部，底边压线
+            Assert.AreEqual(ContainmentResult.Intersects, result);
+        }
+
+        [Test]
+        public void ClassifyBoundingBox_BoxInsideTouchingAllSides_ReturnsInside()
+        {
+            // 完全在内部
+            var result = this._service.ClassifyBoundingBox(
+                new Point2D(1, 1),
+                new Point2D(9, 9),
+                this._rectangle);
+            Assert.AreEqual(ContainmentResult.Inside, result);
+        }
+
+        [Test]
+        public void ClassifyBoundingBox_NegativeSpace_ReturnsOutside()
+        {
+            // 完全在负空间
+            var result = this._service.ClassifyBoundingBox(
+                new Point2D(-20, -20),
+                new Point2D(-10, -10),
+                this._rectangle);
+            Assert.AreEqual(ContainmentResult.Outside, result);
+        }
+
         // ========== SortPointsAlongLine 测试 ==========
 
         [Test]

@@ -1,4 +1,4 @@
-ï»¿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!--
 AddinsACAD.csproj - AutoCAD Commands and Tests Project File
 -->
@@ -45,8 +45,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="ServiceTests\CropPolylineServiceTests.cs" />
     <Compile Include="ServiceTests\TransactionServiceTest.cs" />
     <Compile Include="ServiceTests\TransactionServiceExtendedTests.cs" />
-    <Compile Include="UnitTests\PropertyUtilsTests.cs" />
-    <Compile Include="UnitTests\ConstructorUtilsTests.cs" />
+    <!-- UnitTests ÒÑÇ¨ÒÆÖÁ DDNCadAddins.Core.Tests -->
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -120,3 +119,4 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Error Condition="!Exists('$(SolutionDir)packages\NUnit.3.13.2\build\NUnit.props')" Text="$([System.String]::Format('$(ErrorText)', '$(SolutionDir)packages\NUnit.3.13.2\build\NUnit.props'))" />
   </Target>
 </Project>
+

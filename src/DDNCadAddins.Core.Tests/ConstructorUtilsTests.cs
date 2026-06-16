@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using ServiceACAD;
 
-namespace AddinsACAD.UnitTests
+namespace DDNCadAddins.Core.Tests
 {
     /// <summary>
     ///     ConstructorUtils 的纯单元测试，不依赖 AutoCAD 运行环境

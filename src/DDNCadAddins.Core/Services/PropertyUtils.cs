@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 
 namespace ServiceACAD
@@ -35,9 +36,8 @@ namespace ServiceACAD
 
                 return property != null;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Logger._.Error($"\n警告: 检查对象属性时发生异常: {ex.Message}");
                 // 捕获任何异常，确保方法不会抛出异常
                 return false;
             }
@@ -211,6 +211,16 @@ namespace ServiceACAD
             params string[] propertyNamesToIgnore)
 
         {
+            if (objTo == null)
+            {
+                return OpResult.Fail("目标实体不能为空");
+            }
+
+            if (objFr == null)
+            {
+                return OpResult.Fail("源实体不能为空");
+            }
+
             try
             {
                 var objToType = objTo.GetType();

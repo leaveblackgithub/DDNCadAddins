@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using ServiceACAD;
 
@@ -86,6 +88,9 @@ namespace AddinsACAD.Commands
                     {
                         return;
                     }
+                    // 手动选择也排除边界自身
+                    polylineIds.RemoveAll(id => id == boundaryId);
+                    ed.WriteMessage($"\n已排除边界多段线。");
                 }
 
                 // 3. 询问裁剪方向：保留内部还是外部
@@ -95,7 +100,15 @@ namespace AddinsACAD.Commands
                     return; // 用户取消
                 }
 
+                // ── 采集 UCS 和边界顶点 ──
+                ServiceACAD.TestRecorder.CaptureUcs(out var ucsOrigin, out var ucsX, out var ucsY);
+                var boundaryVerts = boundaryPoints; // 已经是 List<CorePoint2D>
+
                 // 4. 执行裁剪
+                var capturedBoundaryVerts = boundaryVerts;
+                var capturedUcsOrigin = ucsOrigin;
+                var capturedUcsX = ucsX;
+                var capturedUcsY = ucsY;
                 var capturedPolylineIds = polylineIds;
                 var capturedKeepInside = keepInside.Value;
                 CadServiceManager._.ExecuteInCommandTransaction(serviceTrans =>
@@ -115,7 +128,39 @@ namespace AddinsACAD.Commands
 
                         var cropResult = result.Data;
                         string commandName = selectAllPolylines ? "CROPALLPOLYLINES" : "CROPPOLYLINE";
-                        string direction = keepInside.Value ? "内部" : "外部";
+                        string direction = capturedKeepInside ? "内部" : "外部";
+
+                        // ── 完整几何测试记录（防御性包围） ──
+                        try {
+                        var record = new CropTestRecord
+                        {
+                            Command = commandName,
+                            Direction = capturedKeepInside ? "Inside" : "Outside",
+                            IsSuccess = true,
+                            UcsOrigin = capturedUcsOrigin,
+                            UcsXAxis = capturedUcsX,
+                            UcsYAxis = capturedUcsY,
+                            BoundaryVertices = capturedBoundaryVerts,
+                            BoundaryVertexCount = capturedBoundaryVerts.Count,
+                            TotalEntityCount = capturedPolylineIds.Count,
+                            DeletedCount = cropResult.DeletedCount,
+                            SplitCount = cropResult.SplitCount,
+                            KeptCount = cropResult.KeptCount,
+                            SkippedCount = cropResult.SkippedCount,
+                            ExcludedBoundaryId = selectAllPolylines ? boundaryId.ToString() : null,
+                        };
+                        // 采集实体几何快照
+                        record.Entities = ServiceACAD.TestRecorder.CollectSnapshots(
+                            serviceTrans, capturedPolylineIds, boundaryPoints,
+                            new CropGeometryService());
+
+                        var uid = ServiceACAD.TestRecorder.Record(record);
+                        ed.WriteMessage($"\n[TestRecorder] UID: {uid}");
+                        } catch (System.Exception recEx) {
+                            Logger._.Warn($"TestRecorder 记录失败: {recEx.Message}");
+                            ed.WriteMessage($"\n[TestRecorder] 记录失败: {recEx.Message}");
+                        }
+
                         ed.WriteMessage(
                             $"\n{commandName} 完成 ({direction}): 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个");
                         return ServiceACAD.OpResult.Success();

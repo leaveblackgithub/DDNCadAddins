@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using ServiceACAD;
 
@@ -49,7 +51,7 @@ namespace AddinsACAD.Commands
                 var ed = doc.Editor;
 
                 // 1. 选择边界（单选）
-                var boundaryPoints = this.SelectSingleBoundaryCurve(ed);
+                var boundaryPoints = this.SelectSingleBoundaryCurve(ed, out var boundaryId);
                 if (boundaryPoints == null || boundaryPoints.Count < 3)
                 {
                     return;
@@ -72,6 +74,10 @@ namespace AddinsACAD.Commands
                         return;
                     }
 
+                    // 排除边界自身
+                    autoLineIds.RemoveAll(id => id == boundaryId);
+                    if (autoLineIds.Count == 0) { ed.WriteMessage("\n排除边界后没有其他直线。"); return; }
+                    ed.WriteMessage($"\n已排除边界直线，剩余 {autoLineIds.Count} 条。");
                     lineIds = autoLineIds;
                     ed.WriteMessage($"\n已自动选择 {lineIds.Count} 条直线。");
                 }
@@ -82,6 +88,8 @@ namespace AddinsACAD.Commands
                     {
                         return;
                     }
+                    // 手动选择也排除边界自身
+                    lineIds.RemoveAll(id => id == boundaryId);
                 }
 
                 // 3. 询问裁剪方向：保留内部还是外部
@@ -91,6 +99,12 @@ namespace AddinsACAD.Commands
                     return; // 用户取消
                 }
 
+                // ── 采集 UCS 和边界顶点 ──
+                ServiceACAD.TestRecorder.CaptureUcs(out var ucsOrigin, out var ucsX, out var ucsY);
+                var capturedUcsOrigin = ucsOrigin;
+                var capturedUcsX = ucsX;
+                var capturedUcsY = ucsY;
+                var capturedBoundaryVerts = boundaryPoints;
                 // 4. 执行裁剪
                 var capturedLineIds = lineIds;
                 var capturedKeepInside = keepInside.Value;
@@ -111,7 +125,29 @@ namespace AddinsACAD.Commands
 
                         var cropResult = result.Data;
                         string commandName = selectAllLines ? "CROPALLLINES" : "CROPLINE";
-                        string direction = keepInside.Value ? "内部" : "外部";
+                        string direction = capturedKeepInside ? "内部" : "外部";
+
+                        // ── 完整几何测试记录 ──
+                        var record = new CropTestRecord
+                        {
+                            Command = commandName,
+                            Direction = capturedKeepInside ? "Inside" : "Outside",
+                            IsSuccess = true,
+                            UcsOrigin = capturedUcsOrigin,
+                            UcsXAxis = capturedUcsX,
+                            UcsYAxis = capturedUcsY,
+                            BoundaryVertices = capturedBoundaryVerts,
+                            BoundaryVertexCount = capturedBoundaryVerts.Count,
+                            TotalEntityCount = capturedLineIds.Count,
+                            DeletedCount = cropResult.DeletedCount,
+                            SplitCount = cropResult.SplitCount,
+                            KeptCount = cropResult.KeptCount,
+                            SkippedCount = cropResult.SkippedCount,
+                        };
+                        record.Entities = ServiceACAD.TestRecorder.CollectSnapshots(
+                            serviceTrans, capturedLineIds, boundaryPoints, new CropGeometryService());
+                        var uid = ServiceACAD.TestRecorder.Record(record);
+                        ed.WriteMessage($"\n[TestRecorder] UID: {uid}");
                         ed.WriteMessage(
                             $"\n{commandName} 完成 ({direction}): 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个");
                         return ServiceACAD.OpResult.Success();
@@ -175,7 +211,7 @@ namespace AddinsACAD.Commands
         ///     选择一条闭合曲线作为裁剪边界（单选）.
         /// </summary>
         /// <returns>边界顶点列表（WCS），如果取消或选择无效则返回 null.</returns>
-        private List<DDNCadAddins.Core.Models.Point2D> SelectSingleBoundaryCurve(Editor ed)
+        private List<DDNCadAddins.Core.Models.Point2D> SelectSingleBoundaryCurve(Editor ed, out ObjectId boundaryId)
         {
             try
             {
@@ -198,15 +234,17 @@ namespace AddinsACAD.Commands
                 if (promptResult.Status != PromptStatus.OK)
                 {
                     ed.WriteMessage("\n未选择边界曲线或选择被取消。");
+                    boundaryId = ObjectId.Null;
                     return null;
                 }
 
-                var curveId = promptResult.ObjectId;
+                boundaryId = promptResult.ObjectId;
+                var capturedId = boundaryId;
                 var points = new List<DDNCadAddins.Core.Models.Point2D>();
 
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
                 {
-                    var curve = serviceTrans.GetObject<Curve>(curveId);
+                    var curve = serviceTrans.GetObject<Curve>(capturedId);
                     if (curve == null)
                     {
                         return;
@@ -262,6 +300,7 @@ namespace AddinsACAD.Commands
             {
                 Logger._.Error($"选择边界曲线失败: {ex.Message}", ex);
                 ed.WriteMessage($"\n选择边界曲线失败: {ex.Message}");
+                boundaryId = ObjectId.Null;
                 return null;
             }
         }

@@ -80,6 +80,16 @@ namespace DDNCadAddins.Core.Services
 
             if (insideCount == 4)
             {
+                // 所有角点都在多边形内（含边界），但如果有角点恰好在边界上，
+                // 则包围盒不是严格内部，而是相交
+                foreach (var corner in corners)
+                {
+                    if (IsPointOnPolygonBoundary(corner, polygonVertices))
+                    {
+                        return ContainmentResult.Intersects;
+                    }
+                }
+
                 return ContainmentResult.Inside;
             }
 
@@ -140,7 +150,27 @@ namespace DDNCadAddins.Core.Services
                 }
             }
 
-            return this.SortPointsAlongLine(segStart, result);
+            // 去重：角点可能被相邻边重复返回
+            var deduped = new List<Point2D>(result.Count);
+            foreach (var pt in result)
+            {
+                var isDuplicate = false;
+                foreach (var existing in deduped)
+                {
+                    if (DistanceSquared(pt, existing) < Tolerance * Tolerance)
+                    {
+                        isDuplicate = true;
+                        break;
+                    }
+                }
+
+                if (!isDuplicate)
+                {
+                    deduped.Add(pt);
+                }
+            }
+
+            return this.SortPointsAlongLine(segStart, deduped);
         }
 
         /// <inheritdoc />
@@ -243,6 +273,23 @@ namespace DDNCadAddins.Core.Services
         }
 
         /// <summary>
+        ///     判断点是否在多边形的任何边上（含端点）.
+        /// </summary>
+        private static bool IsPointOnPolygonBoundary(Point2D point, IReadOnlyList<Point2D> polygonVertices)
+        {
+            var n = polygonVertices.Count;
+            for (int i = 0, j = n - 1; i < n; j = i++)
+            {
+                if (IsPointOnSegment(point, polygonVertices[j], polygonVertices[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
         ///     获取包围盒的四条边.
         /// </summary>
         private List<Tuple<Point2D, Point2D>> GetBoundingBoxEdges(Point2D minPoint, Point2D maxPoint)
@@ -296,14 +343,14 @@ namespace DDNCadAddins.Core.Services
             var tMax = Math.Min(1, t4);
             if (tMax - tMin < Tolerance) return null;
 
-            var result = new List<Point2D>();
-            // 重叠起点（非段起点时添加，避免与 segStart 重复）
-            if (tMin > Tolerance)
-                result.Add(new Point2D(p1.X + tMin * d1x, p1.Y + tMin * d1y));
-            // 重叠终点（非段终点时添加）
-            if (tMax < 1.0 - Tolerance)
-                result.Add(new Point2D(p1.X + tMax * d1x, p1.Y + tMax * d1y));
-            return result.Count > 0 ? result : null;
+            // 始终返回重叠区间的两个端点作为交点，
+            // 如果端点恰好与 segStart/segEnd 重合也无妨——调用方 FindLineSegmentIntersections 会做去重
+            var result = new List<Point2D>
+            {
+                new Point2D(p1.X + tMin * d1x, p1.Y + tMin * d1y),
+                new Point2D(p1.X + tMax * d1x, p1.Y + tMax * d1y),
+            };
+            return result;
         }
     }
 }

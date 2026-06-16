@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using ServiceACAD;
 
@@ -45,7 +47,7 @@ namespace AddinsACAD.Commands
                     .MdiActiveDocument;
                 var ed = doc.Editor;
 
-                var boundaryPoints = this.SelectBoundaryPolyline(ed);
+                var boundaryPoints = this.SelectBoundaryPolyline(ed, out var boundaryId);
                 if (boundaryPoints == null || boundaryPoints.Count < 3)
                 {
                     return;
@@ -56,12 +58,27 @@ namespace AddinsACAD.Commands
                 {
                     return;
                 }
+                // 排除边界自身
+                entityIds.RemoveAll(id => id == boundaryId);
+
+                // ── 采集 UCS 和边界顶点 ──
+                ServiceACAD.TestRecorder.CaptureUcs(out var ucsOrigin, out var ucsX, out var ucsY);
+                var capturedUcsOrigin = ucsOrigin;
+                var capturedUcsX = ucsX;
+                var capturedUcsY = ucsY;
+                var capturedBoundaryVerts = boundaryPoints;
+                string commandName = keepInside ? "CROPINSIDE" : "CROPOUTSIDE";
 
                 CadServiceManager._.ExecuteInCommandTransaction(serviceTrans =>
                 {
                     try
                     {
-                        var cropService = new CropService(new CropGeometryService());
+                        // ★ 在裁剪前采集实体几何快照（避免原始实体被擦除后查不到）
+                        var geoService = new CropGeometryService();
+                        var snapshots = ServiceACAD.TestRecorder.CollectSnapshots(
+                            serviceTrans, entityIds, boundaryPoints, geoService);
+
+                        var cropService = new CropService(geoService);
                         var input = new CropInput
                         {
                             BoundaryPoints = boundaryPoints.AsReadOnly(),
@@ -82,8 +99,37 @@ namespace AddinsACAD.Commands
                         var cropResult = result.Data;
                         ed.WriteMessage(
                             keepInside
-                                ? $"\nCROPINSIDE 完成: 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个"
-                                : $"\nCROPOUTSIDE 完成: 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个");
+                                ? $"\n{commandName} 完成: 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个"
+                                : $"\n{commandName} 完成: 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个");
+
+                        // ── 完整几何测试记录（防御性包围） ──
+                        try
+                        {
+                            var record = new CropTestRecord
+                            {
+                                Command = commandName,
+                                Direction = keepInside ? "Inside" : "Outside",
+                                IsSuccess = true,
+                                UcsOrigin = capturedUcsOrigin,
+                                UcsXAxis = capturedUcsX,
+                                UcsYAxis = capturedUcsY,
+                                BoundaryVertices = capturedBoundaryVerts,
+                                BoundaryVertexCount = capturedBoundaryVerts.Count,
+                                TotalEntityCount = entityIds.Count,
+                                DeletedCount = cropResult.DeletedCount,
+                                SplitCount = cropResult.SplitCount,
+                                KeptCount = cropResult.KeptCount,
+                                SkippedCount = cropResult.SkippedCount,
+                            };
+                            record.Entities = snapshots;
+                            var uid = ServiceACAD.TestRecorder.Record(record);
+                            ed.WriteMessage($"\n[TestRecorder] UID: {uid}");
+                        }
+                        catch (System.Exception recEx)
+                        {
+                            Logger._.Warn($"TestRecorder 记录失败: {recEx.Message}");
+                            ed.WriteMessage($"\n[TestRecorder] 记录失败: {recEx.Message}");
+                        }
                         return ServiceACAD.OpResult.Success();
                     }
                     catch (System.Exception ex)
@@ -104,46 +150,30 @@ namespace AddinsACAD.Commands
         ///     选择闭合曲线作为裁剪边界（圆、椭圆、闭合多段线、闭合样条线等）.
         /// </summary>
         /// <returns>边界顶点列表（WCS），如果取消或选择无效则返回 null.</returns>
-        private List<DDNCadAddins.Core.Models.Point2D> SelectBoundaryPolyline(Editor ed)
+        private List<DDNCadAddins.Core.Models.Point2D> SelectBoundaryPolyline(Editor ed, out ObjectId boundaryId)
         {
+            boundaryId = ObjectId.Null;
             try
             {
-                var options = new PromptSelectionOptions
-                {
-                    MessageForAdding = "\n选择闭合曲线作为裁剪边界（圆/椭圆/闭合多段线/闭合样条线）: ",
-                    AllowDuplicates = false
-                };
+                // 单选边界（GetEntity 天然单选，选中即确认，不需额外提示）
+                var opt = new PromptEntityOptions("\n选择闭合曲线作为裁剪边界");
+                opt.SetRejectMessage("请选择圆、椭圆、闭合多段线或闭合样条线。");
+                opt.AddAllowedClass(typeof(Curve), exactMatch: false);
 
-                var filter = new SelectionFilter(new TypedValue[]
+                var res = ed.GetEntity(opt);
+                if (res.Status != PromptStatus.OK)
                 {
-                    new TypedValue((int)DxfCode.Operator, "<OR"),
-                    new TypedValue((int)DxfCode.Start, "LWPOLYLINE"),
-                    new TypedValue((int)DxfCode.Start, "POLYLINE"),
-                    new TypedValue((int)DxfCode.Start, "CIRCLE"),
-                    new TypedValue((int)DxfCode.Start, "ELLIPSE"),
-                    new TypedValue((int)DxfCode.Start, "SPLINE"),
-                    new TypedValue((int)DxfCode.Operator, "OR>"),
-                });
-
-                var promptResult = ed.GetSelection(options, filter);
-                if (promptResult.Status != PromptStatus.OK)
-                {
-                    ed.WriteMessage("\n未选择边界曲线或选择被取消。");
+                    ed.WriteMessage("\n*取消*");
                     return null;
                 }
 
-                if (promptResult.Value.Count != 1)
-                {
-                    ed.WriteMessage("\n请选择一条闭合曲线作为裁剪边界（圆/椭圆/闭合多段线/闭合样条线均可）。");
-                    return null;
-                }
-
-                var curveId = promptResult.Value[0].ObjectId;
+                boundaryId = res.ObjectId;
+                var capturedId = boundaryId;
                 var points = new List<DDNCadAddins.Core.Models.Point2D>();
 
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
                 {
-                    var curve = serviceTrans.GetObject<Curve>(curveId);
+                    var curve = serviceTrans.GetObject<Curve>(capturedId);
                     if (curve == null)
                     {
                         return;
@@ -199,6 +229,7 @@ namespace AddinsACAD.Commands
             {
                 Logger._.Error($"选择边界曲线失败: {ex.Message}", ex);
                 ed.WriteMessage($"\n选择边界曲线失败: {ex.Message}");
+                boundaryId = ObjectId.Null;
                 return null;
             }
         }

@@ -36,7 +36,6 @@ Features:
     <Compile Include="BlockService.cs" />
     <Compile Include="CommandCancellationScope.cs" />
     <Compile Include="HostApplicationServicesExtensions.cs" />
-    <Compile Include="ConstructorUtils.cs" />
     <Compile Include="DocumentService.cs" />
     <Compile Include="CadServiceManager.cs" />
     <Compile Include="EditorService.cs" />
@@ -48,6 +47,20 @@ Features:
     <Compile Include="CropCircleService.cs" />
     <Compile Include="CropLineService.cs" />
     <Compile Include="CropPolylineService.cs" />
+    <Compile Include="CropUtils.cs" />
+    <Compile Include="CropSplineService.cs" />
+    <Compile Include="CropEllipseService.cs" />
+    <Compile Include="Crop3DPolylineService.cs" />
+    <Compile Include="CropMLineService.cs" />
+    <Compile Include="CropLeaderService.cs" />
+    <Compile Include="CropHatchService.cs" />
+    <Compile Include="CropBlockService.cs" />
+    <Compile Include="CropTextService.cs" />
+    <Compile Include="CropMTextService.cs" />
+    <Compile Include="CropDimService.cs" />
+    <Compile Include="CropPointService.cs" />
+    <Compile Include="CropSolidService.cs" />
+    <Compile Include="TestRecorder.cs" />
     <Compile Include="ICropService.cs" />
     <Compile Include="IBlockService.cs" />
     <Compile Include="IDocumentService.cs" />
@@ -68,7 +81,6 @@ Features:
     <Compile Include="ITransactionServiceForStyle.cs" />
     <Compile Include="Logger.cs" />
     <Compile Include="OpResult.cs" />
-    <Compile Include="PropertyUtils.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TransactionService.cs" />
     <Compile Include="TransactionServiceForEntity.cs" />

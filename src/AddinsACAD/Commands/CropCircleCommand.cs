@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using ServiceACAD;
+using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 
 [assembly: CommandClass(typeof(AddinsACAD.Commands.CropCircleCommand))]
 
@@ -59,11 +62,18 @@ namespace AddinsACAD.Commands
                 {
                     ids = this.SelectCirclesToCrop(ed);
                     if (ids == null || ids.Count == 0) return;
+                    // 手动选择也排除边界自身
+                    ids.RemoveAll(id => id == boundaryId);
                 }
 
                 bool? keepInside = this.AskCropDirection(ed);
                 if (!keepInside.HasValue) return;
 
+                // ── 采集 UCS ──
+                ServiceACAD.TestRecorder.CaptureUcs(out var ucsOrigin, out var ucsX, out var ucsY);
+                var capturedUcsOrigin = ucsOrigin;
+                var capturedUcsX = ucsX;
+                var capturedUcsY = ucsY;
                 var capturedIds = ids;
                 var capturedKeepInside = keepInside.Value;
                 CadServiceManager._.ExecuteInCommandTransaction(serviceTrans =>
@@ -79,7 +89,30 @@ namespace AddinsACAD.Commands
                             return ServiceACAD.OpResult.Fail(op.Message);
                         }
                         var r = op.Data;
-                        ed.WriteMessage($"\n{(selectAll ? "CROPALLCIRCLES" : "CROPCIRCLE")} 完成 ({ (keepInside.Value ? "内部" : "外部") }): 删除 {r.DeletedCount} 个, 保留 {r.KeptCount} 个, 跳过 {r.SkippedCount} 个");
+                        string commandName = selectAll ? "CROPALLCIRCLES" : "CROPCIRCLE";
+                        string direction = capturedKeepInside ? "Inside" : "Outside";
+
+                        // ── 完整几何测试记录 ──
+                        var record = new CropTestRecord
+                        {
+                            Command = commandName,
+                            Direction = direction,
+                            IsSuccess = true,
+                            UcsOrigin = capturedUcsOrigin,
+                            UcsXAxis = capturedUcsX,
+                            UcsYAxis = capturedUcsY,
+                            BoundaryVertices = boundaryPoints,
+                            BoundaryVertexCount = boundaryPoints.Count,
+                            TotalEntityCount = capturedIds.Count,
+                            DeletedCount = r.DeletedCount,
+                            KeptCount = r.KeptCount,
+                            SkippedCount = r.SkippedCount,
+                        };
+                        record.Entities = ServiceACAD.TestRecorder.CollectSnapshots(
+                            serviceTrans, capturedIds, boundaryPoints,
+                            new CropGeometryService());
+                        var uid = ServiceACAD.TestRecorder.Record(record);
+                        ed.WriteMessage($"\n[TestRecorder] UID: {uid}");
                         return ServiceACAD.OpResult.Success();
                     }
                     catch (System.Exception ex)
