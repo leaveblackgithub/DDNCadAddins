@@ -1,48 +1,38 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
-using DDNCadAddins.Core.Services;
 using NUnit.Framework;
 using ServiceACAD;
-using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 
 namespace AddinsACAD.ServiceTests
 {
     [TestFixture]
-    [Apartment(ApartmentState.STA)]
-    public class CropPolylineServiceTests
+    public class CropPolylineServiceTests : CropServiceTestBase
     {
-        private const double BS = 100.0;
-        private static List<CorePoint2D> Rect = new List<CorePoint2D>
-        {
-            new CorePoint2D(0, 0), new CorePoint2D(BS, 0), new CorePoint2D(BS, BS), new CorePoint2D(0, BS)
-        };
-
         // 1. 基本 (4)
-        [Test] public void Inside_Kept() => Sd(tr =>
+        [Test] public void Inside_Kept() => SideDb(tr =>
         {
             var ids = R(tr, 20, 20, 80, 80);
             var op = new CropPolylineService().CropPolylinesInside(Rect, ids, tr);
             Assert.IsTrue(op.IsSuccess);
             Assert.AreEqual(1, op.Data.KeptCount);
         });
-        [Test] public void Outside_Deleted() => Sd(tr =>
+        [Test] public void Outside_Deleted() => SideDb(tr =>
         {
             var ids = R(tr, 200, 200, 250, 250);
             var op = new CropPolylineService().CropPolylinesInside(Rect, ids, tr);
             Assert.IsTrue(op.IsSuccess);
             Assert.AreEqual(1, op.Data.DeletedCount);
         });
-        [Test] public void Outside_Kept_KeepOutside() => Sd(tr =>
+        [Test] public void Outside_Kept_KeepOutside() => SideDb(tr =>
         {
             var ids = R(tr, 200, 200, 250, 250);
             var op = new CropPolylineService().CropPolylinesOutside(Rect, ids, tr);
             Assert.IsTrue(op.IsSuccess);
             Assert.AreEqual(1, op.Data.KeptCount);
         });
-        [Test] public void Inside_Deleted_KeepOutside() => Sd(tr =>
+        [Test] public void Inside_Deleted_KeepOutside() => SideDb(tr =>
         {
             var ids = R(tr, 20, 20, 80, 80);
             var op = new CropPolylineService().CropPolylinesOutside(Rect, ids, tr);
@@ -51,21 +41,21 @@ namespace AddinsACAD.ServiceTests
         });
 
         // 2. 拆分 (3)
-        [Test] public void Cross_Split() => Sd(tr =>
+        [Test] public void Cross_Split() => SideDb(tr =>
         {
             var ids = R(tr, -50, 25, 150, 75);
             var op = new CropPolylineService().CropPolylinesInside(Rect, ids, tr);
             Assert.IsTrue(op.IsSuccess);
             Assert.AreEqual(1, op.Data.SplitCount);
         });
-        [Test] public void OpenPolyline_Cross_Split() => Sd(tr =>
+        [Test] public void OpenPolyline_Cross_Split() => SideDb(tr =>
         {
             var ids = O(tr, new Point2d(-20, 50), new Point2d(50, 50), new Point2d(120, 50));
             var op = new CropPolylineService().CropPolylinesInside(Rect, ids, tr);
             Assert.IsTrue(op.IsSuccess);
             Assert.AreEqual(1, op.Data.SplitCount);
         });
-        [Test] public void StraightPolyline_CrossBoundary() => Sd(tr =>
+        [Test] public void StraightPolyline_CrossBoundary() => SideDb(tr =>
         {
             var ids = R(tr, -20, 50, 120, 60);
             var op = new CropPolylineService().CropPolylinesInside(Rect, ids, tr);
@@ -73,27 +63,26 @@ namespace AddinsACAD.ServiceTests
         });
 
         // 3. 边界/异常 (3)
-        [Test] public void NullBoundary_Fail() => Sd(tr =>
+        protected override void NullBoundary_Fail() => SideDb(tr =>
         {
             var op = new CropPolylineService().CropPolylinesInside(null, new List<ObjectId>(), tr);
             Assert.IsFalse(op.IsSuccess);
         });
-        [Test] public void EmptyList_Fail() => Sd(tr =>
+        protected override void EmptyList_Fail() => SideDb(tr =>
         {
             var op = new CropPolylineService().CropPolylinesInside(Rect, new List<ObjectId>(), tr);
             Assert.IsFalse(op.IsSuccess);
         });
-        [Test] public void SingleVertexPoly_Skipped() => Sd(tr =>
+        [Test] public void SingleVertexPoly_Skipped() => SideDb(tr =>
         {
             var p = new Polyline();
             p.AddVertexAt(0, new Point2d(50, 50), 0, 0, 0);
-            var ids = new List<ObjectId> { tr.AppendEntityToCurrentSpace(p) };
+            var ids = Ids(tr, p);
             var op = new CropPolylineService().CropPolylinesInside(Rect, ids, tr);
             Assert.IsTrue(op.IsSuccess);
             Assert.AreEqual(1, op.Data.SkippedCount + op.Data.DeletedCount + op.Data.KeptCount);
         });
 
-        private static void Sd(Action<ITransactionService> a) => CadServiceManager._.ExecuteInSideDatabase(a);
         private static List<ObjectId> R(ITransactionService tr, double x1, double y1, double x2, double y2)
         {
             var p = new Polyline();
@@ -102,14 +91,14 @@ namespace AddinsACAD.ServiceTests
             p.AddVertexAt(2, new Point2d(x2, y2), 0, 0, 0);
             p.AddVertexAt(3, new Point2d(x1, y2), 0, 0, 0);
             p.Closed = true;
-            return new List<ObjectId> { tr.AppendEntityToCurrentSpace(p) };
+            return Ids(tr, p);
         }
         private static List<ObjectId> O(ITransactionService tr, params Point2d[] pts)
         {
             var p = new Polyline();
             for (var i = 0; i < pts.Length; i++)
                 p.AddVertexAt(i, pts[i], 0, 0, 0);
-            return new List<ObjectId> { tr.AppendEntityToCurrentSpace(p) };
+            return Ids(tr, p);
         }
     }
 }
