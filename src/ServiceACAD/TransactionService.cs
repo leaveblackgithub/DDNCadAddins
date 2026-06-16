@@ -9,16 +9,29 @@ namespace ServiceACAD
     /// </summary>
     public class TransactionService : ITransactionService
     {
+        private readonly Database _database;
+
         /// <summary>
-        ///     构造函数
+        ///     构造函数（使用活动文档数据库）.
         /// </summary>
-        /// <param name="transaction">事务对象</param>
+        /// <param name="transaction">事务对象.</param>
         public TransactionService(Transaction transaction)
+            : this(transaction, null)
+        {
+        }
+
+        /// <summary>
+        ///     构造函数（指定数据库）.
+        ///     传入侧数据库（new Database(true, true)）可实现不与活动文档交互的内存侧测试.
+        /// </summary>
+        /// <param name="transaction">事务对象.</param>
+        /// <param name="database">事务关联的数据库，为 null 时使用活动文档数据库.</param>
+        public TransactionService(Transaction transaction, Database database)
         {
             CadTrans = transaction;
+            _database = database;
             BlockServiceDict = new Dictionary<ObjectId, IBlockService>();
 
-            // 初始化服务组件
             Entity = new TransactionServiceForEntity(this);
             Block = new TransactionServiceForBlock(this);
             Style = new TransactionServiceForStyle(this);
@@ -28,6 +41,11 @@ namespace ServiceACAD
         ///     事务对象
         /// </summary>
         private Transaction CadTrans { get; }
+
+        /// <summary>
+        ///     获取当前事务关联的数据库，如果未指定侧数据库则回退到活动文档数据库.
+        /// </summary>
+        private Database CurrentDatabase => _database ?? HostApplicationServices.WorkingDatabase;
 
         /// <summary>
         ///     块服务缓存字典
@@ -375,7 +393,7 @@ namespace ServiceACAD
         {
             try
             {
-                var db = HostApplicationServices.WorkingDatabase;
+                var db = CurrentDatabase;
                 var blockTable = GetObject<BlockTable>(db.BlockTableId, openMode);
                 if (blockTable == null)
                 {
@@ -386,7 +404,7 @@ namespace ServiceACAD
                 ObjectId currentSpaceId;
                 if (db.TileMode)
                 {
-                    // 模型空间
+                    // 模型空间（或侧数据库默认为模型空间）
                     currentSpaceId = blockTable[BlockTableRecord.ModelSpace];
                 }
                 else
@@ -549,7 +567,7 @@ namespace ServiceACAD
         {
             try
             {
-                var db = HostApplicationServices.WorkingDatabase;
+                var db = CurrentDatabase;
                 return GetObject<BlockTable>(db.BlockTableId, openMode);
             }
             catch (Exception ex)

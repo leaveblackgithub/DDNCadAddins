@@ -19,5 +19,12 @@ namespace ServiceACAD
         OpResult ExecuteInCommandTransaction(Func<ITransactionService, OpResult> action);
 
         OpResult<ObjectId[]> Isolate(ObjectId objectId, params ObjectId[] additionalObjectIds);
+
+        /// <summary>
+        ///     在内存侧数据库（new Database(true, true)）中执行操作。
+        ///     不与活动文档交互，不修改当前图纸，适合自动化测试.
+        /// </summary>
+        /// <param name="action">在侧数据库事务中执行的逻辑.</param>
+        void ExecuteInSideDatabase(Action<ITransactionService> action);
     }
 }

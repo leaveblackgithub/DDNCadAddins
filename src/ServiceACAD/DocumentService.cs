@@ -134,6 +134,44 @@ namespace ServiceACAD
             }
         }
 
+        /// <inheritdoc />
+        public void ExecuteInSideDatabase(Action<ITransactionService> action)
+        {
+            if (action == null)
+            {
+                return;
+            }
+
+            try
+            {
+                using (var db = new Database(true, true))
+                using (var tr = db.TransactionManager.StartTransaction())
+                {
+                    try
+                    {
+                        var transactionService = new TransactionService(tr, db);
+                        action(transactionService);
+                        tr.Commit();
+                    }
+                    catch (AssertionException)
+                    {
+                        tr.Commit();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger._.Error("ExecuteInSideDatabase 内部异常", ex);
+                        tr.Abort();
+                        throw;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error("ExecuteInSideDatabase 失败", ex);
+                throw;
+            }
+        }
+
         private bool TitleEquals(string drawingTitle)
         {
             if (string.IsNullOrEmpty(drawingTitle))
