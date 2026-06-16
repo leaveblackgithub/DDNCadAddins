@@ -31,6 +31,7 @@
     <Compile Include="BlockExplodeResultTests.cs" />
     <Compile Include="CalculationResultTests.cs" />
     <Compile Include="Matrix3DTests.cs" />
+    <Compile Include="CoreModelTests.cs" />
     <Compile Include="CropGeometryServiceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

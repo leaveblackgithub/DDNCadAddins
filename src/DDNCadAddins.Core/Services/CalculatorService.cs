@@ -47,7 +47,18 @@ namespace DDNCadAddins.Core.Services
                     return OpResult<double>.Fail("输入包含无效数值（NaN）");
                 }
 
+                if (double.IsInfinity(a) || double.IsInfinity(b))
+                {
+                    return OpResult<double>.Fail("输入包含无穷大值");
+                }
+
                 var result = a - b;
+
+                if (double.IsInfinity(result))
+                {
+                    return OpResult<double>.Fail("计算结果溢出");
+                }
+
                 return OpResult<double>.Success(result, $"计算成功: {a} - {b} = {result}");
             }
             catch (Exception ex)

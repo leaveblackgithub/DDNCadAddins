@@ -7,23 +7,23 @@ using ServiceACAD;
 using TestRunnerACAD;
 using AcadException = Autodesk.AutoCAD.Runtime.Exception;
 
-[assembly: CommandClass(typeof(RunTestsCommand))]
+[assembly: CommandClass(typeof(AutoCADTestsCommand))]
 
 namespace AddinsACAD.TestCommands
 {
     /// <summary>
     ///     在 AutoCAD 中运行 NUnit 测试并生成 HTML 报告
     /// </summary>
-    public class RunTestsCommand
+    public class AutoCADTestsCommand
     {
         private const string RequiredDrawingTitle = "xclip";
         private const string XclipDrawingRequirements =
             "xclip.dwg 要求: 模型空间含名为 23432 的图块参照（至少 6 个），且其中至少 1 个带 XClip。";
 
         /// <summary>
-        ///     运行插件测试套件（命令名：RUNTESTS）
+        ///     运行插件测试套件（命令名：AUTOCADTESTS）
         /// </summary>
-        [CommandMethod("RunTests", CommandFlags.Session)]
+        [CommandMethod("AutoCADTests", CommandFlags.Session)]
         public void RunTests()
         {
             try
@@ -39,12 +39,12 @@ namespace AddinsACAD.TestCommands
             }
             catch (AcadException acadException)
             {
-                Logger._.Error("RUNTESTS AutoCAD API 错误（说明输出、测试执行或报告打开）", acadException);
+                Logger._.Error("AUTOCADTESTS AutoCAD API 错误（说明输出、测试执行或报告打开）", acadException);
                 TryWriteCommandMessage($"AutoCAD 错误: {acadException.Message}");
             }
             catch (System.Exception systemException)
             {
-                Logger._.Error("RUNTESTS 系统错误（NUnit、文件 IO、进程启动等）", systemException);
+                Logger._.Error("AUTOCADTESTS 系统错误（NUnit、文件 IO、进程启动等）", systemException);
                 TryWriteCommandMessage($"运行测试失败: {systemException.Message}");
             }
             finally
@@ -54,13 +54,13 @@ namespace AddinsACAD.TestCommands
         }
 
         /// <summary>
-        ///     输出 RUNTESTS 命令用法说明
+        ///     输出 AUTOCADTESTS 命令用法说明
         /// </summary>
         private static void WriteUsageMessage()
         {
             CadServiceManager.ServiceEd.WriteMessage(
-                "\nRUNTESTS - 运行插件单元测试" +
-                "\n用法: NETLOAD 加载 AddinsACAD.dll 后执行 RUNTESTS" +
+                "\nAUTOCADTESTS - 运行插件集成测试" +
+                "\n用法: NETLOAD 加载 AddinsACAD.dll 后执行 AUTOCADTESTS" +
                 "\n说明:" +
                 "\n  1. 大部分测试可在任意图纸下运行" +
                 $"\n  2. 部分测试要求当前活动图纸文件名为 {RequiredDrawingTitle}（打开 {RequiredDrawingTitle}.dwg）" +
@@ -103,11 +103,11 @@ namespace AddinsACAD.TestCommands
             }
             catch (AcadException acadException)
             {
-                Logger._.Error("RUNTESTS 检查当前图纸时 AutoCAD API 错误", acadException);
+                Logger._.Error("AUTOCADTESTS 检查当前图纸时 AutoCAD API 错误", acadException);
             }
             catch (System.Exception systemException)
             {
-                Logger._.Error("RUNTESTS 检查当前图纸时系统错误", systemException);
+                Logger._.Error("AUTOCADTESTS 检查当前图纸时系统错误", systemException);
             }
         }
 
@@ -123,11 +123,11 @@ namespace AddinsACAD.TestCommands
             }
             catch (AcadException acadException)
             {
-                Logger._.Error("RUNTESTS 向命令行输出消息时 AutoCAD API 错误", acadException);
+                Logger._.Error("AUTOCADTESTS 向命令行输出消息时 AutoCAD API 错误", acadException);
             }
             catch (System.Exception systemException)
             {
-                Logger._.Error("RUNTESTS 向命令行输出消息时系统错误", systemException);
+                Logger._.Error("AUTOCADTESTS 向命令行输出消息时系统错误", systemException);
             }
         }
     }

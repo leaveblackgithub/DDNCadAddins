@@ -1,4 +1,4 @@
-using DDNCadAddins.Core.Interfaces;
+﻿using DDNCadAddins.Core.Interfaces;
 using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using NUnit.Framework;
@@ -104,7 +104,76 @@ namespace DDNCadAddins.Core.Tests
         public void Subtract_NaN_ReturnsFail()
         {
             var result = _calculator.Subtract(double.NaN, 3.0);
+            Assert.IsFalse(result.IsSuccess);
+        }
 
+        [Test]
+        public void Subtract_NaNSecondArg_ReturnsFail()
+        {
+            var result = _calculator.Subtract(5.0, double.NaN);
+            Assert.IsFalse(result.IsSuccess);
+        }
+
+        [Test]
+        public void Subtract_PositiveNumbers_ReturnsPositive()
+        {
+            var result = _calculator.Subtract(10.0, 3.0);
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(7.0, result.Data, 1e-10);
+        }
+
+        [Test]
+        public void Subtract_SmallFromLarge_NegativeResult()
+        {
+            var result = _calculator.Subtract(3.0, 10.0);
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(-7.0, result.Data, 1e-10);
+        }
+
+        [Test]
+        public void Subtract_NegativeFromPositive_AddsMagnitude()
+        {
+            var result = _calculator.Subtract(5.0, -3.0);
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(8.0, result.Data, 1e-10);
+        }
+
+        [Test]
+        public void Subtract_NegativeFromNegative_ReturnsCorrect()
+        {
+            var result = _calculator.Subtract(-5.0, -3.0);
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(-2.0, result.Data, 1e-10);
+        }
+
+        [Test]
+        public void Subtract_Zeros_ReturnsZero()
+        {
+            var result = _calculator.Subtract(0.0, 0.0);
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(0.0, result.Data, 1e-10);
+        }
+
+        [Test]
+        public void Subtract_FromZero_NegativeValue()
+        {
+            var result = _calculator.Subtract(0.0, 5.0);
+            Assert.IsTrue(result.IsSuccess);
+            Assert.AreEqual(-5.0, result.Data, 1e-10);
+        }
+
+        [Test]
+        public void Subtract_PositiveInfinity_ReturnsFail()
+        {
+            var result = _calculator.Subtract(double.PositiveInfinity, 1.0);
+            Assert.IsFalse(result.IsSuccess);
+        }
+
+        [Test]
+        public void Subtract_MaxValueMinusMinValue_Overflows()
+        {
+            // MaxValue - MinValue = MaxValue + MaxValue → PositiveInfinity 溢出
+            var result = _calculator.Subtract(double.MaxValue, double.MinValue);
             Assert.IsFalse(result.IsSuccess);
         }
 

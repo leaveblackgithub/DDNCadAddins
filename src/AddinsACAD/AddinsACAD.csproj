@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+ï»¿<?xml version="1.0" encoding="utf-8"?>
 <!--
 AddinsACAD.csproj - AutoCAD Commands and Tests Project File
 -->
@@ -35,7 +35,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="Commands\CommandTestsCommand.cs" />
     <Compile Include="TestCommands\CreateTestBlockForExplodeCommand.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="TestCommands\RunTestsCommand.cs" />
+    <Compile Include="TestCommands\AutoCADTestsCommand.cs" />
     <Compile Include="ServiceTests\BlockServiceTestUtils.cs" />
     <Compile Include="ServiceTests\BlockServiceExtendedTests.cs" />
     <Compile Include="ServiceTests\CommonTestMethods.cs" />
@@ -45,7 +45,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="ServiceTests\CropPolylineServiceTests.cs" />
     <Compile Include="ServiceTests\TransactionServiceTest.cs" />
     <Compile Include="ServiceTests\TransactionServiceExtendedTests.cs" />
-    <!-- UnitTests ÒÑÇ¨ÒÆÖÁ DDNCadAddins.Core.Tests -->
+    <!-- UnitTests ï¿½ï¿½Ç¨ï¿½ï¿½ï¿½ï¿½ DDNCadAddins.Core.Tests -->
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
