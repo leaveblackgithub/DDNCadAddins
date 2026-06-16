@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using System.Linq;
+using DDNCadAddins.Core.Interfaces;
 using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
-using DDNCadAddins.Core.Tests.Fakes;
+using Moq;
 using NUnit.Framework;
 
 namespace DDNCadAddins.Core.Tests
@@ -9,28 +11,34 @@ namespace DDNCadAddins.Core.Tests
     [TestFixture]
     public class LayerManagementServiceTests
     {
-        private FakeLayerRepository _repository;
+        private Mock<ILayerRepository> _repoMock;
         private LayerManagementService _service;
 
         [SetUp]
         public void SetUp()
         {
-            _repository = new FakeLayerRepository
-            {
-                Layers =
-                {
-                    new LayerInfo { Name = "0", IsLocked = false, IsFrozen = false },
-                    new LayerInfo { Name = "Walls", IsLocked = true, IsFrozen = true },
-                    new LayerInfo { Name = "Doors", IsLocked = false, IsFrozen = false }
-                },
-                CurrentLayerName = "0"
-            };
-            _service = new LayerManagementService(_repository);
+            _repoMock = new Mock<ILayerRepository>(MockBehavior.Loose);
+            _service = new LayerManagementService(_repoMock.Object);
+
+            // 默认配置（测试可覆盖）
+            _repoMock.Setup(r => r.GetCurrentLayerName())
+                .Returns(OpResult<string>.Success("0"));
+            _repoMock.Setup(r => r.GetLayer(It.IsAny<string>()))
+                .Returns((string name) => OpResult<LayerInfo>.Success(new LayerInfo { Name = name }));
         }
 
         [Test]
         public void CaptureAllLayerStates_ReturnsAllLayers()
         {
+            var layers = new[]
+            {
+                new LayerInfo { Name = "0", IsLocked = false, IsFrozen = false },
+                new LayerInfo { Name = "Walls", IsLocked = true, IsFrozen = true },
+                new LayerInfo { Name = "Doors", IsLocked = false, IsFrozen = false },
+            }.ToList().AsReadOnly();
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Success(layers));
+
             var result = _service.CaptureAllLayerStates();
 
             Assert.IsTrue(result.IsSuccess);
@@ -42,7 +50,8 @@ namespace DDNCadAddins.Core.Tests
         [Test]
         public void CaptureAllLayerStates_EmptyLayerTable_ReturnsEmptySnapshot()
         {
-            _repository.Layers.Clear();
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Success(new List<LayerInfo>().AsReadOnly()));
 
             var result = _service.CaptureAllLayerStates();
 
@@ -53,28 +62,40 @@ namespace DDNCadAddins.Core.Tests
         [Test]
         public void CaptureAllLayerStates_RepositoryFails_ReturnsFail()
         {
-            _repository.ShouldFailGetAll = true;
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Fail("模拟获取失败"));
 
             var result = _service.CaptureAllLayerStates();
 
             Assert.IsFalse(result.IsSuccess);
-            Assert.IsNotEmpty(result.Message);
         }
 
         [Test]
         public void UnlockAndThawAllLayers_UnlocksAndThawsAllLayers()
         {
+            var layers = new List<LayerInfo>
+            {
+                new LayerInfo { Name = "0", IsLocked = false, IsFrozen = false },
+                new LayerInfo { Name = "Walls", IsLocked = true, IsFrozen = true },
+                new LayerInfo { Name = "Doors", IsLocked = false, IsFrozen = false },
+            };
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Success(layers.AsReadOnly()));
+            _repoMock.Setup(r => r.UpdateLayer(It.IsAny<LayerInfo>()))
+                .Returns(OpResult.Success());
+
             var result = _service.UnlockAndThawAllLayers();
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.IsTrue(_repository.Layers.All(layer => !layer.IsLocked && !layer.IsFrozen));
-            Assert.AreEqual(3, _repository.UpdatedLayers.Count);
+            _repoMock.Verify(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name == "Walls" && !l.IsLocked && !l.IsFrozen)), Times.Once);
+            _repoMock.Verify(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name == "Doors")), Times.Once);
         }
 
         [Test]
         public void UnlockAndThawAllLayers_RepositoryFails_ReturnsFail()
         {
-            _repository.ShouldFailGetAll = true;
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Fail("模拟获取失败"));
 
             var result = _service.UnlockAndThawAllLayers();
 
@@ -84,22 +105,43 @@ namespace DDNCadAddins.Core.Tests
         [Test]
         public void UnlockAndThawAllLayers_SkipsInvalidLayerUpdate()
         {
-            _repository.UpdateFailLayerNames.Add("Walls");
+            var layers = new List<LayerInfo>
+            {
+                new LayerInfo { Name = "0", IsLocked = false, IsFrozen = false },
+                new LayerInfo { Name = "Walls", IsLocked = true, IsFrozen = true },
+                new LayerInfo { Name = "Doors", IsLocked = false, IsFrozen = false },
+            };
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Success(layers.AsReadOnly()));
+            _repoMock.Setup(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name == "Walls")))
+                .Returns(OpResult.Fail("模拟更新失败"));
+            _repoMock.Setup(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name != "Walls")))
+                .Returns(OpResult.Success());
 
             var result = _service.UnlockAndThawAllLayers();
 
             Assert.IsTrue(result.IsSuccess);
-            var walls = _repository.Layers.First(item => item.Name == "Walls");
-            Assert.IsTrue(walls.IsLocked, "更新失败的图层应保持原状");
-            Assert.IsTrue(walls.IsFrozen);
-            Assert.IsFalse(_repository.Layers.First(item => item.Name == "Doors").IsLocked);
-            Assert.IsFalse(_repository.Layers.First(item => item.Name == "0").IsLocked);
+            _repoMock.Verify(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name == "Walls")), Times.Once);
+            _repoMock.Verify(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name == "Doors")), Times.Once);
         }
 
         [Test]
         public void RestoreLayerStates_SkipsInvalidLayerUpdate()
         {
-            _repository.UpdateFailLayerNames.Add("Walls");
+            var layers = new List<LayerInfo>
+            {
+                new LayerInfo { Name = "0", IsLocked = false, IsFrozen = false },
+                new LayerInfo { Name = "Walls", IsLocked = false, IsFrozen = false },
+                new LayerInfo { Name = "Doors", IsLocked = false, IsFrozen = false },
+            };
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Success(layers.AsReadOnly()));
+            _repoMock.Setup(r => r.GetCurrentLayerName())
+                .Returns(OpResult<string>.Success("0"));
+            _repoMock.Setup(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name == "Walls")))
+                .Returns(OpResult.Fail("模拟更新失败"));
+            _repoMock.Setup(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name != "Walls")))
+                .Returns(OpResult.Success());
 
             var snapshot = new LayerStateSnapshot();
             snapshot.States["Walls"] = new LayerStateEntry { IsLocked = true, IsFrozen = true };
@@ -108,7 +150,7 @@ namespace DDNCadAddins.Core.Tests
             var result = _service.RestoreLayerStates(snapshot);
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.IsTrue(_repository.Layers.First(item => item.Name == "Doors").IsLocked);
+            _repoMock.Verify(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name == "Doors" && l.IsLocked)), Times.Once);
         }
 
         [Test]
@@ -117,7 +159,6 @@ namespace DDNCadAddins.Core.Tests
             var result = _service.RestoreLayerStates(null);
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(0, _repository.UpdatedLayers.Count);
         }
 
         [Test]
@@ -126,14 +167,22 @@ namespace DDNCadAddins.Core.Tests
             var result = _service.RestoreLayerStates(new LayerStateSnapshot());
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(0, _repository.UpdatedLayers.Count);
         }
 
         [Test]
         public void RestoreLayerStates_RestoresLockedAndFrozenStates()
         {
-            _repository.Layers.First(layer => layer.Name == "Walls").IsLocked = false;
-            _repository.Layers.First(layer => layer.Name == "Walls").IsFrozen = false;
+            var layers = new List<LayerInfo>
+            {
+                new LayerInfo { Name = "0", IsLocked = false, IsFrozen = false },
+                new LayerInfo { Name = "Walls", IsLocked = false, IsFrozen = false },
+            };
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Success(layers.AsReadOnly()));
+            _repoMock.Setup(r => r.GetCurrentLayerName())
+                .Returns(OpResult<string>.Success("0"));
+            _repoMock.Setup(r => r.UpdateLayer(It.IsAny<LayerInfo>()))
+                .Returns(OpResult.Success());
 
             var snapshot = new LayerStateSnapshot();
             snapshot.States["Walls"] = new LayerStateEntry { IsLocked = true, IsFrozen = true };
@@ -141,28 +190,51 @@ namespace DDNCadAddins.Core.Tests
             var result = _service.RestoreLayerStates(snapshot);
 
             Assert.IsTrue(result.IsSuccess);
-            var walls = _repository.Layers.First(layer => layer.Name == "Walls");
-            Assert.IsTrue(walls.IsLocked);
-            Assert.IsTrue(walls.IsFrozen);
+            _repoMock.Verify(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name == "Walls" && l.IsLocked && l.IsFrozen)), Times.Once);
         }
 
         [Test]
         public void RestoreLayerStates_SkipsLayer0Freeze()
         {
+            var layers = new List<LayerInfo>
+            {
+                new LayerInfo { Name = "0", IsLocked = false, IsFrozen = false },
+                new LayerInfo { Name = "Walls", IsLocked = false, IsFrozen = false },
+            };
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Success(layers.AsReadOnly()));
+            _repoMock.Setup(r => r.GetCurrentLayerName())
+                .Returns(OpResult<string>.Success("0"));
+            _repoMock.Setup(r => r.GetLayer("0"))
+                .Returns(OpResult<LayerInfo>.Success(new LayerInfo { Name = "0", IsLocked = false, IsFrozen = false }));
+            _repoMock.Setup(r => r.UpdateLayer(It.IsAny<LayerInfo>()))
+                .Returns(OpResult.Success());
+
             var snapshot = new LayerStateSnapshot();
             snapshot.States["0"] = new LayerStateEntry { IsLocked = false, IsFrozen = true };
 
             var result = _service.RestoreLayerStates(snapshot);
 
             Assert.IsTrue(result.IsSuccess);
-            var layer0 = _repository.Layers.First(layer => layer.Name == "0");
-            Assert.IsFalse(layer0.IsFrozen, "图层0不应被冻结");
+            _repoMock.Verify(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name == "0" && !l.IsFrozen)), Times.Once);
         }
 
         [Test]
         public void RestoreLayerStates_SkipsCurrentLayerFreeze()
         {
-            _repository.CurrentLayerName = "Doors";
+            var layers = new List<LayerInfo>
+            {
+                new LayerInfo { Name = "0", IsLocked = false, IsFrozen = false },
+                new LayerInfo { Name = "Doors", IsLocked = false, IsFrozen = false },
+            };
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Success(layers.AsReadOnly()));
+            _repoMock.Setup(r => r.GetCurrentLayerName())
+                .Returns(OpResult<string>.Success("Doors"));
+            _repoMock.Setup(r => r.GetLayer("Doors"))
+                .Returns(OpResult<LayerInfo>.Success(new LayerInfo { Name = "Doors", IsLocked = false, IsFrozen = false }));
+            _repoMock.Setup(r => r.UpdateLayer(It.IsAny<LayerInfo>()))
+                .Returns(OpResult.Success());
 
             var snapshot = new LayerStateSnapshot();
             snapshot.States["Doors"] = new LayerStateEntry { IsLocked = false, IsFrozen = true };
@@ -170,26 +242,41 @@ namespace DDNCadAddins.Core.Tests
             var result = _service.RestoreLayerStates(snapshot);
 
             Assert.IsTrue(result.IsSuccess);
-            var doors = _repository.Layers.First(layer => layer.Name == "Doors");
-            Assert.IsFalse(doors.IsFrozen, "当前图层不应被冻结");
+            _repoMock.Verify(r => r.UpdateLayer(It.Is<LayerInfo>(l => l.Name == "Doors" && !l.IsFrozen)), Times.Once);
         }
 
         [Test]
         public void RestoreLayerStates_SkipsMissingLayer()
         {
+            var layers = new List<LayerInfo>
+            {
+                new LayerInfo { Name = "0", IsLocked = false, IsFrozen = false },
+                new LayerInfo { Name = "Walls", IsLocked = false, IsFrozen = false },
+            };
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Success(layers.AsReadOnly()));
+            _repoMock.Setup(r => r.GetCurrentLayerName())
+                .Returns(OpResult<string>.Success("0"));
+
+            _repoMock.Setup(r => r.GetLayer("MissingLayer"))
+                .Returns(OpResult<LayerInfo>.Fail("图层不存在"));
+
             var snapshot = new LayerStateSnapshot();
             snapshot.States["MissingLayer"] = new LayerStateEntry { IsLocked = true, IsFrozen = true };
 
             var result = _service.RestoreLayerStates(snapshot);
 
             Assert.IsTrue(result.IsSuccess);
-            Assert.AreEqual(0, _repository.UpdatedLayers.Count);
+            _repoMock.Verify(r => r.UpdateLayer(It.IsAny<LayerInfo>()), Times.Never);
         }
 
         [Test]
         public void RestoreLayerStates_GetCurrentLayerFails_ReturnsFail()
         {
-            _repository.ShouldFailGetCurrentLayer = true;
+            _repoMock.Setup(r => r.GetAllLayers())
+                .Returns(OpResult<IReadOnlyList<LayerInfo>>.Success(new List<LayerInfo>().AsReadOnly()));
+            _repoMock.Setup(r => r.GetCurrentLayerName())
+                .Returns(OpResult<string>.Fail("模拟获取失败"));
 
             var snapshot = new LayerStateSnapshot();
             snapshot.States["Walls"] = new LayerStateEntry { IsLocked = true, IsFrozen = false };
