@@ -45,7 +45,7 @@ namespace ServiceACAD
         /// <summary>
         ///     获取当前事务关联的数据库，如果未指定侧数据库则回退到活动文档数据库.
         /// </summary>
-        private Database CurrentDatabase => _database ?? HostApplicationServices.WorkingDatabase;
+        internal Database CurrentDatabase => _database ?? HostApplicationServices.WorkingDatabase;
 
         /// <summary>
         ///     块服务缓存字典

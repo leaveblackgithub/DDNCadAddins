@@ -34,7 +34,7 @@ namespace ServiceACAD
         {
             try
             {
-                var db = HostApplicationServices.WorkingDatabase;
+                var db = _transactionService.CurrentDatabase;
                 return _transactionService.GetObject<LayerTable>(db.LayerTableId, openMode);
             }
             catch (Exception ex)
@@ -169,7 +169,7 @@ namespace ServiceACAD
         {
             try
             {
-                var db = HostApplicationServices.WorkingDatabase;
+                var db = _transactionService.CurrentDatabase;
                 return _transactionService.GetObject<LinetypeTable>(db.LinetypeTableId, openMode);
             }
             catch (Exception ex)
@@ -225,19 +225,14 @@ namespace ServiceACAD
         {
             try
             {
-                var db = HostApplicationServices.WorkingDatabase;
+                var db = _transactionService.CurrentDatabase;
                 var layerName = "0"; // 默认图层
 
-                // 获取当前图层
-                using (var tr = db.TransactionManager.StartTransaction())
+                // 获取当前图层（侧数据库中 Clayer 默认为 0）
+                var currentLayer = _transactionService.GetObject<LayerTableRecord>(db.Clayer);
+                if (currentLayer != null)
                 {
-                    var currentLayer = tr.GetObject(db.Clayer, OpenMode.ForRead) as LayerTableRecord;
-                    if (currentLayer != null)
-                    {
-                        layerName = currentLayer.Name;
-                    }
-
-                    tr.Commit();
+                    layerName = currentLayer.Name;
                 }
 
                 return layerName;
