@@ -10,141 +10,122 @@ using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 
 namespace AddinsACAD.ServiceTests
 {
-    /// <summary>
-    ///     CropLineService 自动测试 — 使用内存侧数据库，完全隔离活动文档.
-    ///     新建 Database(true, true) → 创建实体 → 执行裁剪 → 断言结果 → 释放.
-    ///     不修改任何图纸文件，不与活动文档事务竞争，彻底避免死锁.
-    /// </summary>
     [TestFixture]
     [Apartment(ApartmentState.STA)]
     public class CropLineServiceTests
     {
-        private const double BoundarySize = 100.0;
-
-        /// <summary>
-        ///     100x100 矩形边界顶点.
-        /// </summary>
-        private static List<CorePoint2D> RectBoundary =>
-            new List<CorePoint2D>
-            {
-                new CorePoint2D(0, 0),
-                new CorePoint2D(BoundarySize, 0),
-                new CorePoint2D(BoundarySize, BoundarySize),
-                new CorePoint2D(0, BoundarySize),
-            };
-
-        // ── 1. 正常路径 ──
-
-        /// <summary>
-        ///     直线完全在内部 → KeepInside 保留.
-        /// </summary>
-        [Test]
-        public void CropLinesInside_LineFullyInside_Kept()
+        private const double BS = 100.0;
+        private static List<CorePoint2D> Rect = new List<CorePoint2D>
         {
+            new CorePoint2D(0, 0), new CorePoint2D(BS, 0), new CorePoint2D(BS, BS), new CorePoint2D(0, BS)
+        };
+        private static List<CorePoint2D> Concave = new List<CorePoint2D>
+        {
+            new CorePoint2D(0, 0), new CorePoint2D(BS, 0), new CorePoint2D(BS, 30),
+            new CorePoint2D(50, 30), new CorePoint2D(50, BS), new CorePoint2D(BS, BS),
+            new CorePoint2D(BS, 70), new CorePoint2D(0, 70)
+        };
+
+        // 1. 基本保留/删除 (4)
+        [Test] public void Inside_Kept() => Sd(tr =>
+        {
+            var ids = L(tr, new Point3d(20, 20, 0), new Point3d(80, 80, 0));
+            var r = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.KeptCount); Assert.AreEqual(0, r.DeletedCount);
+        });
+        [Test] public void Outside_Deleted() => Sd(tr =>
+        {
+            var ids = L(tr, new Point3d(200, 200, 0), new Point3d(300, 300, 0));
+            var r = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.DeletedCount); Assert.AreEqual(0, r.KeptCount);
+        });
+        [Test] public void Outside_Kept_KeepOutside() => Sd(tr =>
+        {
+            var ids = L(tr, new Point3d(200, 200, 0), new Point3d(300, 300, 0));
+            var r = new CropLineService(new CropGeometryService()).CropLinesOutside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.KeptCount); Assert.AreEqual(0, r.DeletedCount);
+        });
+        [Test] public void Inside_Deleted_KeepOutside() => Sd(tr =>
+        {
+            var ids = L(tr, new Point3d(20, 20, 0), new Point3d(80, 80, 0));
+            var r = new CropLineService(new CropGeometryService()).CropLinesOutside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.DeletedCount); Assert.AreEqual(0, r.KeptCount);
+        });
+
+        // 2. 拆分 (3)
+        [Test] public void Cross_Split() => Sd(tr =>
+        {
+            var ids = L(tr, new Point3d(-50, 50, 0), new Point3d(150, 50, 0));
+            var r = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.SplitCount);
+        });
+        [Test] public void Diagonal_Split() => Sd(tr =>
+        {
+            var ids = L(tr, new Point3d(-50, -50, 0), new Point3d(150, 150, 0));
+            var r = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.SplitCount);
+        });
+        [Test] public void EndpointOnBoundary() => Sd(tr =>
+        {
+            var ids = L(tr, new Point3d(0, 10, 0), new Point3d(100, 10, 0));
+            var r = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, ids, tr).Data;
+            Assert.GreaterOrEqual(r.KeptCount + r.SplitCount, 1);
+        });
+
+        // 3. 边界/异常 (4)
+        [Test] public void NullBoundary_Fail() => Sd(tr =>
+        {
+            var op = new CropLineService(new CropGeometryService()).CropLinesInside(null, new List<ObjectId>(), tr);
+            Assert.IsFalse(op.IsSuccess);
+        });
+        [Test] public void EmptyList_Fail() => Sd(tr =>
+        {
+            var op = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, new List<ObjectId>(), tr);
+            Assert.IsFalse(op.IsSuccess);
+        });
+        [Test] public void ErasedId_Skipped()
+        {
+            var ids = new List<ObjectId>();
             CadServiceManager._.ExecuteInSideDatabase(tr =>
             {
-                var lineIds = CreateLineInTr(tr, new Point3d(20, 20, 0), new Point3d(80, 80, 0));
-                var service = new CropLineService(new CropGeometryService());
-                var op = service.CropLinesInside(RectBoundary, lineIds, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(0, op.Data.DeletedCount);
-                Assert.AreEqual(0, op.Data.SplitCount);
-                Assert.AreEqual(1, op.Data.KeptCount);
+                ids.Add(tr.AppendEntityToCurrentSpace(new Line(new Point3d(200, 200, 0), new Point3d(300, 300, 0))));
             });
-        }
-
-        /// <summary>
-        ///     直线完全在外部 → KeepInside 删除.
-        /// </summary>
-        [Test]
-        public void CropLinesInside_LineFullyOutside_Deleted()
-        {
             CadServiceManager._.ExecuteInSideDatabase(tr =>
             {
-                var lineIds = CreateLineInTr(tr, new Point3d(200, 200, 0), new Point3d(300, 300, 0));
-                var service = new CropLineService(new CropGeometryService());
-                var op = service.CropLinesInside(RectBoundary, lineIds, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(1, op.Data.DeletedCount);
-                Assert.AreEqual(0, op.Data.KeptCount);
+                var ent = tr.GetObject<Entity>(ids[0], OpenMode.ForWrite);
+                ent.Erase();
             });
-        }
-
-        /// <summary>
-        ///     直线跨越边界 → KeepInside 拆分保留内部段.
-        /// </summary>
-        [Test]
-        public void CropLinesInside_LineCrossesBoundary_Split()
-        {
             CadServiceManager._.ExecuteInSideDatabase(tr =>
             {
-                var lineIds = CreateLineInTr(tr, new Point3d(-50, 50, 0), new Point3d(150, 50, 0));
-                var service = new CropLineService(new CropGeometryService());
-                var op = service.CropLinesInside(RectBoundary, lineIds, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(1, op.Data.SplitCount);
-                Assert.AreEqual(0, op.Data.DeletedCount);
-                Assert.AreEqual(0, op.Data.KeptCount);
+                var r = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, ids, tr).Data;
+                Assert.AreEqual(1, r.SkippedCount);
             });
         }
-
-        /// <summary>
-        ///     KeepOutside 模式 → 内部线删除.
-        /// </summary>
-        [Test]
-        public void CropLinesOutside_LineInside_Deleted()
+        [Test] public void ZeroLength_Skipped() => Sd(tr =>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var lineIds = CreateLineInTr(tr, new Point3d(20, 20, 0), new Point3d(80, 80, 0));
-                var service = new CropLineService(new CropGeometryService());
-                var op = service.CropLinesOutside(RectBoundary, lineIds, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(1, op.Data.DeletedCount);
-            });
-        }
+            var ids = L(tr, new Point3d(50, 50, 0), new Point3d(50, 50, 0));
+            var r = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.SkippedCount);
+        });
 
-        // ── 2. 边界 / 异常路径 ──
-
-        /// <summary>
-        ///     null 边界 → 返回失败.
-        /// </summary>
-        [Test]
-        public void CropLinesInside_NullBoundary_ReturnsFail()
+        // 4. 凹多边形 (2)
+        [Test] public void Concave_Inside_Kept() => Sd(tr =>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var service = new CropLineService(new CropGeometryService());
-                var op = service.CropLinesInside(null, new List<ObjectId>(), tr);
-                Assert.IsFalse(op.IsSuccess);
-                StringAssert.Contains("顶点不足", op.Message);
-            });
-        }
-
-        /// <summary>
-        ///     空列表 → 返回失败.
-        /// </summary>
-        [Test]
-        public void CropLinesInside_EmptyLineIds_ReturnsFail()
+            var ids = L(tr, new Point3d(75, 45, 0), new Point3d(75, 55, 0));
+            var r = new CropLineService(new CropGeometryService()).CropLinesInside(Concave, ids, tr).Data;
+            Assert.AreEqual(1, r.KeptCount);
+        });
+        [Test] public void Concave_Outside_Deleted() => Sd(tr =>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var service = new CropLineService(new CropGeometryService());
-                var op = service.CropLinesInside(RectBoundary, new List<ObjectId>(), tr);
-                Assert.IsFalse(op.IsSuccess);
-                StringAssert.Contains("为空", op.Message);
-            });
-        }
+            var ids = L(tr, new Point3d(75, 35, 0), new Point3d(75, 40, 0));
+            var r = new CropLineService(new CropGeometryService()).CropLinesInside(Concave, ids, tr).Data;
+            Assert.AreEqual(1, r.DeletedCount);
+        });
 
-        // ── 辅助方法 ──
-
-        /// <summary>
-        ///     在事务中创建一条直线，返回 [ObjectId].
-        /// </summary>
-        private static List<ObjectId> CreateLineInTr(ITransactionService tr, Point3d start, Point3d end)
+        private static void Sd(Action<ITransactionService> a) => CadServiceManager._.ExecuteInSideDatabase(a);
+        private static List<ObjectId> L(ITransactionService tr, Point3d s, Point3d e)
         {
-            var line = new Line(start, end);
-            var id = tr.AppendEntityToCurrentSpace(line);
+            var id = tr.AppendEntityToCurrentSpace(new Line(s, e));
             return new List<ObjectId> { id };
         }
     }

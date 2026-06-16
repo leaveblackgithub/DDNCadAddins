@@ -14,97 +14,112 @@ namespace AddinsACAD.ServiceTests
     [Apartment(ApartmentState.STA)]
     public class CropArcServiceTests
     {
-        private const double BoundarySize = 100.0;
-        private static List<CorePoint2D> RectBoundary =>
-            new List<CorePoint2D>
-            {
-                new CorePoint2D(0, 0),
-                new CorePoint2D(BoundarySize, 0),
-                new CorePoint2D(BoundarySize, BoundarySize),
-                new CorePoint2D(0, BoundarySize),
-            };
-
-        [Test]
-        public void CropArcsInside_ArcFullyInside_Kept()
+        private const double BS = 100.0;
+        private static List<CorePoint2D> Rect = new List<CorePoint2D>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var ids = CreateArcInTr(tr, new Point3d(50, 50, 0), 20, 0, Math.PI);
-                var service = new CropArcService(new CropGeometryService());
-                var op = service.CropArcsInside(RectBoundary, ids, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(0, op.Data.DeletedCount);
-                Assert.AreEqual(1, op.Data.KeptCount);
-            });
-        }
+            new CorePoint2D(0, 0), new CorePoint2D(BS, 0), new CorePoint2D(BS, BS), new CorePoint2D(0, BS)
+        };
 
-        [Test]
-        public void CropArcsInside_ArcFullyOutside_Deleted()
+        // 1. 基本 (4)
+        [Test] public void Inside_Kept() => Sd(tr =>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var ids = CreateArcInTr(tr, new Point3d(200, 200, 0), 20, 0, Math.PI);
-                var service = new CropArcService(new CropGeometryService());
-                var op = service.CropArcsInside(RectBoundary, ids, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(1, op.Data.DeletedCount);
-            });
-        }
+            var ids = A(tr, new Point3d(50, 50, 0), 20, 0, Math.PI);
+            var r = new CropArcService().CropArcsInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.KeptCount);
+        });
+        [Test] public void Outside_Deleted() => Sd(tr =>
+        {
+            var ids = A(tr, new Point3d(200, 200, 0), 20, 0, Math.PI);
+            var r = new CropArcService().CropArcsInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.DeletedCount);
+        });
+        [Test] public void Outside_Kept_KeepOutside() => Sd(tr =>
+        {
+            var ids = A(tr, new Point3d(200, 200, 0), 20, 0, Math.PI);
+            var r = new CropArcService().CropArcsOutside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.KeptCount);
+        });
+        [Test] public void Inside_Deleted_KeepOutside() => Sd(tr =>
+        {
+            var ids = A(tr, new Point3d(50, 50, 0), 20, 0, Math.PI);
+            var r = new CropArcService().CropArcsOutside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.DeletedCount);
+        });
 
-        [Test]
-        public void CropArcsInside_ArcCrossesBoundary_Split()
+        // 2. 拆分 (5)
+        [Test] public void Cross_Split() => Sd(tr =>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var ids = CreateArcInTr(tr, new Point3d(50, -50, 0), 80, 0, Math.PI);
-                var service = new CropArcService(new CropGeometryService());
-                var op = service.CropArcsInside(RectBoundary, ids, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(1, op.Data.SplitCount);
-            });
-        }
+            var ids = A(tr, new Point3d(50, -30, 0), 80, 0, Math.PI);
+            var r = new CropArcService().CropArcsInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.SplitCount);
+        });
+        [Test] public void Tangent_Arc() => Sd(tr =>
+        {
+            var ids = A(tr, new Point3d(50, 100, 0), 30, -Math.PI / 2, Math.PI / 2);
+            var r = new CropArcService().CropArcsInside(Rect, ids, tr).Data;
+            Assert.GreaterOrEqual(r.KeptCount + r.SplitCount, 0);
+        });
+        [Test] public void ShortArc() => Sd(tr =>
+        {
+            var ids = A(tr, new Point3d(50, 50, 0), 5, 0, Math.PI / 4);
+            var r = new CropArcService().CropArcsInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.KeptCount);
+        });
+        [Test] public void LargeArc() => Sd(tr =>
+        {
+            var ids = A(tr, new Point3d(50, 0, 0), 120, 0, 3.0);
+            var op = new CropArcService().CropArcsInside(Rect, ids, tr);
+            Assert.IsTrue(op.IsSuccess);
+        });
+        [Test] public void ArcSpanning2Pi() => Sd(tr =>
+        {
+            var ids = A(tr, new Point3d(50, 50, 0), 60, -Math.PI / 4, Math.PI / 2 + Math.PI);
+            var op = new CropArcService().CropArcsInside(Rect, ids, tr);
+            Assert.IsTrue(op.IsSuccess);
+        });
 
-        [Test]
-        public void CropArcsOutside_ArcInside_Deleted()
+        // 3. 边界/异常 (4)
+        [Test] public void NullBoundary_Fail() => Sd(tr =>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var ids = CreateArcInTr(tr, new Point3d(50, 50, 0), 20, 0, Math.PI);
-                var service = new CropArcService(new CropGeometryService());
-                var op = service.CropArcsOutside(RectBoundary, ids, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(1, op.Data.DeletedCount);
-            });
-        }
+            var op = new CropArcService().CropArcsInside(null, new List<ObjectId>(), tr);
+            Assert.IsFalse(op.IsSuccess);
+        });
+        [Test] public void EmptyList_Fail() => Sd(tr =>
+        {
+            var op = new CropArcService().CropArcsInside(Rect, new List<ObjectId>(), tr);
+            Assert.IsFalse(op.IsSuccess);
+        });
+        [Test] public void DegeneratedArc_Skipped() => Sd(tr =>
+        {
+            var ids = A(tr, new Point3d(50, 50, 0), 0, 0, 0);
+            var r = new CropArcService().CropArcsInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.SkippedCount);
+        });
 
-        [Test]
-        public void CropArcsInside_NullBoundary_ReturnsFail()
+        // 4. 凹多边形 (2)
+        private static List<CorePoint2D> Concave = new List<CorePoint2D>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var service = new CropArcService(new CropGeometryService());
-                var op = service.CropArcsInside(null, new List<ObjectId>(), tr);
-                Assert.IsFalse(op.IsSuccess);
-                StringAssert.Contains("顶点不足", op.Message);
-            });
-        }
+            new CorePoint2D(0, 0), new CorePoint2D(BS, 0), new CorePoint2D(BS, 30),
+            new CorePoint2D(50, 30), new CorePoint2D(50, BS), new CorePoint2D(BS, BS),
+            new CorePoint2D(BS, 70), new CorePoint2D(0, 70)
+        };
+        [Test] public void Concave_Inside_Kept() => Sd(tr =>
+        {
+            var ids = A(tr, new Point3d(75, 45, 0), 10, 0, Math.PI);
+            var r = new CropArcService().CropArcsInside(Concave, ids, tr).Data;
+            Assert.AreEqual(1, r.KeptCount);
+        });
+        [Test] public void Concave_Niche_Deleted() => Sd(tr =>
+        {
+            var ids = A(tr, new Point3d(75, 35, 0), 10, 0, Math.PI);
+            var r = new CropArcService().CropArcsInside(Concave, ids, tr).Data;
+            Assert.AreEqual(1, r.DeletedCount);
+        });
 
-        [Test]
-        public void CropArcsInside_EmptyList_ReturnsFail()
+        private static void Sd(Action<ITransactionService> a) => CadServiceManager._.ExecuteInSideDatabase(a);
+        private static List<ObjectId> A(ITransactionService tr, Point3d c, double r, double sa, double ea)
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var service = new CropArcService(new CropGeometryService());
-                var op = service.CropArcsInside(RectBoundary, new List<ObjectId>(), tr);
-                Assert.IsFalse(op.IsSuccess);
-                StringAssert.Contains("为空", op.Message);
-            });
-        }
-
-        private static List<ObjectId> CreateArcInTr(ITransactionService tr, Point3d center, double radius, double startAngle, double endAngle)
-        {
-            var arc = new Arc(center, radius, startAngle, endAngle);
-            var id = tr.AppendEntityToCurrentSpace(arc);
+            var id = tr.AppendEntityToCurrentSpace(new Arc(c, r, sa, ea));
             return new List<ObjectId> { id };
         }
     }

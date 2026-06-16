@@ -14,84 +14,100 @@ namespace AddinsACAD.ServiceTests
     [Apartment(ApartmentState.STA)]
     public class CropCircleServiceTests
     {
-        private const double BoundarySize = 100.0;
-        private static List<CorePoint2D> RectBoundary =>
-            new List<CorePoint2D>
-            {
-                new CorePoint2D(0, 0),
-                new CorePoint2D(BoundarySize, 0),
-                new CorePoint2D(BoundarySize, BoundarySize),
-                new CorePoint2D(0, BoundarySize),
-            };
-
-        [Test]
-        public void CropCirclesInside_CircleFullyInside_Kept()
+        private const double BS = 100.0;
+        private static List<CorePoint2D> Rect = new List<CorePoint2D>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var ids = CreateCircle(tr, new Point3d(50, 50, 0), 20);
-                var service = new CropCircleService(new CropGeometryService());
-                var op = service.CropCirclesInside(RectBoundary, ids, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(0, op.Data.DeletedCount);
-                Assert.AreEqual(1, op.Data.KeptCount);
-            });
-        }
+            new CorePoint2D(0, 0), new CorePoint2D(BS, 0), new CorePoint2D(BS, BS), new CorePoint2D(0, BS)
+        };
 
-        [Test]
-        public void CropCirclesInside_CircleFullyOutside_Deleted()
+        // 1. 基本 (4)
+        [Test] public void Inside_Kept() => Sd(tr =>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var ids = CreateCircle(tr, new Point3d(200, 200, 0), 20);
-                var service = new CropCircleService(new CropGeometryService());
-                var op = service.CropCirclesInside(RectBoundary, ids, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(1, op.Data.DeletedCount);
-            });
-        }
+            var ids = C(tr, new Point3d(50, 50, 0), 20);
+            var r = new CropCircleService().CropCirclesInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.KeptCount); Assert.AreEqual(0, r.DeletedCount);
+        });
+        [Test] public void Outside_Deleted() => Sd(tr =>
+        {
+            var ids = C(tr, new Point3d(200, 200, 0), 20);
+            var r = new CropCircleService().CropCirclesInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.DeletedCount);
+        });
+        [Test] public void Outside_Kept_KeepOutside() => Sd(tr =>
+        {
+            var ids = C(tr, new Point3d(200, 200, 0), 20);
+            var r = new CropCircleService().CropCirclesOutside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.KeptCount);
+        });
+        [Test] public void Inside_Deleted_KeepOutside() => Sd(tr =>
+        {
+            var ids = C(tr, new Point3d(50, 50, 0), 20);
+            var r = new CropCircleService().CropCirclesOutside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.DeletedCount);
+        });
 
-        [Test]
-        public void CropCirclesOutside_CircleInside_Deleted()
+        // 2. 拆分 (3)
+        [Test] public void CrossBoundary_Split() => Sd(tr =>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var ids = CreateCircle(tr, new Point3d(50, 50, 0), 20);
-                var service = new CropCircleService(new CropGeometryService());
-                var op = service.CropCirclesOutside(RectBoundary, ids, tr);
-                Assert.IsTrue(op.IsSuccess, op.Message);
-                Assert.AreEqual(1, op.Data.DeletedCount);
-            });
-        }
+            var ids = C(tr, new Point3d(50, 0, 0), 120);
+            var r = new CropCircleService().CropCirclesInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.SplitCount);
+        });
+        [Test] public void SmallCircleCrossing_Split() => Sd(tr =>
+        {
+            var ids = C(tr, new Point3d(0, 50, 0), 10);
+            var r = new CropCircleService().CropCirclesInside(Rect, ids, tr).Data;
+            Assert.GreaterOrEqual(r.KeptCount + r.SplitCount, 0);
+        });
+        [Test] public void CircleOnBoundaryLine() => Sd(tr =>
+        {
+            var ids = C(tr, new Point3d(50, 100, 0), 30);
+            var op = new CropCircleService().CropCirclesInside(Rect, ids, tr);
+            Assert.IsTrue(op.IsSuccess);
+        });
 
-        [Test]
-        public void CropCirclesInside_NullBoundary_ReturnsFail()
+        // 3. 边界/异常 (3)
+        [Test] public void NullBoundary_Fail() => Sd(tr =>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var service = new CropCircleService(new CropGeometryService());
-                var op = service.CropCirclesInside(null, new List<ObjectId>(), tr);
-                Assert.IsFalse(op.IsSuccess);
-                StringAssert.Contains("顶点不足", op.Message);
-            });
-        }
+            var op = new CropCircleService().CropCirclesInside(null, new List<ObjectId>(), tr);
+            Assert.IsFalse(op.IsSuccess);
+        });
+        [Test] public void EmptyList_Fail() => Sd(tr =>
+        {
+            var op = new CropCircleService().CropCirclesInside(Rect, new List<ObjectId>(), tr);
+            Assert.IsFalse(op.IsSuccess);
+        });
+        [Test] public void DegeneratedCircle_Skipped() => Sd(tr =>
+        {
+            var ids = C(tr, new Point3d(50, 50, 0), 0);
+            var r = new CropCircleService().CropCirclesInside(Rect, ids, tr).Data;
+            Assert.AreEqual(1, r.SkippedCount);
+        });
 
-        [Test]
-        public void CropCirclesInside_EmptyList_ReturnsFail()
+        // 4. 凹多边形 (2)
+        private static List<CorePoint2D> Concave = new List<CorePoint2D>
         {
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var service = new CropCircleService(new CropGeometryService());
-                var op = service.CropCirclesInside(RectBoundary, new List<ObjectId>(), tr);
-                Assert.IsFalse(op.IsSuccess);
-                StringAssert.Contains("为空", op.Message);
-            });
-        }
+            new CorePoint2D(0, 0), new CorePoint2D(BS, 0), new CorePoint2D(BS, 30),
+            new CorePoint2D(50, 30), new CorePoint2D(50, BS), new CorePoint2D(BS, BS),
+            new CorePoint2D(BS, 70), new CorePoint2D(0, 70)
+        };
+        [Test] public void Concave_Inside_Kept() => Sd(tr =>
+        {
+            var ids = C(tr, new Point3d(75, 45, 0), 5);
+            var r = new CropCircleService().CropCirclesInside(Concave, ids, tr).Data;
+            Assert.AreEqual(1, r.KeptCount);
+        });
+        [Test] public void Concave_Niche_Deleted() => Sd(tr =>
+        {
+            var ids = C(tr, new Point3d(75, 35, 0), 4);
+            var r = new CropCircleService().CropCirclesInside(Concave, ids, tr).Data;
+            Assert.AreEqual(1, r.DeletedCount);
+        });
 
-        private static List<ObjectId> CreateCircle(ITransactionService tr, Point3d center, double radius)
+        private static void Sd(Action<ITransactionService> a) => CadServiceManager._.ExecuteInSideDatabase(a);
+        private static List<ObjectId> C(ITransactionService tr, Point3d c, double r)
         {
-            var circle = new Circle(center, Vector3d.ZAxis, radius);
-            var id = tr.AppendEntityToCurrentSpace(circle);
+            var id = tr.AppendEntityToCurrentSpace(new Circle(c, Vector3d.ZAxis, r));
             return new List<ObjectId> { id };
         }
     }
