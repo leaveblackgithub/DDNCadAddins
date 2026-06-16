@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
+using ServiceACAD;
 
 [assembly: CommandClass(typeof(AddinsACAD.Commands.CommandTestsCommand))]
 
@@ -105,11 +106,21 @@ namespace AddinsACAD.Commands
                 }
 
                 ed.WriteMessage($"\n执行命令: {cmdToExecute}\n");
-                ed.Command(cmdToExecute);
+                try
+                {
+                    ed.Command(cmdToExecute);
+                }
+                catch (System.Exception cmdEx)
+                {
+                    ed.WriteMessage($"\n执行命令 {cmdToExecute} 失败: {cmdEx.Message}");
+                    ed.WriteMessage("\n提示: 请重新 NETLOAD 最新编译的 DLL 后重试。");
+                    Logger._.Error($"ed.Command({cmdToExecute}) 失败: {cmdEx.Message}", cmdEx);
+                }
             }
             catch (System.Exception ex)
             {
                 Application.DocumentManager.MdiActiveDocument.Editor.WriteMessage($"\nCOMMANDTESTS 执行失败: {ex.Message}");
+                Logger._.Error($"COMMANDTESTS 执行失败: {ex.Message}", ex);
             }
         }
     }
