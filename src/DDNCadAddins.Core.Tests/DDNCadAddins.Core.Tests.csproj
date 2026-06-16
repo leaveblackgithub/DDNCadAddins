@@ -28,6 +28,9 @@
     <Compile Include="XClipBoundaryGeometryServiceTests.cs" />
     <Compile Include="ConstructorUtilsTests.cs" />
     <Compile Include="PropertyUtilsTests.cs" />
+    <Compile Include="BlockExplodeResultTests.cs" />
+    <Compile Include="CalculationResultTests.cs" />
+    <Compile Include="Matrix3DTests.cs" />
     <Compile Include="CropGeometryServiceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
