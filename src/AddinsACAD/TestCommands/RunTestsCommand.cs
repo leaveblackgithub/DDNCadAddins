@@ -79,7 +79,7 @@ namespace AddinsACAD.TestCommands
                 if (docService == null)
                 {
                     CadServiceManager.ServiceEd.WriteMessage(
-                        $"\n提示: 当前无活动图纸，依赖 {RequiredDrawingTitle}.dwg 的测试将被跳过。");
+                        $"\n提示: 当前无活动图纸。");
                     return;
                 }
 
@@ -87,7 +87,7 @@ namespace AddinsACAD.TestCommands
                 if (string.Equals(drawingName, RequiredDrawingTitle, StringComparison.CurrentCultureIgnoreCase))
                 {
                     CadServiceManager.ServiceEd.WriteMessage(
-                        $"\n当前图纸: {drawingName}.dwg（可运行全部测试）");
+                        $"\n当前图纸: {drawingName}.dwg（全部测试均可运行）");
                     return;
                 }
 
@@ -95,6 +95,7 @@ namespace AddinsACAD.TestCommands
                     $"\n当前图纸: {drawingName}（非 {RequiredDrawingTitle}，以下测试将跳过）:" +
                     "\n  - BlockServiceExtendedTests.TestIsXclipped_XclippedBlock_ReturnsTrue" +
                     "\n  - BlockServiceExtendedTests.TestGetBlockService_CalledTwice_ReturnsSameInstance" +
+                    "\n  - BlockServiceExtendedTests.TestCopyXclipState_XclippedBlock_CloneRetainsXclip" +
                     "\n  - TransactionServiceTest.TestGetModelSpaceChildObjs2" +
                     "\n  - TransactionServiceTest.TestGetBlockRef23432" +
                     $"\n如需完整测试，请先 OPEN {RequiredDrawingTitle}.dwg 并设为当前图纸。" +

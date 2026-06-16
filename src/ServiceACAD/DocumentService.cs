@@ -135,6 +135,20 @@ namespace ServiceACAD
         }
 
         /// <inheritdoc />
+        public void ExecuteInSideDatabases(params Action<ITransactionService>[] actions)
+        {
+            if (actions == null || actions.Length == 0)
+            {
+                return;
+            }
+
+            foreach (var action in actions)
+            {
+                ExecuteInSideDatabase(action);
+            }
+        }
+
+        /// <inheritdoc />
         public void ExecuteInSideDatabase(Action<ITransactionService> action)
         {
             if (action == null)

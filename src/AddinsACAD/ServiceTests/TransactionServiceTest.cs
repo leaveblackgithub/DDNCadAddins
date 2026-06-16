@@ -13,15 +13,16 @@ namespace AddinsACAD.ServiceTests
         [Test]
         public void TestGetModelSpaceForWrite2()
         {
-            void Action1(ITransactionService tr)
+            CadServiceManager._.ExecuteInSideDatabase(tr =>
             {
                 var modelSpace = tr.GetModelSpace(OpenMode.ForWrite);
                 Assert.NotNull(modelSpace);
-            }
-
-            CadServiceManager._.ExecuteInTransactions("", Action1);
+            });
         }
 
+        /// <summary>
+        ///     依赖 xclip.dwg 中块参照数量。侧数据库无法满足，保留在原文档数据库.
+        /// </summary>
         [Test]
         public void TestGetModelSpaceChildObjs2()
         {
@@ -41,6 +42,9 @@ namespace AddinsACAD.ServiceTests
             CadServiceManager._.ExecuteInTransactions("xclip", Action1);
         }
 
+        /// <summary>
+        ///     依赖 xclip.dwg 中特定块定义。侧数据库无法满足，保留在原文档数据库.
+        /// </summary>
         [Test]
         public void TestGetBlockRef23432()
         {
@@ -56,7 +60,7 @@ namespace AddinsACAD.ServiceTests
         [Test]
         public void TestCreateNewLayer()
         {
-            void Action1(ITransactionService tr)
+            CadServiceManager._.ExecuteInSideDatabase(tr =>
             {
                 var layerName1 = CommonTestMethods.GetTestLayerName();
                 var newLayer1 = tr.Style.CreateLayer(layerName1);
@@ -74,9 +78,7 @@ namespace AddinsACAD.ServiceTests
                 Assert.AreEqual(newLayer3.Color.ColorIndex, colorIndex);
                 Assert.AreEqual(newLayer3.LinetypeObjectId.ToString(),
                     tr.Style.GetLineType(lineTypeName).Id.ToString());
-            }
-
-            CadServiceManager._.ExecuteInTransactions("", Action1);
+            });
         }
 
         [Test]
@@ -84,16 +86,14 @@ namespace AddinsACAD.ServiceTests
         {
             var lineTypeName = CommonTestMethods.GetTestLineTypeName();
 
-            void Action1(ITransactionService tr)
+            CadServiceManager._.ExecuteInSideDatabase(tr =>
             {
                 var newLineType1 = tr.Style.CreateLineType(lineTypeName);
                 Assert.IsNotNull(newLineType1);
                 Assert.AreEqual(lineTypeName, newLineType1.Name);
                 var newLineType2 = tr.Style.CreateLineType(lineTypeName);
                 Assert.IsNull(newLineType2);
-            }
-
-            CadServiceManager._.ExecuteInTransactions("", Action1);
+            });
         }
     }
 }

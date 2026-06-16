@@ -26,5 +26,12 @@ namespace ServiceACAD
         /// </summary>
         /// <param name="action">在侧数据库事务中执行的逻辑.</param>
         void ExecuteInSideDatabase(Action<ITransactionService> action);
+
+        /// <summary>
+        ///     在独立的内存侧数据库中逐个执行多个操作。
+        ///     每个 action 获得独立的 Database 实例，完全隔离.
+        /// </summary>
+        /// <param name="actions">在侧数据库事务中执行的逻辑列表.</param>
+        void ExecuteInSideDatabases(params Action<ITransactionService>[] actions);
     }
 }
