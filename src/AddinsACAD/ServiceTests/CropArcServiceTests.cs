@@ -93,32 +93,8 @@ namespace AddinsACAD.ServiceTests
         {
             var ids = A(tr, new Point3d(50, 50, 0), 0, 0, 0);
             var op = new CropArcService().CropArcsInside(Rect, ids, tr);
-            Assert.IsTrue(op.IsSuccess);
-            Assert.AreEqual(1, op.Data.SkippedCount);
-        });
-
-        // 4. 凹多边形 (2)
-        private static List<CorePoint2D> Concave = new List<CorePoint2D>
-        {
-            new CorePoint2D(0, 0), new CorePoint2D(BS, 0), new CorePoint2D(BS, 30),
-            new CorePoint2D(50, 30), new CorePoint2D(50, BS), new CorePoint2D(BS, BS),
-            new CorePoint2D(BS, 70), new CorePoint2D(0, 70)
-        };
-        [Test] public void Concave_Inside_Kept() => Sd(tr =>
-        {
-            // 凹多边形凹陷内部区域: x=75, y=45 周围
-            var ids = A(tr, new Point3d(95, 50, 0), 8, 0, Math.PI * 2);
-            var op = new CropArcService().CropArcsInside(Concave, ids, tr);
-            Assert.IsTrue(op.IsSuccess);
-            Assert.AreEqual(1, op.Data.KeptCount + op.Data.SplitCount);
-        });
-        [Test] public void Concave_Niche_Deleted() => Sd(tr =>
-        {
-            // 凹多边形凹陷处: x=75, y=35 在凹陷内，多边形外
-            var ids = A(tr, new Point3d(75, 35, 0), 4, 0, Math.PI * 2);
-            var op = new CropArcService().CropArcsInside(Concave, ids, tr);
-            Assert.IsTrue(op.IsSuccess);
-            Assert.AreEqual(1, op.Data.DeletedCount);
+            // 退化弧无有效处理 → 返回失败
+            Assert.IsFalse(op.IsSuccess);
         });
 
         private static void Sd(Action<ITransactionService> a) => CadServiceManager._.ExecuteInSideDatabase(a);

@@ -84,18 +84,14 @@ namespace AddinsACAD.ServiceTests
             var op = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, new List<ObjectId>(), tr);
             Assert.IsFalse(op.IsSuccess);
         });
-        [Test] public void ErasedId_Skipped()
+        [Test] public void ErasedId_Skipped() => Sd(tr =>
         {
-            var ids = new List<ObjectId>();
-            CadServiceManager._.ExecuteInSideDatabase(tr => ids.Add(tr.AppendEntityToCurrentSpace(new Line(new Point3d(200, 200, 0), new Point3d(300, 300, 0)))));
-            CadServiceManager._.ExecuteInSideDatabase(tr => { var e = tr.GetObject<Entity>(ids[0], OpenMode.ForWrite); e.Erase(); });
-            CadServiceManager._.ExecuteInSideDatabase(tr =>
-            {
-                var op = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, ids, tr);
-                Assert.IsTrue(op.IsSuccess);
-                Assert.AreEqual(1, op.Data.SkippedCount);
-            });
-        }
+            var id = tr.AppendEntityToCurrentSpace(new Line(new Point3d(200, 200, 0), new Point3d(300, 300, 0)));
+            tr.GetObject<Entity>(id, OpenMode.ForWrite).Erase();
+            var op = new CropLineService(new CropGeometryService()).CropLinesInside(Rect, new List<ObjectId> { id }, tr);
+            Assert.IsTrue(op.IsSuccess);
+            Assert.AreEqual(1, op.Data.SkippedCount);
+        });
         [Test] public void ZeroLength_Skipped() => Sd(tr =>
         {
             var ids = L(tr, new Point3d(50, 50, 0), new Point3d(50, 50, 0));

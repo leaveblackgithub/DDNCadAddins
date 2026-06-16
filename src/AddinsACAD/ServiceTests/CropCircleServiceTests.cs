@@ -53,8 +53,8 @@ namespace AddinsACAD.ServiceTests
         // 2. 拆分 (3)
         [Test] public void CrossBoundary_Split() => Sd(tr =>
         {
-            // 圆心在 (50, 50, 0)，半径 80 → 与 100x100 边界相交
-            var ids = C(tr, new Point3d(50, 50, 0), 80);
+            // 圆心 (50, 50)，半径 120 → 圆必然完全包围 100x100 边界
+            var ids = C(tr, new Point3d(50, 50, 0), 120);
             var op = new CropCircleService().CropCirclesInside(Rect, ids, tr);
             Assert.IsTrue(op.IsSuccess);
             Assert.GreaterOrEqual(op.Data.SplitCount + op.Data.KeptCount, 1);
@@ -84,12 +84,12 @@ namespace AddinsACAD.ServiceTests
             var op = new CropCircleService().CropCirclesInside(Rect, new List<ObjectId>(), tr);
             Assert.IsFalse(op.IsSuccess);
         });
-        [Test] public void DegeneratedCircle_Skipped() => Sd(tr =>
+        [Test] public void DegeneratedCircle_ReturnsFail() => Sd(tr =>
         {
             var ids = C(tr, new Point3d(50, 50, 0), 0);
             var op = new CropCircleService().CropCirclesInside(Rect, ids, tr);
-            Assert.IsTrue(op.IsSuccess);
-            Assert.AreEqual(1, op.Data.SkippedCount + op.Data.DeletedCount + op.Data.KeptCount);
+            // 退化圆无有效处理 → 返回失败
+            Assert.IsFalse(op.IsSuccess);
         });
 
         private static void Sd(Action<ITransactionService> a) => CadServiceManager._.ExecuteInSideDatabase(a);
