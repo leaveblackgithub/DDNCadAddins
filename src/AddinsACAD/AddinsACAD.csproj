@@ -29,6 +29,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="Commands\GenerateXclipBoundaryCommand.cs" />
     <Compile Include="Commands\CropInsideCommand.cs" />
     <Compile Include="Commands\CropLineCommand.cs" />
+    <Compile Include="Commands\CropPolylineCommand.cs" />
     <Compile Include="Commands\CommandTestsCommand.cs" />
     <Compile Include="TestCommands\CreateTestBlockForExplodeCommand.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

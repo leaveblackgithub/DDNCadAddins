@@ -53,13 +53,11 @@ namespace ServiceACAD
             this._cropGeometry = cropGeometry ?? new CropGeometryService();
         }
 
+        // ---- 公共接口 ----
+
         /// <summary>
         ///     裁剪多段线：保留边界内部的多段线.
         /// </summary>
-        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
-        /// <param name="polylineIds">待裁剪多段线的 ObjectId 列表.</param>
-        /// <param name="transactionService">事务服务.</param>
-        /// <returns>裁剪结果，包含删除/拆分/保留/跳过的数量.</returns>
         public OpResultOfCropPolylineResult CropPolylinesInside(
             IReadOnlyList<CorePoint2D> boundaryPoints,
             List<ObjectId> polylineIds,
@@ -71,10 +69,6 @@ namespace ServiceACAD
         /// <summary>
         ///     裁剪多段线：保留边界外部的多段线.
         /// </summary>
-        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
-        /// <param name="polylineIds">待裁剪多段线的 ObjectId 列表.</param>
-        /// <param name="transactionService">事务服务.</param>
-        /// <returns>裁剪结果，包含删除/拆分/保留/跳过的数量.</returns>
         public OpResultOfCropPolylineResult CropPolylinesOutside(
             IReadOnlyList<CorePoint2D> boundaryPoints,
             List<ObjectId> polylineIds,
@@ -84,11 +78,8 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        ///     裁剪所有多段线：保留边界内部的多段线，自动选择图纸中所有 Polyline 对象.
+        ///     裁剪所有多段线：保留边界内部，自动选择图纸中所有 Polyline 对象.
         /// </summary>
-        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
-        /// <param name="transactionService">事务服务.</param>
-        /// <returns>裁剪结果.</returns>
         public OpResultOfCropPolylineResult CropAllPolylinesInside(
             IReadOnlyList<CorePoint2D> boundaryPoints,
             ITransactionService transactionService)
@@ -97,11 +88,8 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        ///     裁剪所有多段线：保留边界外部的多段线，自动选择图纸中所有 Polyline 对象.
+        ///     裁剪所有多段线：保留边界外部，自动选择图纸中所有 Polyline 对象.
         /// </summary>
-        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
-        /// <param name="transactionService">事务服务.</param>
-        /// <returns>裁剪结果.</returns>
         public OpResultOfCropPolylineResult CropAllPolylinesOutside(
             IReadOnlyList<CorePoint2D> boundaryPoints,
             ITransactionService transactionService)
@@ -109,9 +97,8 @@ namespace ServiceACAD
             return this.CropAllPolylines(boundaryPoints, transactionService, keepInside: false);
         }
 
-        /// <summary>
-        ///     自动选择图纸中所有 Polyline 对象进行裁剪.
-        /// </summary>
+        // ---- 私有实现 ----
+
         private OpResultOfCropPolylineResult CropAllPolylines(
             IReadOnlyList<CorePoint2D> boundaryPoints,
             ITransactionService transactionService,
@@ -120,22 +107,14 @@ namespace ServiceACAD
             try
             {
                 if (boundaryPoints == null || boundaryPoints.Count < 3)
-                {
                     return OpResultOfCropPolylineResult.Fail("裁剪边界顶点不足（至少需要3个点）");
-                }
 
                 if (transactionService == null)
-                {
                     return OpResultOfCropPolylineResult.Fail("事务服务引用为空");
-                }
 
-                // 获取模型空间中所有 Polyline 对象
                 var allPolylineIds = transactionService.GetChildObjectsFromModelspace<Polyline>();
-
                 if (allPolylineIds == null || allPolylineIds.Count == 0)
-                {
                     return OpResultOfCropPolylineResult.Fail("图纸中没有找到任何多段线");
-                }
 
                 return this.CropPolylines(boundaryPoints, allPolylineIds, transactionService, keepInside);
             }
@@ -146,9 +125,6 @@ namespace ServiceACAD
             }
         }
 
-        /// <summary>
-        ///     核心多段线裁剪逻辑.
-        /// </summary>
         private OpResultOfCropPolylineResult CropPolylines(
             IReadOnlyList<CorePoint2D> boundaryPoints,
             List<ObjectId> polylineIds,
@@ -158,19 +134,13 @@ namespace ServiceACAD
             try
             {
                 if (boundaryPoints == null || boundaryPoints.Count < 3)
-                {
                     return OpResultOfCropPolylineResult.Fail("裁剪边界顶点不足（至少需要3个点）");
-                }
 
                 if (polylineIds == null || polylineIds.Count == 0)
-                {
                     return OpResultOfCropPolylineResult.Fail("待裁剪的多段线列表为空");
-                }
 
                 if (transactionService == null)
-                {
                     return OpResultOfCropPolylineResult.Fail("事务服务引用为空");
-                }
 
                 var result = new CropPolylineResult();
 
@@ -207,9 +177,7 @@ namespace ServiceACAD
                 }
 
                 if (result.DeletedCount == 0 && result.SplitCount == 0 && result.KeptCount == 0)
-                {
                     return OpResultOfCropPolylineResult.Fail("没有多段线被处理");
-                }
 
                 return OpResultOfCropPolylineResult.Success(result);
             }
@@ -220,9 +188,6 @@ namespace ServiceACAD
             }
         }
 
-        /// <summary>
-        ///     处理单条多段线的裁剪：逐段计算与边界的交点，拆分并保留目标侧段.
-        /// </summary>
         private void ProcessPolyline(
             Polyline polyline,
             IReadOnlyList<CorePoint2D> boundaryPoints,
@@ -232,7 +197,6 @@ namespace ServiceACAD
         {
             if (!polyline.Closed)
             {
-                // 开放多段线：按线段拆分为独立 Line 段处理后再重组
                 this.ProcessOpenPolyline(polyline, boundaryPoints, keepInside, transactionService, result);
                 return;
             }
@@ -261,13 +225,9 @@ namespace ServiceACAD
                 return;
             }
 
-            // 闭合多段线需要拆分：采样为线段处理
             this.ProcessOpenPolyline(polyline, boundaryPoints, keepInside, transactionService, result);
         }
 
-        /// <summary>
-        ///     处理开放多段线（或闭合多段线按线段处理）：逐段求交、拆分段、重组保留段.
-        /// </summary>
         private void ProcessOpenPolyline(
             Polyline polyline,
             IReadOnlyList<CorePoint2D> boundaryPoints,
@@ -284,33 +244,27 @@ namespace ServiceACAD
                     return;
                 }
 
-                // 收集所有沿多段线的线段节点（顶点位置 + 交点位置）
-                // 每条线段独立处理
                 var segmentsToKeep = new List<List<Point2d>>();
                 List<Point2d> currentGroup = null;
 
-                // 遍历多段线的每条边
+                // 遍历多段线的每条边（顶点 i → i+1）
                 for (var i = 0; i < vertexCount - 1; i++)
                 {
                     var segType = polyline.GetSegmentType(i);
                     if (segType == SegmentType.Line)
                     {
                         var lineSeg = polyline.GetLineSegment2dAt(i);
-                        var start2d = lineSeg.StartPoint;
-                        var end2d = lineSeg.EndPoint;
-
-                        var startCorePt = new CorePoint2D(start2d.X, start2d.Y);
-                        var endCorePt = new CorePoint2D(end2d.X, end2d.Y);
+                        var startCorePt = new CorePoint2D(lineSeg.StartPoint.X, lineSeg.StartPoint.Y);
+                        var endCorePt = new CorePoint2D(lineSeg.EndPoint.X, lineSeg.EndPoint.Y);
 
                         var intersections = this._cropGeometry.FindLineSegmentIntersections(
                             startCorePt, endCorePt, boundaryPoints);
 
                         this.ProcessSegment(startCorePt, endCorePt, intersections, keepInside,
-                            ref currentGroup, segmentsToKeep);
+                            ref currentGroup, segmentsToKeep, boundaryPoints);
                     }
                     else if (segType == SegmentType.Arc)
                     {
-                        // 弧线段：采样为多段直线段处理
                         var arcSeg = polyline.GetArcSegment2dAt(i);
                         var sampledStarts = new List<CorePoint2D>();
                         var sampledEnds = new List<CorePoint2D>();
@@ -322,26 +276,25 @@ namespace ServiceACAD
                                 sampledStarts[j], sampledEnds[j], boundaryPoints);
 
                             this.ProcessSegment(sampledStarts[j], sampledEnds[j], intersections, keepInside,
-                                ref currentGroup, segmentsToKeep);
+                                ref currentGroup, segmentsToKeep, boundaryPoints);
                         }
                     }
                 }
 
-                // 处理闭合多段线的最后一段（连接最后一个顶点到第一个顶点）
+                // 闭合多段线的最后一段（最后一个顶点 → 第一个顶点）
                 if (polyline.Closed)
                 {
                     var segType = polyline.GetSegmentType(vertexCount - 1);
                     if (segType == SegmentType.Line)
                     {
                         var lineSeg = polyline.GetLineSegment2dAt(vertexCount - 1);
-                        var start2d = lineSeg.StartPoint;
-                        var end2d = lineSeg.EndPoint;
-                        var startCorePt = new CorePoint2D(start2d.X, start2d.Y);
-                        var endCorePt = new CorePoint2D(end2d.X, end2d.Y);
+                        var startCorePt = new CorePoint2D(lineSeg.StartPoint.X, lineSeg.StartPoint.Y);
+                        var endCorePt = new CorePoint2D(lineSeg.EndPoint.X, lineSeg.EndPoint.Y);
+
                         var intersections = this._cropGeometry.FindLineSegmentIntersections(
                             startCorePt, endCorePt, boundaryPoints);
                         this.ProcessSegment(startCorePt, endCorePt, intersections, keepInside,
-                            ref currentGroup, segmentsToKeep);
+                            ref currentGroup, segmentsToKeep, boundaryPoints);
                     }
                     else if (segType == SegmentType.Arc)
                     {
@@ -354,16 +307,13 @@ namespace ServiceACAD
                             var intersections = this._cropGeometry.FindLineSegmentIntersections(
                                 sampledStarts[j], sampledEnds[j], boundaryPoints);
                             this.ProcessSegment(sampledStarts[j], sampledEnds[j], intersections, keepInside,
-                                ref currentGroup, segmentsToKeep);
+                                ref currentGroup, segmentsToKeep, boundaryPoints);
                         }
                     }
                 }
 
-                // 结束当前组
                 if (currentGroup != null && currentGroup.Count >= 2)
-                {
                     segmentsToKeep.Add(currentGroup);
-                }
 
                 if (segmentsToKeep.Count == 0)
                 {
@@ -371,11 +321,8 @@ namespace ServiceACAD
                     return;
                 }
 
-                // 创建新的多段线
                 if (!polyline.IsWriteEnabled)
-                {
                     polyline.UpgradeOpen();
-                }
 
                 polyline.Erase();
 
@@ -389,9 +336,7 @@ namespace ServiceACAD
                     newPoly.ConstantWidth = polyline.ConstantWidth;
 
                     for (var k = 0; k < vertexList.Count; k++)
-                    {
                         newPoly.AddVertexAt(k, vertexList[k], 0.0, 0.0, 0.0);
-                    }
 
                     transactionService.AppendEntityToCurrentSpace(newPoly);
                 }
@@ -405,24 +350,15 @@ namespace ServiceACAD
             }
         }
 
-        /// <summary>
-        ///     处理一个子线段：判断其各子段在边界内/外，分组保留目标侧段.
-        /// </summary>
-        /// <param name="segStart">线段起点.</param>
-        /// <param name="segEnd">线段终点.</param>
-        /// <param name="intersections">线段与边界的交点（已排序）.</param>
-        /// <param name="keepInside">true 保留内部，false 保留外部.</param>
-        /// <param name="currentGroup">当前正在积累的保留顶点组（可修改）.</param>
-        /// <param name="segmentsToKeep">已完成的分组顶点列表集合.</param>
         private void ProcessSegment(
             CorePoint2D segStart,
             CorePoint2D segEnd,
             List<CorePoint2D> intersections,
             bool keepInside,
             ref List<Point2d> currentGroup,
-            List<List<Point2d>> segmentsToKeep)
+            List<List<Point2d>> segmentsToKeep,
+            IReadOnlyList<CorePoint2D> boundaryPoints)
         {
-            // 构造节点序列：起点 + 交点 + 终点
             var nodes = new List<CorePoint2D> { segStart };
             nodes.AddRange(intersections);
             nodes.Add(segEnd);
@@ -435,39 +371,28 @@ namespace ServiceACAD
                 var dx = b.X - a.X;
                 var dy = b.Y - a.Y;
                 if ((dx * dx) + (dy * dy) < 1e-12)
-                {
                     continue;
-                }
 
                 var midPt = new CorePoint2D((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0);
                 var isInside = this._cropGeometry.IsPointInPolygon(midPt, boundaryPoints);
 
                 if ((keepInside && isInside) || (!keepInside && !isInside))
                 {
-                    // 该段在目标侧
                     if (currentGroup == null)
-                    {
                         currentGroup = new List<Point2d> { new Point2d(a.X, a.Y) };
-                    }
 
                     currentGroup.Add(new Point2d(b.X, b.Y));
                 }
                 else
                 {
-                    // 该段不在目标侧：结束当前组
                     if (currentGroup != null && currentGroup.Count >= 2)
-                    {
                         segmentsToKeep.Add(currentGroup);
-                    }
 
                     currentGroup = null;
                 }
             }
         }
 
-        /// <summary>
-        ///     将弧线段采样为多段直线段.
-        /// </summary>
         private void SampleArcSegment(
             CircularArc2d arc,
             int sampleCount,
@@ -491,17 +416,12 @@ namespace ServiceACAD
             }
         }
 
-        /// <summary>
-        ///     删除多段线并更新统计.
-        /// </summary>
         private void DeletePolyline(Polyline polyline, CropPolylineResult result)
         {
             try
             {
                 if (!polyline.IsWriteEnabled)
-                {
                     polyline.UpgradeOpen();
-                }
 
                 polyline.Erase();
                 result.DeletedCount++;
