@@ -179,7 +179,8 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        ///     处理单个圆：通过圆心点判断保留或删除.
+        ///     处理单个圆：通过圆周上多个采样点判断保留或删除.
+        ///     如果过半数采样点在目标侧，则保留；否则删除.
         /// </summary>
         private void ProcessCircle(
             Circle circle,
@@ -187,8 +188,31 @@ namespace ServiceACAD
             bool keepInside,
             CropCircleResult result)
         {
+            const int sampleCount = 16;
+            var insideCount = 0;
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var angle = 2.0 * Math.PI * i / sampleCount;
+                var x = circle.Center.X + circle.Radius * Math.Cos(angle);
+                var y = circle.Center.Y + circle.Radius * Math.Sin(angle);
+                var pt = new CorePoint2D(x, y);
+
+                if (this._cropGeometry.IsPointInPolygon(pt, boundaryPoints))
+                {
+                    insideCount++;
+                }
+            }
+
+            // 同时检查圆心
             var centerPt = new CorePoint2D(circle.Center.X, circle.Center.Y);
-            var isInside = this._cropGeometry.IsPointInPolygon(centerPt, boundaryPoints);
+            if (this._cropGeometry.IsPointInPolygon(centerPt, boundaryPoints))
+            {
+                insideCount++;
+            }
+
+            var totalChecks = sampleCount + 1;
+            var isInside = insideCount > totalChecks / 2;
 
             bool shouldKeep = (keepInside && isInside) || (!keepInside && !isInside);
 
