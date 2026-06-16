@@ -13,23 +13,34 @@ namespace AddinsACAD.Commands
 {
     /// <summary>
     ///     直线裁剪命令 - 专门处理 Line 类型的裁剪.
-    ///     选择闭合曲线作为裁剪边界，再选择要裁剪的直线，最后保留边界内部的直线.
+    ///     选择一条闭合曲线作为裁剪边界，然后选择要裁剪的直线（或自动选择所有直线）.
+    ///     支持选择保留边界内部或外部的直线.
     /// </summary>
     public class CropLineCommand
     {
         /// <summary>
-        ///     执行 CROPLINE 命令：保留边界内部的直线.
+        ///     执行 CROPLINE 命令：选择边界（单选），再选择直线，询问裁剪方向后裁剪.
         /// </summary>
         [CommandMethod("CROPLINE")]
         public void Execute()
         {
-            this.ExecuteCropLine(keepInside: true);
+            this.ExecuteCropLine(selectAllLines: false);
+        }
+
+        /// <summary>
+        ///     执行 CROPALLLINES 命令：选择边界（单选），自动选择所有直线，询问裁剪方向后裁剪.
+        /// </summary>
+        [CommandMethod("CROPALLLINES")]
+        public void ExecuteAll()
+        {
+            this.ExecuteCropLine(selectAllLines: true);
         }
 
         /// <summary>
         ///     核心执行逻辑.
         /// </summary>
-        private void ExecuteCropLine(bool keepInside)
+        /// <param name="selectAllLines">是否自动选择图纸中所有直线，false 则让用户手动选择.</param>
+        private void ExecuteCropLine(bool selectAllLines)
         {
             try
             {
@@ -37,24 +48,60 @@ namespace AddinsACAD.Commands
                     .MdiActiveDocument;
                 var ed = doc.Editor;
 
-                var boundaryPoints = this.SelectBoundaryPolyline(ed);
+                // 1. 选择边界（单选）
+                var boundaryPoints = this.SelectSingleBoundaryCurve(ed);
                 if (boundaryPoints == null || boundaryPoints.Count < 3)
                 {
                     return;
                 }
 
-                var lineIds = this.SelectLinesToCrop(ed);
-                if (lineIds == null || lineIds.Count == 0)
+                // 2. 选择或获取直线
+                List<ObjectId> lineIds = null;
+                if (selectAllLines)
                 {
-                    return;
+                    ed.WriteMessage("\n正在自动选择图纸中所有直线...");
+                    List<ObjectId> autoLineIds = null;
+                    CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
+                    {
+                        autoLineIds = serviceTrans.GetChildObjectsFromModelspace<Line>();
+                    });
+
+                    if (autoLineIds == null || autoLineIds.Count == 0)
+                    {
+                        ed.WriteMessage("\n图纸中没有找到任何直线。");
+                        return;
+                    }
+
+                    lineIds = autoLineIds;
+                    ed.WriteMessage($"\n已自动选择 {lineIds.Count} 条直线。");
+                }
+                else
+                {
+                    lineIds = this.SelectLinesToCrop(ed);
+                    if (lineIds == null || lineIds.Count == 0)
+                    {
+                        return;
+                    }
                 }
 
+                // 3. 询问裁剪方向：保留内部还是外部
+                bool? keepInside = this.AskCropDirection(ed);
+                if (!keepInside.HasValue)
+                {
+                    return; // 用户取消
+                }
+
+                // 4. 执行裁剪
+                var capturedLineIds = lineIds;
+                var capturedKeepInside = keepInside.Value;
                 CadServiceManager._.ExecuteInCommandTransaction(serviceTrans =>
                 {
                     try
                     {
                         var cropLineService = new CropLineService(new CropGeometryService());
-                        var result = cropLineService.CropLinesInside(boundaryPoints, lineIds, serviceTrans);
+                        var result = capturedKeepInside
+                            ? cropLineService.CropLinesInside(boundaryPoints, capturedLineIds, serviceTrans)
+                            : cropLineService.CropLinesOutside(boundaryPoints, capturedLineIds, serviceTrans);
 
                         if (!result.IsSuccess)
                         {
@@ -63,8 +110,10 @@ namespace AddinsACAD.Commands
                         }
 
                         var cropResult = result.Data;
+                        string commandName = selectAllLines ? "CROPALLLINES" : "CROPLINE";
+                        string direction = keepInside.Value ? "内部" : "外部";
                         ed.WriteMessage(
-                            $"\nCROPLINE 完成: 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个");
+                            $"\n{commandName} 完成 ({direction}): 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个");
                         return ServiceACAD.OpResult.Success();
                     }
                     catch (System.Exception ex)
@@ -82,19 +131,54 @@ namespace AddinsACAD.Commands
         }
 
         /// <summary>
-        ///     选择闭合曲线作为裁剪边界.
+        ///     询问裁剪方向：保留边界内部还是外部.
         /// </summary>
-        /// <returns>边界顶点列表（WCS），如果取消或选择无效则返回 null.</returns>
-        private List<DDNCadAddins.Core.Models.Point2D> SelectBoundaryPolyline(Editor ed)
+        /// <returns>true 保留内部，false 保留外部，null 表示取消.</returns>
+        private bool? AskCropDirection(Editor ed)
         {
             try
             {
-                var options = new PromptSelectionOptions
-                {
-                    MessageForAdding = "\n选择闭合曲线作为裁剪边界（圆/椭圆/闭合多段线/闭合样条线）: ",
-                    AllowDuplicates = false
-                };
+                var options = new PromptKeywordOptions("\n请选择裁剪方向 [内部(N)/外部(W)]: ", "内部 外部");
+                options.Keywords.Add("内部", "内部(N)", "保留边界内部的直线部分");
+                options.Keywords.Add("外部", "外部(W)", "保留边界外部的直线部分");
+                options.Keywords.Default = "内部";
+                options.AllowNone = true;
 
+                var result = ed.GetKeywords(options);
+                if (result.Status != PromptStatus.OK && result.Status != PromptStatus.Keyword)
+                {
+                    ed.WriteMessage("\n取消裁剪方向选择。");
+                    return null;
+                }
+
+                if (result.StringResult == "内部")
+                {
+                    return true;
+                }
+                else if (result.StringResult == "外部")
+                {
+                    return false;
+                }
+
+                // 默认使用"内部"
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                Logger._.Error($"询问裁剪方向失败: {ex.Message}", ex);
+                ed.WriteMessage($"\n询问裁剪方向失败: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        ///     选择一条闭合曲线作为裁剪边界（单选）.
+        /// </summary>
+        /// <returns>边界顶点列表（WCS），如果取消或选择无效则返回 null.</returns>
+        private List<DDNCadAddins.Core.Models.Point2D> SelectSingleBoundaryCurve(Editor ed)
+        {
+            try
+            {
                 var filter = new SelectionFilter(new TypedValue[]
                 {
                     new TypedValue((int)DxfCode.Operator, "<OR"),
@@ -106,20 +190,18 @@ namespace AddinsACAD.Commands
                     new TypedValue((int)DxfCode.Operator, "OR>"),
                 });
 
-                var promptResult = ed.GetSelection(options, filter);
+                var options = new PromptEntityOptions("\n选择裁剪边界曲线（单选）: ");
+                options.SetRejectMessage("\n请选择圆、椭圆、闭合多段线或闭合样条线作为裁剪边界。");
+                options.AddAllowedClass(typeof(Curve), false);
+
+                var promptResult = ed.GetEntity(options);
                 if (promptResult.Status != PromptStatus.OK)
                 {
                     ed.WriteMessage("\n未选择边界曲线或选择被取消。");
                     return null;
                 }
 
-                if (promptResult.Value.Count != 1)
-                {
-                    ed.WriteMessage("\n请选择一条闭合曲线作为裁剪边界（圆/椭圆/闭合多段线/闭合样条线均可）。");
-                    return null;
-                }
-
-                var curveId = promptResult.Value[0].ObjectId;
+                var curveId = promptResult.ObjectId;
                 var points = new List<DDNCadAddins.Core.Models.Point2D>();
 
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>

@@ -84,6 +84,73 @@ namespace ServiceACAD
         }
 
         /// <summary>
+        ///     裁剪所有直线：保留边界内部的直线，自动选择图纸中所有 LINE 对象.
+        /// </summary>
+        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
+        /// <param name="transactionService">事务服务.</param>
+        /// <returns>裁剪结果，包含删除/拆分/保留/跳过的数量.</returns>
+        public OpResultOfCropLineResult CropAllLinesInside(
+            IReadOnlyList<CorePoint2D> boundaryPoints,
+            ITransactionService transactionService)
+        {
+            return this.CropAllLines(boundaryPoints, transactionService, keepInside: true);
+        }
+
+        /// <summary>
+        ///     裁剪所有直线：保留边界外部的直线，自动选择图纸中所有 LINE 对象.
+        /// </summary>
+        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
+        /// <param name="transactionService">事务服务.</param>
+        /// <returns>裁剪结果，包含删除/拆分/保留/跳过的数量.</returns>
+        public OpResultOfCropLineResult CropAllLinesOutside(
+            IReadOnlyList<CorePoint2D> boundaryPoints,
+            ITransactionService transactionService)
+        {
+            return this.CropAllLines(boundaryPoints, transactionService, keepInside: false);
+        }
+
+        /// <summary>
+        ///     自动选择图纸中所有 LINE 对象进行裁剪.
+        /// </summary>
+        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
+        /// <param name="transactionService">事务服务.</param>
+        /// <param name="keepInside">true 保留内部直线，false 保留外部直线.</param>
+        /// <returns>裁剪结果，包含删除/拆分/保留/跳过的数量.</returns>
+        private OpResultOfCropLineResult CropAllLines(
+            IReadOnlyList<CorePoint2D> boundaryPoints,
+            ITransactionService transactionService,
+            bool keepInside)
+        {
+            try
+            {
+                if (boundaryPoints == null || boundaryPoints.Count < 3)
+                {
+                    return OpResultOfCropLineResult.Fail("裁剪边界顶点不足（至少需要3个点）");
+                }
+
+                if (transactionService == null)
+                {
+                    return OpResultOfCropLineResult.Fail("事务服务引用为空");
+                }
+
+                // 通过事务服务的查询接口获取模型空间中所有 LINE 对象
+                var allLineIds = transactionService.GetChildObjectsFromModelspace<Line>();
+
+                if (allLineIds == null || allLineIds.Count == 0)
+                {
+                    return OpResultOfCropLineResult.Fail("图纸中没有找到任何直线");
+                }
+
+                return this.CropLines(boundaryPoints, allLineIds, transactionService, keepInside);
+            }
+            catch (System.Exception ex)
+            {
+                Logger._.Error($"CropAllLines 操作失败: {ex.Message}", ex);
+                return OpResultOfCropLineResult.Fail($"自动裁剪直线失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         ///     核心直线裁剪逻辑.
         /// </summary>
         private OpResultOfCropLineResult CropLines(
