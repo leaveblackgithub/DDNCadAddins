@@ -194,7 +194,7 @@ namespace ServiceACAD
             }
         }
 
-        private void CopyXclipState(BlockReference source, BlockReference target)
+        public void CopyXclipState(BlockReference source, BlockReference target)
         {
             try
             {
