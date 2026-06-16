@@ -37,6 +37,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="ServiceTests\BlockServiceTestUtils.cs" />
     <Compile Include="ServiceTests\BlockServiceExtendedTests.cs" />
     <Compile Include="ServiceTests\CommonTestMethods.cs" />
+    <Compile Include="ServiceTests\CropLineServiceTests.cs" />
     <Compile Include="ServiceTests\TransactionServiceTest.cs" />
     <Compile Include="ServiceTests\TransactionServiceExtendedTests.cs" />
     <Compile Include="UnitTests\PropertyUtilsTests.cs" />
