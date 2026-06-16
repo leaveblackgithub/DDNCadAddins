@@ -9,6 +9,9 @@ using ServiceACAD;
 
 namespace AddinsACAD.Commands
 {
+    /// <summary>
+    ///     统一测试菜单 — 两步交互：先选几何类型，再选操作类型.
+    /// </summary>
     public class CommandTestsCommand
     {
         [CommandMethod("COMMANDTESTS")]
@@ -16,98 +19,67 @@ namespace AddinsACAD.Commands
         {
             try
             {
-                var doc = Application.DocumentManager.MdiActiveDocument;
-                var ed = doc.Editor;
+                var ed = Application.DocumentManager.MdiActiveDocument.Editor;
 
-                ed.WriteMessage("\n======== 手动测试命令菜单 ========\n");
+                // Step 1: 选择几何类型
+                var typeKw = new PromptKeywordOptions("\n选择要裁剪的对象类型 [直线(L)/多段线(P)/圆弧(A)/圆(C)/全部对象(O)]: ", "L P A C O");
+                typeKw.Keywords.Add("L", "直线(L)", "直线 Line");
+                typeKw.Keywords.Add("P", "多段线(P)", "多段线 Polyline");
+                typeKw.Keywords.Add("A", "圆弧(A)", "圆弧 Arc");
+                typeKw.Keywords.Add("C", "圆(C)", "圆 Circle");
+                typeKw.Keywords.Add("O", "全部对象(O)", "所有可裁剪对象");
+                typeKw.Keywords.Default = "O";
+                typeKw.AllowNone = true;
 
-                var commands = new List<(int id, string name, string cmdName, string description)>
-                {
-                    (1, "CROPLINE", "CROPLINE", "裁剪直线"),
-                    (2, "CROPALLLINES", "CROPALLLINES", "裁剪全部直线"),
-                    (3, "CROPPOLYLINE", "CROPPOLYLINE", "裁剪多段线"),
-                    (4, "CROPALLPOLYLINES", "CROPALLPOLYLINES", "裁剪全部多段线"),
-                    (5, "CROPARC", "CROPARC", "裁剪圆弧"),
-                    (6, "CROPALLARCS", "CROPALLARCS", "裁剪全部圆弧"),
-                    (7, "CROPCIRCLE", "CROPCIRCLE", "裁剪圆"),
-                    (8, "CROPALLCIRCLES", "CROPALLCIRCLES", "裁剪全部圆"),
-                    (9, "CROPINSIDE", "CROPINSIDE", "裁剪全部对象（保留内部）"),
-                    (10, "CROPOUTSIDE", "CROPOUTSIDE", "裁剪全部对象（保留外部）"),
-                    (11, "BLOCKCLEANUP", "BLOCKCLEANUP", "块表清理"),
-                    (12, "EXPLODEASSHOWN", "EXPLODEASSHOWN", "显示状态爆炸"),
-                    (13, "GENERATEXCLIPBOUNDARY", "GENERATEXCLIPBOUNDARY", "生成外部参考裁剪边界"),
-                };
-
-                foreach (var cmd in commands)
-                {
-                    ed.WriteMessage($"\n{cmd.id}. {cmd.name}");
-                    ed.WriteMessage($"   {cmd.description}");
-                }
-
-                ed.WriteMessage("\n\n请输入命令编号（1-13）: ");
-
-                var keywordOptions = new PromptKeywordOptions(string.Empty);
-                keywordOptions.AppendKeywordsToMessage = false;
-                keywordOptions.Keywords.Add("1");
-                keywordOptions.Keywords.Add("2");
-                keywordOptions.Keywords.Add("3");
-                keywordOptions.Keywords.Add("4");
-                keywordOptions.Keywords.Add("5");
-                keywordOptions.Keywords.Add("6");
-                keywordOptions.Keywords.Add("7");
-                keywordOptions.Keywords.Add("8");
-                keywordOptions.Keywords.Add("9");
-                keywordOptions.Keywords.Add("10");
-                keywordOptions.Keywords.Add("11");
-                keywordOptions.Keywords.Add("12");
-                keywordOptions.Keywords.Add("13");
-
-                var keywordResult = ed.GetKeywords(keywordOptions);
-                if (keywordResult.Status != PromptStatus.OK)
-                {
-                    ed.WriteMessage("\n取消命令选择。");
+                var typeRes = ed.GetKeywords(typeKw);
+                if (typeRes.Status != PromptStatus.OK && typeRes.Status != PromptStatus.Keyword)
                     return;
-                }
 
-                string cmdToExecute = null;
-                switch (keywordResult.StringResult)
-                {
-                    case "1": cmdToExecute = "CROPLINE"; break;
-                    case "2": cmdToExecute = "CROPALLLINES"; break;
-                    case "3": cmdToExecute = "CROPPOLYLINE"; break;
-                    case "4": cmdToExecute = "CROPALLPOLYLINES"; break;
-                    case "5": cmdToExecute = "CROPARC"; break;
-                    case "6": cmdToExecute = "CROPALLARCS"; break;
-                    case "7": cmdToExecute = "CROPCIRCLE"; break;
-                    case "8": cmdToExecute = "CROPALLCIRCLES"; break;
-                    case "9": cmdToExecute = "CROPINSIDE"; break;
-                    case "10": cmdToExecute = "CROPOUTSIDE"; break;
-                    case "11": cmdToExecute = "BLOCKCLEANUP"; break;
-                    case "12": cmdToExecute = "EXPLODEASSHOWN"; break;
-                    case "13": cmdToExecute = "GENERATEXCLIPBOUNDARY"; break;
-                }
+                var typeCh = string.IsNullOrEmpty(typeRes.StringResult) ? "O" : typeRes.StringResult;
 
-                if (string.IsNullOrEmpty(cmdToExecute))
+                // Step 2: 选择操作模式
+                var modeKw = new PromptKeywordOptions("\n选择操作模式 [单选(M)/全选(A)]: ", "M A");
+                modeKw.Keywords.Add("M", "单选(M)", "手动选择对象");
+                modeKw.Keywords.Add("A", "全选(A)", "自动选择全部匹配对象");
+                modeKw.Keywords.Default = "A";
+                modeKw.AllowNone = true;
+
+                var modeRes = ed.GetKeywords(modeKw);
+                if (modeRes.Status != PromptStatus.OK && modeRes.Status != PromptStatus.Keyword)
+                    return;
+
+                var selectAll = string.IsNullOrEmpty(modeRes.StringResult) || modeRes.StringResult == "A";
+
+                // 映射到具体命令
+                string cmd = null;
+                if (typeCh == "L") cmd = selectAll ? "CROPALLLINES" : "CROPLINE";
+                else if (typeCh == "P") cmd = selectAll ? "CROPALLPOLYLINES" : "CROPPOLYLINE";
+                else if (typeCh == "A") cmd = selectAll ? "CROPALLARCS" : "CROPARC";
+                else if (typeCh == "C") cmd = selectAll ? "CROPALLCIRCLES" : "CROPCIRCLE";
+                else if (typeCh == "O") cmd = "CROPINSIDE";
+
+                if (string.IsNullOrEmpty(cmd))
                 {
                     ed.WriteMessage("\n无效的选择。");
                     return;
                 }
 
-                ed.WriteMessage($"\n执行命令: {cmdToExecute}\n");
+                ed.WriteMessage($"\n执行命令: {cmd}\n");
                 try
                 {
-                    ed.Command(cmdToExecute);
+                    ed.Command(cmd);
                 }
                 catch (System.Exception cmdEx)
                 {
-                    ed.WriteMessage($"\n执行命令 {cmdToExecute} 失败: {cmdEx.Message}");
+                    ed.WriteMessage($"\n执行命令 {cmd} 失败: {cmdEx.Message}");
                     ed.WriteMessage("\n提示: 请重新 NETLOAD 最新编译的 DLL 后重试。");
-                    Logger._.Error($"ed.Command({cmdToExecute}) 失败: {cmdEx.Message}", cmdEx);
+                    Logger._.Error($"ed.Command({cmd}) 失败: {cmdEx.Message}", cmdEx);
                 }
             }
             catch (System.Exception ex)
             {
-                Application.DocumentManager.MdiActiveDocument.Editor.WriteMessage($"\nCOMMANDTESTS 执行失败: {ex.Message}");
+                var ed = Application.DocumentManager.MdiActiveDocument.Editor;
+                ed.WriteMessage($"\nCOMMANDTESTS 执行失败: {ex.Message}");
                 Logger._.Error($"COMMANDTESTS 执行失败: {ex.Message}", ex);
             }
         }

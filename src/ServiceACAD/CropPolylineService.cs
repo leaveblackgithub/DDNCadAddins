@@ -10,190 +10,109 @@ using OpResultOfCropPolylineResult = ServiceACAD.OpResult<ServiceACAD.CropPolyli
 
 namespace ServiceACAD
 {
-    /// <summary>
-    ///     多段线裁剪结果.
-    /// </summary>
     public class CropPolylineResult
     {
-        /// <summary>
-        ///     被删除的多段线数量.
-        /// </summary>
         public int DeletedCount { get; set; }
-
-        /// <summary>
-        ///     被拆分的多段线数量.
-        /// </summary>
         public int SplitCount { get; set; }
-
-        /// <summary>
-        ///     保留的多段线数量（完全在目标侧无需处理）.
-        /// </summary>
         public int KeptCount { get; set; }
-
-        /// <summary>
-        ///     跳过的多段线数量（无效或错误）.
-        /// </summary>
         public int SkippedCount { get; set; }
     }
 
     /// <summary>
-    ///     多段线裁剪服务 - 专门处理 Polyline 类型的裁剪操作.
-    ///     支持保留边界内部或外部的多段线，自动将跨越边界的多段线拆分为多段.
+    ///     多段线裁剪服务 - 处理直线段用精确交点拆分，弧线段支持凸度保留.
     /// </summary>
     public class CropPolylineService
     {
         private readonly ICropGeometryService _cropGeometry;
 
-        /// <summary>
-        ///     构造函数.
-        /// </summary>
-        /// <param name="cropGeometry">几何计算服务，为空时使用默认实现.</param>
         public CropPolylineService(ICropGeometryService cropGeometry = null)
         {
             this._cropGeometry = cropGeometry ?? new CropGeometryService();
         }
 
-        // ---- 公共接口 ----
-
-        /// <summary>
-        ///     裁剪多段线：保留边界内部的多段线.
-        /// </summary>
         public OpResultOfCropPolylineResult CropPolylinesInside(
-            IReadOnlyList<CorePoint2D> boundaryPoints,
-            List<ObjectId> polylineIds,
-            ITransactionService transactionService)
-        {
-            return this.CropPolylines(boundaryPoints, polylineIds, transactionService, keepInside: true);
-        }
+            IReadOnlyList<CorePoint2D> boundaryPoints, List<ObjectId> polylineIds, ITransactionService transactionService)
+            => this.CropPolylines(boundaryPoints, polylineIds, transactionService, keepInside: true);
 
-        /// <summary>
-        ///     裁剪多段线：保留边界外部的多段线.
-        /// </summary>
         public OpResultOfCropPolylineResult CropPolylinesOutside(
-            IReadOnlyList<CorePoint2D> boundaryPoints,
-            List<ObjectId> polylineIds,
-            ITransactionService transactionService)
-        {
-            return this.CropPolylines(boundaryPoints, polylineIds, transactionService, keepInside: false);
-        }
+            IReadOnlyList<CorePoint2D> boundaryPoints, List<ObjectId> polylineIds, ITransactionService transactionService)
+            => this.CropPolylines(boundaryPoints, polylineIds, transactionService, keepInside: false);
 
-        /// <summary>
-        ///     裁剪所有多段线：保留边界内部，自动选择图纸中所有 Polyline 对象.
-        /// </summary>
         public OpResultOfCropPolylineResult CropAllPolylinesInside(
-            IReadOnlyList<CorePoint2D> boundaryPoints,
-            ITransactionService transactionService)
-        {
-            return this.CropAllPolylines(boundaryPoints, transactionService, keepInside: true);
-        }
+            IReadOnlyList<CorePoint2D> boundaryPoints, ITransactionService transactionService)
+            => this.CropAllPolylines(boundaryPoints, transactionService, keepInside: true);
 
-        /// <summary>
-        ///     裁剪所有多段线：保留边界外部，自动选择图纸中所有 Polyline 对象.
-        /// </summary>
         public OpResultOfCropPolylineResult CropAllPolylinesOutside(
-            IReadOnlyList<CorePoint2D> boundaryPoints,
-            ITransactionService transactionService)
-        {
-            return this.CropAllPolylines(boundaryPoints, transactionService, keepInside: false);
-        }
-
-        // ---- 私有实现 ----
+            IReadOnlyList<CorePoint2D> boundaryPoints, ITransactionService transactionService)
+            => this.CropAllPolylines(boundaryPoints, transactionService, keepInside: false);
 
         private OpResultOfCropPolylineResult CropAllPolylines(
-            IReadOnlyList<CorePoint2D> boundaryPoints,
-            ITransactionService transactionService,
-            bool keepInside)
+            IReadOnlyList<CorePoint2D> boundaryPoints, ITransactionService transactionService, bool keepInside)
         {
             try
             {
                 if (boundaryPoints == null || boundaryPoints.Count < 3)
-                    return OpResultOfCropPolylineResult.Fail("裁剪边界顶点不足（至少需要3个点）");
-
+                    return OpResultOfCropPolylineResult.Fail("裁剪边界顶点不足");
                 if (transactionService == null)
                     return OpResultOfCropPolylineResult.Fail("事务服务引用为空");
 
-                var allPolylineIds = transactionService.GetChildObjectsFromModelspace<Polyline>();
-                if (allPolylineIds == null || allPolylineIds.Count == 0)
+                var allIds = transactionService.GetChildObjectsFromModelspace<Polyline>();
+                if (allIds == null || allIds.Count == 0)
                     return OpResultOfCropPolylineResult.Fail("图纸中没有找到任何多段线");
 
-                return this.CropPolylines(boundaryPoints, allPolylineIds, transactionService, keepInside);
+                return this.CropPolylines(boundaryPoints, allIds, transactionService, keepInside);
             }
             catch (System.Exception ex)
             {
-                Logger._.Error($"CropAllPolylines 操作失败: {ex.Message}", ex);
+                Logger._.Error($"CropAllPolylines 失败: {ex.Message}", ex);
                 return OpResultOfCropPolylineResult.Fail($"自动裁剪多段线失败: {ex.Message}");
             }
         }
 
         private OpResultOfCropPolylineResult CropPolylines(
-            IReadOnlyList<CorePoint2D> boundaryPoints,
-            List<ObjectId> polylineIds,
-            ITransactionService transactionService,
-            bool keepInside)
+            IReadOnlyList<CorePoint2D> boundaryPoints, List<ObjectId> polylineIds, ITransactionService transactionService, bool keepInside)
         {
             try
             {
                 if (boundaryPoints == null || boundaryPoints.Count < 3)
-                    return OpResultOfCropPolylineResult.Fail("裁剪边界顶点不足（至少需要3个点）");
-
+                    return OpResultOfCropPolylineResult.Fail("裁剪边界顶点不足");
                 if (polylineIds == null || polylineIds.Count == 0)
                     return OpResultOfCropPolylineResult.Fail("待裁剪的多段线列表为空");
-
                 if (transactionService == null)
                     return OpResultOfCropPolylineResult.Fail("事务服务引用为空");
 
                 var result = new CropPolylineResult();
-
                 foreach (var polylineId in polylineIds)
                 {
                     try
                     {
-                        if (!polylineId.IsValid || polylineId.IsErased)
-                        {
-                            result.SkippedCount++;
-                            continue;
-                        }
-
+                        if (!polylineId.IsValid || polylineId.IsErased) { result.SkippedCount++; continue; }
                         var entity = transactionService.GetObject<Entity>(polylineId);
-                        if (entity == null || entity.IsErased)
-                        {
-                            result.SkippedCount++;
-                            continue;
-                        }
-
-                        if (!(entity is Polyline polyline))
-                        {
-                            result.SkippedCount++;
-                            continue;
-                        }
-
+                        if (entity == null || entity.IsErased) { result.SkippedCount++; continue; }
+                        if (!(entity is Polyline polyline)) { result.SkippedCount++; continue; }
                         this.ProcessPolyline(polyline, boundaryPoints, keepInside, transactionService, result);
                     }
                     catch (System.Exception ex)
                     {
-                        Logger._.Warn($"处理多段线 {polylineId} 时发生异常: {ex.Message}");
+                        Logger._.Warn($"处理多段线 {polylineId} 时异常: {ex.Message}");
                         result.SkippedCount++;
                     }
                 }
 
-                if (result.DeletedCount == 0 && result.SplitCount == 0 && result.KeptCount == 0)
-                    return OpResultOfCropPolylineResult.Fail("没有多段线被处理");
-
+                var total = result.DeletedCount + result.SplitCount + result.KeptCount;
+                if (total == 0) return OpResultOfCropPolylineResult.Fail("没有多段线被处理");
                 return OpResultOfCropPolylineResult.Success(result);
             }
             catch (System.Exception ex)
             {
-                Logger._.Error($"CropPolylines 操作失败: {ex.Message}", ex);
+                Logger._.Error($"CropPolylines 失败: {ex.Message}", ex);
                 return OpResultOfCropPolylineResult.Fail($"多段线裁剪失败: {ex.Message}");
             }
         }
 
         private void ProcessPolyline(
-            Polyline polyline,
-            IReadOnlyList<CorePoint2D> boundaryPoints,
-            bool keepInside,
-            ITransactionService transactionService,
-            CropPolylineResult result)
+            Polyline polyline, IReadOnlyList<CorePoint2D> boundaryPoints, bool keepInside,
+            ITransactionService transactionService, CropPolylineResult result)
         {
             if (!polyline.Closed)
             {
@@ -201,132 +120,102 @@ namespace ServiceACAD
                 return;
             }
 
-            // 闭合多段线：先判断整体与边界的关系
             var extents = polyline.GeometricExtents;
-            var minPt = new CorePoint2D(extents.MinPoint.X, extents.MinPoint.Y);
-            var maxPt = new CorePoint2D(extents.MaxPoint.X, extents.MaxPoint.Y);
-            var containment = this._cropGeometry.ClassifyBoundingBox(minPt, maxPt, boundaryPoints);
+            var containment = this._cropGeometry.ClassifyBoundingBox(
+                new CorePoint2D(extents.MinPoint.X, extents.MinPoint.Y),
+                new CorePoint2D(extents.MaxPoint.X, extents.MaxPoint.Y),
+                boundaryPoints);
 
             bool shouldDelete = keepInside
                 ? containment == DDNCadAddins.Core.Models.ContainmentResult.Outside
                 : (containment == DDNCadAddins.Core.Models.ContainmentResult.Inside ||
                    containment == DDNCadAddins.Core.Models.ContainmentResult.OnBoundary);
 
-            if (shouldDelete)
-            {
-                this.DeletePolyline(polyline, result);
-                return;
-            }
-
-            bool shouldSplit = containment == DDNCadAddins.Core.Models.ContainmentResult.Intersects;
-            if (!shouldSplit)
-            {
-                result.KeptCount++;
-                return;
-            }
+            if (shouldDelete) { this.DeletePolyline(polyline, result); return; }
+            if (containment != DDNCadAddins.Core.Models.ContainmentResult.Intersects) { result.KeptCount++; return; }
 
             this.ProcessOpenPolyline(polyline, boundaryPoints, keepInside, transactionService, result);
         }
 
         private void ProcessOpenPolyline(
-            Polyline polyline,
-            IReadOnlyList<CorePoint2D> boundaryPoints,
-            bool keepInside,
-            ITransactionService transactionService,
-            CropPolylineResult result)
+            Polyline polyline, IReadOnlyList<CorePoint2D> boundaryPoints, bool keepInside,
+            ITransactionService transactionService, CropPolylineResult result)
         {
             try
             {
                 var vertexCount = polyline.NumberOfVertices;
-                if (vertexCount < 2)
-                {
-                    this.DeletePolyline(polyline, result);
-                    return;
-                }
+                if (vertexCount < 2) { this.DeletePolyline(polyline, result); return; }
 
-                var segmentsToKeep = new List<List<Point2d>>();
-                List<Point2d> currentGroup = null;
+                // 逐段求交、逐子段判断保留/删除
+                // 收集所有保留的段：[起点(AcGePoint2d), 终点, 凸度]
+                var keptSegments = new List<Tuple<Point2d, Point2d, double>>();
 
-                // 遍历多段线的每条边（顶点 i → i+1）
                 for (var i = 0; i < vertexCount - 1; i++)
                 {
                     var segType = polyline.GetSegmentType(i);
                     if (segType == SegmentType.Line)
                     {
                         var lineSeg = polyline.GetLineSegment2dAt(i);
-                        var startCorePt = new CorePoint2D(lineSeg.StartPoint.X, lineSeg.StartPoint.Y);
-                        var endCorePt = new CorePoint2D(lineSeg.EndPoint.X, lineSeg.EndPoint.Y);
+                        var startPt = new CorePoint2D(lineSeg.StartPoint.X, lineSeg.StartPoint.Y);
+                        var endPt = new CorePoint2D(lineSeg.EndPoint.X, lineSeg.EndPoint.Y);
+                        var intersections = this._cropGeometry.FindLineSegmentIntersections(startPt, endPt, boundaryPoints);
 
-                        var intersections = this._cropGeometry.FindLineSegmentIntersections(
-                            startCorePt, endCorePt, boundaryPoints);
-
-                        this.ProcessSegment(startCorePt, endCorePt, intersections, keepInside,
-                            ref currentGroup, segmentsToKeep, boundaryPoints);
+                        this.CollectKeptSubSegments(startPt, endPt, 0.0, intersections, keepInside, boundaryPoints, keptSegments);
                     }
                     else if (segType == SegmentType.Arc)
                     {
                         var arcSeg = polyline.GetArcSegment2dAt(i);
-                        var sampledStarts = new List<CorePoint2D>();
-                        var sampledEnds = new List<CorePoint2D>();
-                        this.SampleArcSegment(arcSeg, 16, sampledStarts, sampledEnds);
-
-                        for (var j = 0; j < sampledStarts.Count; j++)
-                        {
-                            var intersections = this._cropGeometry.FindLineSegmentIntersections(
-                                sampledStarts[j], sampledEnds[j], boundaryPoints);
-
-                            this.ProcessSegment(sampledStarts[j], sampledEnds[j], intersections, keepInside,
-                                ref currentGroup, segmentsToKeep, boundaryPoints);
-                        }
+                        var bulge = polyline.GetBulgeAt(i);
+                        this.ProcessPolyArcSegment(arcSeg, bulge, keepInside, boundaryPoints, keptSegments);
                     }
                 }
 
-                // 闭合多段线的最后一段（最后一个顶点 → 第一个顶点）
+                // 闭合多段线的最后一段（顶点 n-1 → 0）
                 if (polyline.Closed)
                 {
                     var segType = polyline.GetSegmentType(vertexCount - 1);
                     if (segType == SegmentType.Line)
                     {
                         var lineSeg = polyline.GetLineSegment2dAt(vertexCount - 1);
-                        var startCorePt = new CorePoint2D(lineSeg.StartPoint.X, lineSeg.StartPoint.Y);
-                        var endCorePt = new CorePoint2D(lineSeg.EndPoint.X, lineSeg.EndPoint.Y);
-
-                        var intersections = this._cropGeometry.FindLineSegmentIntersections(
-                            startCorePt, endCorePt, boundaryPoints);
-                        this.ProcessSegment(startCorePt, endCorePt, intersections, keepInside,
-                            ref currentGroup, segmentsToKeep, boundaryPoints);
+                        var startPt = new CorePoint2D(lineSeg.StartPoint.X, lineSeg.StartPoint.Y);
+                        var endPt = new CorePoint2D(lineSeg.EndPoint.X, lineSeg.EndPoint.Y);
+                        var intersections = this._cropGeometry.FindLineSegmentIntersections(startPt, endPt, boundaryPoints);
+                        this.CollectKeptSubSegments(startPt, endPt, 0.0, intersections, keepInside, boundaryPoints, keptSegments);
                     }
                     else if (segType == SegmentType.Arc)
                     {
                         var arcSeg = polyline.GetArcSegment2dAt(vertexCount - 1);
-                        var sampledStarts = new List<CorePoint2D>();
-                        var sampledEnds = new List<CorePoint2D>();
-                        this.SampleArcSegment(arcSeg, 16, sampledStarts, sampledEnds);
-                        for (var j = 0; j < sampledStarts.Count; j++)
-                        {
-                            var intersections = this._cropGeometry.FindLineSegmentIntersections(
-                                sampledStarts[j], sampledEnds[j], boundaryPoints);
-                            this.ProcessSegment(sampledStarts[j], sampledEnds[j], intersections, keepInside,
-                                ref currentGroup, segmentsToKeep, boundaryPoints);
-                        }
+                        var bulge = polyline.GetBulgeAt(vertexCount - 1);
+                        this.ProcessPolyArcSegment(arcSeg, bulge, keepInside, boundaryPoints, keptSegments);
                     }
                 }
 
-                if (currentGroup != null && currentGroup.Count >= 2)
-                    segmentsToKeep.Add(currentGroup);
+                if (keptSegments.Count == 0) { this.DeletePolyline(polyline, result); return; }
 
-                if (segmentsToKeep.Count == 0)
+                // 合并相邻段为连续多段线
+                var chains = new List<List<Tuple<Point2d, Point2d, double>>>();
+                foreach (var seg in keptSegments)
                 {
-                    this.DeletePolyline(polyline, result);
-                    return;
+                    if (chains.Count == 0)
+                    {
+                        chains.Add(new List<Tuple<Point2d, Point2d, double>> { seg });
+                    }
+                    else
+                    {
+                        var lastChain = chains[chains.Count - 1];
+                        var lastSeg = lastChain[lastChain.Count - 1];
+                        var dist = (lastSeg.Item2 - seg.Item1).Length;
+                        if (dist < 1e-8)
+                            lastChain.Add(seg);
+                        else
+                            chains.Add(new List<Tuple<Point2d, Point2d, double>> { seg });
+                    }
                 }
 
-                if (!polyline.IsWriteEnabled)
-                    polyline.UpgradeOpen();
-
+                if (!polyline.IsWriteEnabled) polyline.UpgradeOpen();
                 polyline.Erase();
 
-                foreach (var vertexList in segmentsToKeep)
+                foreach (var chain in chains)
                 {
                     var newPoly = new Polyline();
                     newPoly.Layer = polyline.Layer;
@@ -335,8 +224,11 @@ namespace ServiceACAD
                     newPoly.LineWeight = polyline.LineWeight;
                     newPoly.ConstantWidth = polyline.ConstantWidth;
 
-                    for (var k = 0; k < vertexList.Count; k++)
-                        newPoly.AddVertexAt(k, vertexList[k], 0.0, 0.0, 0.0);
+                    newPoly.AddVertexAt(0, chain[0].Item1, chain[0].Item3, 0.0, 0.0);
+                    for (var j = 0; j < chain.Count; j++)
+                    {
+                        newPoly.AddVertexAt(j + 1, chain[j].Item2, 0.0, 0.0, 0.0);
+                    }
 
                     transactionService.AppendEntityToCurrentSpace(newPoly);
                 }
@@ -350,14 +242,14 @@ namespace ServiceACAD
             }
         }
 
-        private void ProcessSegment(
-            CorePoint2D segStart,
-            CorePoint2D segEnd,
-            List<CorePoint2D> intersections,
-            bool keepInside,
-            ref List<Point2d> currentGroup,
-            List<List<Point2d>> segmentsToKeep,
-            IReadOnlyList<CorePoint2D> boundaryPoints)
+        /// <summary>
+        ///     将直子线段按交点拆分，逐段中点判断保留/删除，收集保留段.
+        /// </summary>
+        private void CollectKeptSubSegments(
+            CorePoint2D segStart, CorePoint2D segEnd, double bulge,
+            List<CorePoint2D> intersections, bool keepInside,
+            IReadOnlyList<CorePoint2D> boundaryPoints,
+            List<Tuple<Point2d, Point2d, double>> segments)
         {
             var nodes = new List<CorePoint2D> { segStart };
             nodes.AddRange(intersections);
@@ -367,51 +259,48 @@ namespace ServiceACAD
             {
                 var a = nodes[i];
                 var b = nodes[i + 1];
-
-                var dx = b.X - a.X;
-                var dy = b.Y - a.Y;
-                if ((dx * dx) + (dy * dy) < 1e-12)
-                    continue;
+                var d = (b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y);
+                if (d < 1e-12) continue;
 
                 var midPt = new CorePoint2D((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0);
-                var isInside = this._cropGeometry.IsPointInPolygon(midPt, boundaryPoints);
-
-                if ((keepInside && isInside) || (!keepInside && !isInside))
+                var inside = this._cropGeometry.IsPointInPolygon(midPt, boundaryPoints);
+                if ((keepInside && inside) || (!keepInside && !inside))
                 {
-                    if (currentGroup == null)
-                        currentGroup = new List<Point2d> { new Point2d(a.X, a.Y) };
-
-                    currentGroup.Add(new Point2d(b.X, b.Y));
-                }
-                else
-                {
-                    if (currentGroup != null && currentGroup.Count >= 2)
-                        segmentsToKeep.Add(currentGroup);
-
-                    currentGroup = null;
+                    segments.Add(Tuple.Create(new Point2d(a.X, a.Y), new Point2d(b.X, b.Y), bulge));
                 }
             }
         }
 
-        private void SampleArcSegment(
-            CircularArc2d arc,
-            int sampleCount,
-            List<CorePoint2D> starts,
-            List<CorePoint2D> ends)
+        /// <summary>
+        ///     处理多段线中的弧线段：采样为子弧→逐段中点判断→收集保留段（含凸度）.
+        /// </summary>
+        private void ProcessPolyArcSegment(
+            CircularArc2d arc, double bulge, bool keepInside,
+            IReadOnlyList<CorePoint2D> boundaryPoints,
+            List<Tuple<Point2d, Point2d, double>> segments)
         {
-            var startAngle = arc.StartAngle;
-            var endAngle = arc.EndAngle;
-            var totalAngle = endAngle - startAngle;
+            const int samples = 16;
+            var startAng = arc.StartAngle;
+            var endAng = arc.EndAngle;
+            var totalAng = endAng - startAng;
 
             var prevPt = arc.StartPoint;
-            for (var i = 1; i <= sampleCount; i++)
+            for (var i = 1; i <= samples; i++)
             {
-                var t = (double)i / sampleCount;
-                var angle = startAngle + totalAngle * t;
+                var t = (double)i / samples;
+                var angle = startAng + totalAng * t;
                 var currPt = arc.EvaluatePoint(angle);
 
-                starts.Add(new CorePoint2D(prevPt.X, prevPt.Y));
-                ends.Add(new CorePoint2D(currPt.X, currPt.Y));
+                var startCore = new CorePoint2D(prevPt.X, prevPt.Y);
+                var endCore = new CorePoint2D(currPt.X, currPt.Y);
+
+                var intersections = this._cropGeometry.FindLineSegmentIntersections(startCore, endCore, boundaryPoints);
+
+                // 子弧段的凸度：与原弧段相同（弧度比例）
+                var subBulge = bulge / samples;
+
+                this.CollectKeptSubSegments(startCore, endCore, subBulge, intersections, keepInside, boundaryPoints, segments);
+
                 prevPt = currPt;
             }
         }
@@ -420,9 +309,7 @@ namespace ServiceACAD
         {
             try
             {
-                if (!polyline.IsWriteEnabled)
-                    polyline.UpgradeOpen();
-
+                if (!polyline.IsWriteEnabled) polyline.UpgradeOpen();
                 polyline.Erase();
                 result.DeletedCount++;
             }
