@@ -9,14 +9,8 @@ using ServiceACAD;
 
 namespace AddinsACAD.Commands
 {
-    /// <summary>
-    ///     命令测试菜单 - 集合需要手动测试的命令，提供编号可选菜单.
-    /// </summary>
     public class CommandTestsCommand
     {
-        /// <summary>
-        ///     执行 COMMANDTESTS 命令，显示可选的手动测试命令菜单.
-        /// </summary>
         [CommandMethod("COMMANDTESTS")]
         public void Execute()
         {
@@ -29,15 +23,17 @@ namespace AddinsACAD.Commands
 
                 var commands = new List<(int id, string name, string cmdName, string description)>
                 {
-                    (1, "CROPLINE", "CROPLINE", "裁剪直线 - 选边界（单选）→ 选直线 → 选方向"),
-                    (2, "CROPALLLINES", "CROPALLLINES", "裁剪全部直线 - 选边界（单选）→ 自动选直 → 选方向"),
-                    (3, "CROPPOLYLINE", "CROPPOLYLINE", "裁剪多段线 - 选边界（单选）→ 选多段线 → 选方向"),
-                    (4, "CROPALLPOLYLINES", "CROPALLPOLYLINES", "裁剪全部多段线 - 选边界（单选）→ 自动选多段线 → 选方向"),
-                    (5, "CROPINSIDE", "CROPINSIDE", "裁剪全部对象（保留内部）- 支持多种对象类型"),
-                    (6, "CROPOUTSIDE", "CROPOUTSIDE", "裁剪全部对象（保留外部）- 支持多种对象类型"),
-                    (7, "BLOCKCLEANUP", "BLOCKCLEANUP", "块表清理 - 删除未引用的块定义"),
-                    (8, "EXPLODEASSHOWN", "EXPLODEASSHOWN", "显示状态爆炸 - 爆炸分解块引用"),
-                    (9, "GENERATEXCLIPBOUNDARY", "GENERATEXCLIPBOUNDARY", "生成外部参考裁剪边界"),
+                    (1, "CROPLINE", "CROPLINE", "裁剪直线"),
+                    (2, "CROPALLLINES", "CROPALLLINES", "裁剪全部直线"),
+                    (3, "CROPPOLYLINE", "CROPPOLYLINE", "裁剪多段线"),
+                    (4, "CROPALLPOLYLINES", "CROPALLPOLYLINES", "裁剪全部多段线"),
+                    (5, "CROPARC", "CROPARC", "裁剪圆弧"),
+                    (6, "CROPALLARCS", "CROPALLARCS", "裁剪全部圆弧"),
+                    (7, "CROPINSIDE", "CROPINSIDE", "裁剪全部对象（保留内部）"),
+                    (8, "CROPOUTSIDE", "CROPOUTSIDE", "裁剪全部对象（保留外部）"),
+                    (9, "BLOCKCLEANUP", "BLOCKCLEANUP", "块表清理"),
+                    (10, "EXPLODEASSHOWN", "EXPLODEASSHOWN", "显示状态爆炸"),
+                    (11, "GENERATEXCLIPBOUNDARY", "GENERATEXCLIPBOUNDARY", "生成外部参考裁剪边界"),
                 };
 
                 foreach (var cmd in commands)
@@ -46,7 +42,7 @@ namespace AddinsACAD.Commands
                     ed.WriteMessage($"   {cmd.description}");
                 }
 
-                ed.WriteMessage("\n\n请输入命令编号（1-9）或命令名称执行对应操作，Esc 取消: ");
+                ed.WriteMessage("\n\n请输入命令编号（1-11）: ");
 
                 var keywordOptions = new PromptKeywordOptions(string.Empty);
                 keywordOptions.AppendKeywordsToMessage = false;
@@ -59,6 +55,8 @@ namespace AddinsACAD.Commands
                 keywordOptions.Keywords.Add("7");
                 keywordOptions.Keywords.Add("8");
                 keywordOptions.Keywords.Add("9");
+                keywordOptions.Keywords.Add("10");
+                keywordOptions.Keywords.Add("11");
 
                 var keywordResult = ed.GetKeywords(keywordOptions);
                 if (keywordResult.Status != PromptStatus.OK)
@@ -70,33 +68,17 @@ namespace AddinsACAD.Commands
                 string cmdToExecute = null;
                 switch (keywordResult.StringResult)
                 {
-                    case "1":
-                        cmdToExecute = "CROPLINE";
-                        break;
-                    case "2":
-                        cmdToExecute = "CROPALLLINES";
-                        break;
-                    case "3":
-                        cmdToExecute = "CROPPOLYLINE";
-                        break;
-                    case "4":
-                        cmdToExecute = "CROPALLPOLYLINES";
-                        break;
-                    case "5":
-                        cmdToExecute = "CROPINSIDE";
-                        break;
-                    case "6":
-                        cmdToExecute = "CROPOUTSIDE";
-                        break;
-                    case "7":
-                        cmdToExecute = "BLOCKCLEANUP";
-                        break;
-                    case "8":
-                        cmdToExecute = "EXPLODEASSHOWN";
-                        break;
-                    case "9":
-                        cmdToExecute = "GENERATEXCLIPBOUNDARY";
-                        break;
+                    case "1": cmdToExecute = "CROPLINE"; break;
+                    case "2": cmdToExecute = "CROPALLLINES"; break;
+                    case "3": cmdToExecute = "CROPPOLYLINE"; break;
+                    case "4": cmdToExecute = "CROPALLPOLYLINES"; break;
+                    case "5": cmdToExecute = "CROPARC"; break;
+                    case "6": cmdToExecute = "CROPALLARCS"; break;
+                    case "7": cmdToExecute = "CROPINSIDE"; break;
+                    case "8": cmdToExecute = "CROPOUTSIDE"; break;
+                    case "9": cmdToExecute = "BLOCKCLEANUP"; break;
+                    case "10": cmdToExecute = "EXPLODEASSHOWN"; break;
+                    case "11": cmdToExecute = "GENERATEXCLIPBOUNDARY"; break;
                 }
 
                 if (string.IsNullOrEmpty(cmdToExecute))

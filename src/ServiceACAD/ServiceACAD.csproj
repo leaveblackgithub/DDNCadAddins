@@ -43,6 +43,7 @@ Features:
     <Compile Include="ExplodeAsShownResult.cs" />
     <Compile Include="ICommandCancellation.cs" />
     <Compile Include="CropService.cs" />
+    <Compile Include="CropArcService.cs" />
     <Compile Include="CropLineService.cs" />
     <Compile Include="CropPolylineService.cs" />
     <Compile Include="ICropService.cs" />
