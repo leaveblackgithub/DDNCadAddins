@@ -30,11 +30,13 @@ namespace AddinsACAD.Commands
                 {
                     (1, "CROPLINE", "CROPLINE", "裁剪直线 - 选边界（单选）→ 选直线 → 选方向"),
                     (2, "CROPALLLINES", "CROPALLLINES", "裁剪全部直线 - 选边界（单选）→ 自动选直 → 选方向"),
-                    (3, "CROPINSIDE", "CROPINSIDE", "裁剪全部对象（保留内部）- 支持多种对象类型"),
-                    (4, "CROPOUTSIDE", "CROPOUTSIDE", "裁剪全部对象（保留外部）- 支持多种对象类型"),
-                    (5, "BLOCKCLEANUP", "BLOCKCLEANUP", "块表清理 - 删除未引用的块定义"),
-                    (6, "EXPLODEASSHOWN", "EXPLODEASSHOWN", "显示状态爆炸 - 爆炸分解块引用"),
-                    (7, "GENERATEXCLIPBOUNDARY", "GENERATEXCLIPBOUNDARY", "生成外部参考裁剪边界"),
+                    (3, "CROPPOLYLINE", "CROPPOLYLINE", "裁剪多段线 - 选边界（单选）→ 选多段线 → 选方向"),
+                    (4, "CROPALLPOLYLINES", "CROPALLPOLYLINES", "裁剪全部多段线 - 选边界（单选）→ 自动选多段线 → 选方向"),
+                    (5, "CROPINSIDE", "CROPINSIDE", "裁剪全部对象（保留内部）- 支持多种对象类型"),
+                    (6, "CROPOUTSIDE", "CROPOUTSIDE", "裁剪全部对象（保留外部）- 支持多种对象类型"),
+                    (7, "BLOCKCLEANUP", "BLOCKCLEANUP", "块表清理 - 删除未引用的块定义"),
+                    (8, "EXPLODEASSHOWN", "EXPLODEASSHOWN", "显示状态爆炸 - 爆炸分解块引用"),
+                    (9, "GENERATEXCLIPBOUNDARY", "GENERATEXCLIPBOUNDARY", "生成外部参考裁剪边界"),
                 };
 
                 foreach (var cmd in commands)
@@ -43,7 +45,7 @@ namespace AddinsACAD.Commands
                     ed.WriteMessage($"   {cmd.description}");
                 }
 
-                ed.WriteMessage("\n\n请输入命令编号（1-7）或命令名称执行对应操作，Esc 取消: ");
+                ed.WriteMessage("\n\n请输入命令编号（1-9）或命令名称执行对应操作，Esc 取消: ");
 
                 var keywordOptions = new PromptKeywordOptions(string.Empty);
                 keywordOptions.AppendKeywordsToMessage = false;
@@ -54,6 +56,8 @@ namespace AddinsACAD.Commands
                 keywordOptions.Keywords.Add("5");
                 keywordOptions.Keywords.Add("6");
                 keywordOptions.Keywords.Add("7");
+                keywordOptions.Keywords.Add("8");
+                keywordOptions.Keywords.Add("9");
 
                 var keywordResult = ed.GetKeywords(keywordOptions);
                 if (keywordResult.Status != PromptStatus.OK)
@@ -72,18 +76,24 @@ namespace AddinsACAD.Commands
                         cmdToExecute = "CROPALLLINES";
                         break;
                     case "3":
-                        cmdToExecute = "CROPINSIDE";
+                        cmdToExecute = "CROPPOLYLINE";
                         break;
                     case "4":
-                        cmdToExecute = "CROPOUTSIDE";
+                        cmdToExecute = "CROPALLPOLYLINES";
                         break;
                     case "5":
-                        cmdToExecute = "BLOCKCLEANUP";
+                        cmdToExecute = "CROPINSIDE";
                         break;
                     case "6":
-                        cmdToExecute = "EXPLODEASSHOWN";
+                        cmdToExecute = "CROPOUTSIDE";
                         break;
                     case "7":
+                        cmdToExecute = "BLOCKCLEANUP";
+                        break;
+                    case "8":
+                        cmdToExecute = "EXPLODEASSHOWN";
+                        break;
+                    case "9":
                         cmdToExecute = "GENERATEXCLIPBOUNDARY";
                         break;
                 }
