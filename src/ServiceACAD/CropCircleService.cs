@@ -214,7 +214,8 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        ///     将圆采样为 64 段线段，逐段用中点判断保留/删除，保留段加入模型空间.
+        ///     将圆采样为 64 段，逐段中点判断保留/删除。
+        ///     保留的连续弧段合并为 Arc，替代原圆。
         /// </summary>
         private void SplitCircleAndKeep(
             Circle circle,
@@ -228,61 +229,108 @@ namespace ServiceACAD
                 const int sampleCount = 64;
                 var center = circle.Center;
                 var radius = circle.Radius;
+                var normal = circle.Normal;
 
-                var segmentsToKeep = new List<Line>();
+                // 记录每段是否需要保留
+                var keepFlags = new bool[sampleCount];
+                var allKeep = true;
+                var allDiscard = true;
 
                 for (var i = 0; i < sampleCount; i++)
                 {
                     var angle1 = 2.0 * Math.PI * i / sampleCount;
                     var angle2 = 2.0 * Math.PI * (i + 1) / sampleCount;
 
-                    var x1 = center.X + radius * Math.Cos(angle1);
-                    var y1 = center.Y + radius * Math.Sin(angle1);
-                    var x2 = center.X + radius * Math.Cos(angle2);
-                    var y2 = center.Y + radius * Math.Sin(angle2);
-
-                    var midPt = new CorePoint2D((x1 + x2) / 2.0, (y1 + y2) / 2.0);
+                    var midX = center.X + radius * Math.Cos((angle1 + angle2) / 2.0);
+                    var midY = center.Y + radius * Math.Sin((angle1 + angle2) / 2.0);
+                    var midPt = new CorePoint2D(midX, midY);
                     var isInside = this._cropGeometry.IsPointInPolygon(midPt, boundaryPoints);
 
-                    if ((keepInside && isInside) || (!keepInside && !isInside))
-                    {
-                        var seg = new Line(
-                            new Point3d(x1, y1, center.Z),
-                            new Point3d(x2, y2, center.Z))
-                        {
-                            Layer = circle.Layer,
-                            Color = circle.Color,
-                            Linetype = circle.Linetype,
-                            LineWeight = circle.LineWeight,
-                        };
-                        segmentsToKeep.Add(seg);
-                    }
+                    var shouldKeep = (keepInside && isInside) || (!keepInside && !isInside);
+                    keepFlags[i] = shouldKeep;
+                    if (shouldKeep) allDiscard = false;
+                    else allKeep = false;
                 }
 
-                if (segmentsToKeep.Count == 0)
+                if (allDiscard)
                 {
                     this.DeleteCircle(circle, result);
                     return;
                 }
 
-                // 如果所有段都保留（圆完全在目标侧，但包围盒分类不准），保守保留原圆
-                if (segmentsToKeep.Count == sampleCount)
+                if (allKeep)
                 {
-                    foreach (var seg in segmentsToKeep)
-                        seg.Dispose();
                     result.KeptCount++;
                     return;
                 }
 
-                // 删除原圆，加入保留段
+                // 合并连续的保留段为 Arc
+                var arcSegments = new List<Tuple<double, double>>();
+                var inRun = false;
+                var runStart = 0.0;
+
+                for (var i = 0; i < sampleCount; i++)
+                {
+                    if (keepFlags[i])
+                    {
+                        if (!inRun)
+                        {
+                            inRun = true;
+                            runStart = 2.0 * Math.PI * i / sampleCount;
+                        }
+                    }
+                    else
+                    {
+                        if (inRun)
+                        {
+                            var endAngle = 2.0 * Math.PI * i / sampleCount;
+                            arcSegments.Add(Tuple.Create(runStart, endAngle));
+                            inRun = false;
+                        }
+                    }
+                }
+
+                // 处理末尾连续段
+                if (inRun)
+                {
+                    arcSegments.Add(Tuple.Create(runStart, 2.0 * Math.PI));
+                }
+
+                // 如果首尾都是保留段，合并它们
+                if (arcSegments.Count >= 2 && keepFlags[0] && keepFlags[sampleCount - 1])
+                {
+                    var first = arcSegments[0];
+                    var last = arcSegments[arcSegments.Count - 1];
+                    // 只有当最后一个段跨越到2π且第一个段从0开始时才合并
+                    if (Math.Abs(last.Item2 - 2.0 * Math.PI) < 1e-9 && Math.Abs(first.Item1) < 1e-9)
+                    {
+                        arcSegments.RemoveAt(arcSegments.Count - 1);
+                        arcSegments.RemoveAt(0);
+                        arcSegments.Insert(0, Tuple.Create(last.Item1 - 2.0 * Math.PI, first.Item2));
+                    }
+                }
+
+                if (arcSegments.Count == 0)
+                {
+                    this.DeleteCircle(circle, result);
+                    return;
+                }
+
+                // 删除原圆，创建 Arc 替代
                 if (!circle.IsWriteEnabled)
                     circle.UpgradeOpen();
 
                 circle.Erase();
 
-                foreach (var seg in segmentsToKeep)
+                foreach (var seg in arcSegments)
                 {
-                    transactionService.AppendEntityToCurrentSpace(seg);
+                    var newArc = new Arc(center, normal, radius, seg.Item1, seg.Item2);
+                    newArc.Layer = circle.Layer;
+                    newArc.Color = circle.Color;
+                    newArc.Linetype = circle.Linetype;
+                    newArc.LineWeight = circle.LineWeight;
+
+                    transactionService.AppendEntityToCurrentSpace(newArc);
                 }
 
                 result.SplitCount++;
