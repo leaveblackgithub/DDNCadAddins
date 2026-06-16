@@ -29,11 +29,13 @@ namespace AddinsACAD.Commands
                     (4, "CROPALLPOLYLINES", "CROPALLPOLYLINES", "裁剪全部多段线"),
                     (5, "CROPARC", "CROPARC", "裁剪圆弧"),
                     (6, "CROPALLARCS", "CROPALLARCS", "裁剪全部圆弧"),
-                    (7, "CROPINSIDE", "CROPINSIDE", "裁剪全部对象（保留内部）"),
-                    (8, "CROPOUTSIDE", "CROPOUTSIDE", "裁剪全部对象（保留外部）"),
-                    (9, "BLOCKCLEANUP", "BLOCKCLEANUP", "块表清理"),
-                    (10, "EXPLODEASSHOWN", "EXPLODEASSHOWN", "显示状态爆炸"),
-                    (11, "GENERATEXCLIPBOUNDARY", "GENERATEXCLIPBOUNDARY", "生成外部参考裁剪边界"),
+                    (7, "CROPCIRCLE", "CROPCIRCLE", "裁剪圆"),
+                    (8, "CROPALLCIRCLES", "CROPALLCIRCLES", "裁剪全部圆"),
+                    (9, "CROPINSIDE", "CROPINSIDE", "裁剪全部对象（保留内部）"),
+                    (10, "CROPOUTSIDE", "CROPOUTSIDE", "裁剪全部对象（保留外部）"),
+                    (11, "BLOCKCLEANUP", "BLOCKCLEANUP", "块表清理"),
+                    (12, "EXPLODEASSHOWN", "EXPLODEASSHOWN", "显示状态爆炸"),
+                    (13, "GENERATEXCLIPBOUNDARY", "GENERATEXCLIPBOUNDARY", "生成外部参考裁剪边界"),
                 };
 
                 foreach (var cmd in commands)
@@ -42,7 +44,7 @@ namespace AddinsACAD.Commands
                     ed.WriteMessage($"   {cmd.description}");
                 }
 
-                ed.WriteMessage("\n\n请输入命令编号（1-11）: ");
+                ed.WriteMessage("\n\n请输入命令编号（1-13）: ");
 
                 var keywordOptions = new PromptKeywordOptions(string.Empty);
                 keywordOptions.AppendKeywordsToMessage = false;
@@ -57,6 +59,8 @@ namespace AddinsACAD.Commands
                 keywordOptions.Keywords.Add("9");
                 keywordOptions.Keywords.Add("10");
                 keywordOptions.Keywords.Add("11");
+                keywordOptions.Keywords.Add("12");
+                keywordOptions.Keywords.Add("13");
 
                 var keywordResult = ed.GetKeywords(keywordOptions);
                 if (keywordResult.Status != PromptStatus.OK)
@@ -74,11 +78,13 @@ namespace AddinsACAD.Commands
                     case "4": cmdToExecute = "CROPALLPOLYLINES"; break;
                     case "5": cmdToExecute = "CROPARC"; break;
                     case "6": cmdToExecute = "CROPALLARCS"; break;
-                    case "7": cmdToExecute = "CROPINSIDE"; break;
-                    case "8": cmdToExecute = "CROPOUTSIDE"; break;
-                    case "9": cmdToExecute = "BLOCKCLEANUP"; break;
-                    case "10": cmdToExecute = "EXPLODEASSHOWN"; break;
-                    case "11": cmdToExecute = "GENERATEXCLIPBOUNDARY"; break;
+                    case "7": cmdToExecute = "CROPCIRCLE"; break;
+                    case "8": cmdToExecute = "CROPALLCIRCLES"; break;
+                    case "9": cmdToExecute = "CROPINSIDE"; break;
+                    case "10": cmdToExecute = "CROPOUTSIDE"; break;
+                    case "11": cmdToExecute = "BLOCKCLEANUP"; break;
+                    case "12": cmdToExecute = "EXPLODEASSHOWN"; break;
+                    case "13": cmdToExecute = "GENERATEXCLIPBOUNDARY"; break;
                 }
 
                 if (string.IsNullOrEmpty(cmdToExecute))

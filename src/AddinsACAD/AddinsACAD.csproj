@@ -29,6 +29,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="Commands\GenerateXclipBoundaryCommand.cs" />
     <Compile Include="Commands\CropInsideCommand.cs" />
     <Compile Include="Commands\CropArcCommand.cs" />
+    <Compile Include="Commands\CropCircleCommand.cs" />
     <Compile Include="Commands\CropLineCommand.cs" />
     <Compile Include="Commands\CropPolylineCommand.cs" />
     <Compile Include="Commands\CommandTestsCommand.cs" />
@@ -39,6 +40,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="ServiceTests\BlockServiceExtendedTests.cs" />
     <Compile Include="ServiceTests\CommonTestMethods.cs" />
     <Compile Include="ServiceTests\CropArcServiceTests.cs" />
+    <Compile Include="ServiceTests\CropCircleServiceTests.cs" />
     <Compile Include="ServiceTests\CropLineServiceTests.cs" />
     <Compile Include="ServiceTests\CropPolylineServiceTests.cs" />
     <Compile Include="ServiceTests\TransactionServiceTest.cs" />
