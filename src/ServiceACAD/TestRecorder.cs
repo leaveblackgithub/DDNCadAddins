@@ -91,14 +91,17 @@ namespace ServiceACAD
                     var snap = new CropEntitySnapshot { ObjectId = id.ToString() };
                     var ext = ent.GeometricExtents;
 
-                    // 包围盒分类
-                    if (ext.MinPoint.DistanceTo(ext.MaxPoint) < 1e-9)
-                        snap.Containment = "Degenerate";
-                    else
-                        snap.Containment = geo.ClassifyBoundingBox(
-                            new CorePoint2D(ext.MinPoint.X, ext.MinPoint.Y),
-                            new CorePoint2D(ext.MaxPoint.X, ext.MaxPoint.Y),
-                            boundary).ToString();
+                    // 包围盒分类（geo 为 null 时跳过分类，仅记录类型）
+                    if (geo != null && boundary != null)
+                    {
+                        if (ext.MinPoint.DistanceTo(ext.MaxPoint) < 1e-9)
+                            snap.Containment = "Degenerate";
+                        else
+                            snap.Containment = geo.ClassifyBoundingBox(
+                                new CorePoint2D(ext.MinPoint.X, ext.MinPoint.Y),
+                                new CorePoint2D(ext.MaxPoint.X, ext.MaxPoint.Y),
+                                boundary).ToString();
+                    }
 
                     if (ent is Polyline pl)
                     {
@@ -135,6 +138,13 @@ namespace ServiceACAD
                         snap.Type = "Arc";
                         snap.KeyGeometry = new List<CorePoint2D> { new CorePoint2D(a.Center.X, a.Center.Y) };
                         snap.KeyParams = new List<double> { a.Radius, a.StartAngle, a.EndAngle };
+                    }
+                    else if (ent is Hatch h)
+                    {
+                        snap.Type = "Hatch";
+                        snap.KeyGeometry = new List<CorePoint2D> { new CorePoint2D(h.Origin.X, h.Origin.Y) };
+                        snap.KeyParams = new List<double> { h.PatternScale, h.PatternAngle };
+                        snap.ExtraInfo = $"PATTERN={h.PatternName}, PatternType={h.PatternType}, Style={h.HatchStyle}, Double={h.PatternDouble}, Space={h.PatternSpace}, Elevation={h.Elevation}, Layer={h.Layer}";
                     }
                     else
                     {
@@ -215,6 +225,11 @@ namespace ServiceACAD
                     sb.AppendLine(",");
                     sb.Append("      \"params\": ");
                     WriteDoubleArray(sb, e.KeyParams);
+                    if (!string.IsNullOrEmpty(e.ExtraInfo))
+                    {
+                        sb.AppendLine(",");
+                        sb.Append($"      \"extraInfo\": \"{E(e.ExtraInfo)}\"");
+                    }
                     sb.AppendLine();
                     sb.Append($"    }}{ecomma}");
                     sb.AppendLine();

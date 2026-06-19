@@ -42,10 +42,24 @@ namespace AddinsACAD.Commands
                         hatch.Normal);
                     loopCount = hatch.NumberOfLoops;
 
+                    // 根据 HatchStyle 确定要处理的环范围
+                    int loopStart, loopEnd;
+                    var style = hatch.HatchStyle;
+                    switch (style)
+                    {
+                        case HatchStyle.Ignore:
+                            loopStart = 0; loopEnd = 1; break;        // 仅最外层
+                        case HatchStyle.Outer:
+                            loopStart = 0; loopEnd = Math.Min(2, loopCount); break; // 外侧两个环
+                        default: // NORMAL
+                            loopStart = 0; loopEnd = loopCount; break; // 所有环
+                    }
+                    typeLog += $"Style={style}|";
+
                     // 曲线型环逐环提取边界（HatchBoundaryExtractor 只处理 Curves，不处理 Polyline 环）
                     var extractor = new HatchBoundaryExtractor();
 
-                    for (int li = 0; li < loopCount; li++)
+                    for (int li = loopStart; li < loopEnd; li++)
                     {
                         var loop = hatch.GetLoopAt(li);
                         if (loop == null) continue;

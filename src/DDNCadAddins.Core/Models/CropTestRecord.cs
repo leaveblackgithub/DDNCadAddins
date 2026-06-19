@@ -15,8 +15,10 @@ namespace DDNCadAddins.Core.Models
         public string Result { get; set; }
         /// <summary>关键坐标（多段线=全部顶点，圆=中心，直线=起止，弧=中心+起止）</summary>
         public List<Point2D> KeyGeometry { get; set; }
-        /// <summary>额外参数（圆半径，弧半径+起止角，多段线凸度列表）</summary>
+        /// <summary>额外参数（圆半径，弧半径+起止角，多段线凸度列表，Hatch 则为 [Scale, Angle]）</summary>
         public List<double> KeyParams { get; set; }
+        /// <summary>扩展信息（Hatch 时存放 "PATTERN=ANSI31, PatternType=PreDefined" 等）</summary>
+        public string ExtraInfo { get; set; }
     }
 
     /// <summary>裁剪操作完整记录 — 边界 + 实体 + 结果几何。按 UID 索引在 TestRecords/ 中查找</summary>
