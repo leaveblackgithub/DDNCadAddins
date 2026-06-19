@@ -23,7 +23,7 @@ namespace AddinsACAD.TestCommands
         /// <summary>
         ///     运行插件测试套件（命令名：AUTOCADTESTS）
         /// </summary>
-        [CommandMethod("AutoCADTests", CommandFlags.Session)]
+        [CommandMethod("AUTOCMDTESTS", CommandFlags.Session)]
         public void RunTests()
         {
             try
@@ -59,8 +59,8 @@ namespace AddinsACAD.TestCommands
         private static void WriteUsageMessage()
         {
             CadServiceManager.ServiceEd.WriteMessage(
-                "\nAUTOCADTESTS - 运行插件集成测试" +
-                "\n用法: NETLOAD 加载 AddinsACAD.dll 后执行 AUTOCADTESTS" +
+                "\nAUTOCMDTESTS - 运行 CAD 环境自动测试（仅使用内存侧数据库，防止卡死 CAD）" +
+                "\n用法: NETLOAD 加载 AddinsACAD.dll 后执行 AUTOCMDTESTS" +
                 "\n说明:" +
                 "\n  1. 大部分测试可在任意图纸下运行" +
                 $"\n  2. 部分测试要求当前活动图纸文件名为 {RequiredDrawingTitle}（打开 {RequiredDrawingTitle}.dwg）" +

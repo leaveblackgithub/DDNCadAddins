@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
@@ -10,77 +9,106 @@ using ServiceACAD;
 namespace AddinsACAD.Commands
 {
     /// <summary>
-    ///     统一测试菜单 — 两步交互：先选几何类型，再选操作类型.
+    ///     手工测试命令集合 — 顶层入口，分发到子命令:
+    ///     CROPTESTS / CLONEHATCH / GENERATEXCLIPBOUNDARY / EXPLODEASSHOWN /
+    ///     GENERATEHATCHBOUNDARY / SUBTRACTCLOSEDCURVE.
+    ///     子命令可独立执行，每个子命令返回 TestRecords 用于复盘追溯 BUG.
+    ///     通过 SendStringToExecute 将子命令排入 AutoCAD 命令队列，避免嵌套交互式提示.
     /// </summary>
     public class CommandTestsCommand
     {
-        [CommandMethod("COMMANDTESTS")]
+        [CommandMethod("MANUALCMDTESTS")]
         public void Execute()
         {
             try
             {
                 var ed = Application.DocumentManager.MdiActiveDocument.Editor;
 
-                // Step 1: 选择几何类型
-                var typeKw = new PromptKeywordOptions("\n选择要裁剪的对象类型 [直线(L)/多段线(P)/圆弧(A)/圆(C)/全部对象(O)]: ", "L P A C O");
-                typeKw.Keywords.Add("L", "直线(L)", "直线 Line");
-                typeKw.Keywords.Add("P", "多段线(P)", "多段线 Polyline");
-                typeKw.Keywords.Add("A", "圆弧(A)", "圆弧 Arc");
-                typeKw.Keywords.Add("C", "圆(C)", "圆 Circle");
-                typeKw.Keywords.Add("O", "全部对象(O)", "所有可裁剪对象");
-                typeKw.Keywords.Default = "O";
-                typeKw.AllowNone = true;
+                var ch = AskSubCommand(ed);
+                if (ch == null) return;
 
-                var typeRes = ed.GetKeywords(typeKw);
-                if (typeRes.Status != PromptStatus.OK && typeRes.Status != PromptStatus.Keyword)
-                    return;
-
-                var typeCh = string.IsNullOrEmpty(typeRes.StringResult) ? "O" : typeRes.StringResult;
-
-                // Step 2: 选择操作模式
-                var modeKw = new PromptKeywordOptions("\n选择操作模式 [单选(M)/全选(A)]: ", "M A");
-                modeKw.Keywords.Add("M", "单选(M)", "手动选择对象");
-                modeKw.Keywords.Add("A", "全选(A)", "自动选择全部匹配对象");
-                modeKw.Keywords.Default = "A";
-                modeKw.AllowNone = true;
-
-                var modeRes = ed.GetKeywords(modeKw);
-                if (modeRes.Status != PromptStatus.OK && modeRes.Status != PromptStatus.Keyword)
-                    return;
-
-                var selectAll = string.IsNullOrEmpty(modeRes.StringResult) || modeRes.StringResult == "A";
-
-                // 映射到具体命令
-                string cmd = null;
-                if (typeCh == "L") cmd = selectAll ? "CROPALLLINES" : "CROPLINE";
-                else if (typeCh == "P") cmd = selectAll ? "CROPALLPOLYLINES" : "CROPPOLYLINE";
-                else if (typeCh == "A") cmd = selectAll ? "CROPALLARCS" : "CROPARC";
-                else if (typeCh == "C") cmd = selectAll ? "CROPALLCIRCLES" : "CROPCIRCLE";
-                else if (typeCh == "O") cmd = "CROPINSIDE";
-
-                if (string.IsNullOrEmpty(cmd))
+                var cmd = MapToCommand(ch);
+                if (cmd == null)
                 {
                     ed.WriteMessage("\n无效的选择。");
                     return;
                 }
 
-                ed.WriteMessage($"\n执行命令: {cmd}\n");
-                try
-                {
-                    ed.Command(cmd);
-                }
-                catch (System.Exception cmdEx)
-                {
-                    ed.WriteMessage($"\n执行命令 {cmd} 失败: {cmdEx.Message}");
-                    ed.WriteMessage("\n提示: 请重新 NETLOAD 最新编译的 DLL 后重试。");
-                    Logger._.Error($"ed.Command({cmd}) 失败: {cmdEx.Message}", cmdEx);
-                }
+                SendCommand(ed, cmd);
             }
             catch (System.Exception ex)
             {
                 var ed = Application.DocumentManager.MdiActiveDocument.Editor;
                 ed.WriteMessage($"\nCOMMANDTESTS 执行失败: {ex.Message}");
                 Logger._.Error($"COMMANDTESTS 执行失败: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        ///     选择子命令:
+        ///     C = CROPTESTS (裁剪测试)
+        ///     K = CLONEHATCH (克隆填充)
+        ///     G = GENERATEXCLIPBOUNDARY (生成XClip边界)
+        ///     E = EXPLODEASSHOWN (按显示状态爆炸图块)
+        ///     H = GENERATEHATCHBOUNDARY (提取Hatch边界)
+        ///     S = SPLITBOUNDARY (拆分Hatch边界)
+        ///     B = SUBTRACTCLOSEDCURVE (封闭曲线布尔交集)
+        /// </summary>
+        private static string AskSubCommand(Editor ed)
+        {
+            var kw = new PromptKeywordOptions(
+                "\n选择测试子命令 C=CROPTESTS K=CLONEHATCH G=GENERATEXCLIPBOUNDARY E=EXPLODEASSHOWN H=GENERATEHATCHBOUNDARY S=SPLITBOUNDARY B=SUBTRACTCLOSEDCURVE [C/K/G/E/H/S/B]");
+            kw.Keywords.Add("C");
+            kw.Keywords.Add("K");
+            kw.Keywords.Add("G");
+            kw.Keywords.Add("E");
+            kw.Keywords.Add("H");
+            kw.Keywords.Add("S");
+            kw.Keywords.Add("B");
+            kw.Keywords.Default = "C";
+            kw.AllowNone = true;
+
+            var res = ed.GetKeywords(kw);
+            if (res.Status != PromptStatus.OK && res.Status != PromptStatus.Keyword)
+                return null;
+
+            return string.IsNullOrEmpty(res.StringResult) ? "C" : res.StringResult;
+        }
+
+        /// <summary>
+        ///     将选项字符映射到具体 AutoCAD 命令.
+        /// </summary>
+        private static string MapToCommand(string ch)
+        {
+            switch (ch)
+            {
+                case "C": return "CROPTESTS";
+                case "K": return "CLONEHATCH";
+                case "G": return "GENERATEXCLIPBOUNDARY";
+                case "E": return "EXPLODEASSHOWN";
+                case "H": return "GENERATEHATCHBOUNDARY";
+                case "S": return "SPLITBOUNDARY";
+                case "B": return "SUBTRACTCLOSEDCURVE";
+                default:  return null;
+            }
+        }
+
+        /// <summary>
+        ///     通过 SendStringToExecute 将命令排入 AutoCAD 队列.
+        /// </summary>
+        private static void SendCommand(Editor ed, string cmd)
+        {
+            ed.WriteMessage($"\n执行命令: {cmd}\n");
+            try
+            {
+                Application.DocumentManager.MdiActiveDocument
+                    .SendStringToExecute(cmd + "\n", true, false, true);
+            }
+            catch (System.Exception cmdEx)
+            {
+                ed.WriteMessage($"\n执行命令 {cmd} 失败: {cmdEx.Message}");
+                ed.WriteMessage("\n提示: 请重新 NETLOAD 最新编译的 DLL 后重试。");
+                Logger._.Error($"SendStringToExecute({cmd}) 失败: {cmdEx.Message}", cmdEx);
             }
         }
     }

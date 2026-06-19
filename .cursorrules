@@ -25,12 +25,49 @@ SYSTEM_CONTEXT: |
   - 始终使用中文进行回复
   - 理解和遵循用户的意图
   
-  ## 项目基础信息
-  - 项目基于.NET Framework 4.7和AutoCAD API 2019开发
-  - 使用NUnit、NUnitLite和ExtentReports作为测试框架
-  - 使用事务处理确保AutoCAD操作的安全性
-  
-  ## 开发工作流程
+   ## 项目基础信息
+   - 项目基于.NET Framework 4.7和AutoCAD API 2019开发
+   - 使用NUnit、NUnitLite和ExtentReports作为测试框架
+   - 使用事务处理确保AutoCAD操作的安全性
+
+   ## ★ 测试驱动开发流程（TDD）★★★
+   - 开发流程必须以测试驱动，按以下优先级排列：
+     1. **第一优先级：纯逻辑 NUnit 测试**（`DDNCadAddins.Core.Tests`）
+        - 不依赖 AutoCAD API，使用 NUnit Console Runner 运行
+        - 可以使用 Moq 框架模拟外部依赖
+        - 运行速度快，可频繁执行，每次修改纯逻辑代码后必须验证通过
+     2. **第二优先级：CAD 环境自动测试**（`AddinsACAD.ServiceTests`）
+        - 依赖 AutoCAD API 的集成测试，通过 `AUTOCMDTESTS` 命令在 AutoCAD 内运行
+        - **只能使用内存侧数据库（ExecuteInSideDatabase），防止对真实图纸的操作导致卡死 CAD**
+        - 用于验证 CAD 相关服务层的正确性
+     3. **第三优先级（最后考虑）：CAD 环境手工测试**（`MANUALCMDTESTS` 命令）
+        - 集合所有手工测试子命令，子命令可独立执行
+        - **每个子命令必须返回 TestRecords**，包含执行对象和执行结果的**所有相关几何信息**，用于复盘追溯 BUG
+        - 手工测试子命令列表：`CROPTESTS` / `CLONEHATCH` / `GENERATEXCLIPBOUNDARY` / `EXPLODEASSHOWN` / `GENERATEHATCHBOUNDARY` / `SUBTRACTCLOSEDCURVE`
+   - 新增功能必须同时提供纯逻辑测试（优先级1）和在合适层级的测试（优先2，必要时3）
+
+   ### NUnit Console Runner 运行纯逻辑测试
+   - 路径：`C:\Users\CFDDN\.nuget\packages\nunit.consolerunner\3.16.3\tools\nunit3-console.exe`
+   - 测试 DLL：`d:\leaveblackgithub\DDNCadAddins\src\bin\Debug\DDNCadAddins.Core.Tests.dll`
+   - 运行全部测试：`cmd /c ""C:\Users\CFDDN\.nuget\packages\nunit.consolerunner\3.16.3\tools\nunit3-console.exe" "d:\leaveblackgithub\DDNCadAddins\src\bin\Debug\DDNCadAddins.Core.Tests.dll" --noheader"`
+   - 运行指定类：追加 `--where "class == 命名空间.测试类名"`
+   - 运行指定方法：追加 `--where "method == 命名空间.测试类名.方法名"`
+   - 每次修改纯逻辑代码后必须用 NUnit Console Runner 验证测试通过
+
+   ### AUTOCMDTESTS（CAD 环境自动测试）
+   - 命令名：`AUTOCMDTESTS`
+   - 位置：`src/AddinsACAD/TestCommands/AutoCADTestsCommand.cs`
+   - 运行方式：NETLOAD AddinsACAD.dll 后在 AutoCAD 命令行执行 `AUTOCMDTESTS`
+   - 约束：仅使用内存侧数据库，严禁操作真实图纸
+
+   ### MANUALCMDTESTS（手工测试命令集合）
+   - 命令名：`MANUALCMDTESTS`
+   - 位置：`src/AddinsACAD/Commands/CommandTestsCommand.cs`
+   - 子命令独立可执行，每个子命令返回 TestRecords JSON 文件
+   - 子命令列表：C=CROPTESTS, K=CLONEHATCH, G=GENERATEXCLIPBOUNDARY, E=EXPLODEASSHOWN, H=GENERATEHATCHBOUNDARY, S=SPLITBOUNDARY, B=SUBTRACTCLOSEDCURVE
+   - **TestRecords 要求**：包含执行对象和执行结果的完整几何信息（坐标、参数、类型等），用于复盘追溯 BUG
+
+   ## 开发工作流程
   - 命令行必须严格采用Windows CMD语法，不允许使用PowerShell特有语法
   - 命令行中多条命令必须用;分割，严禁使用&&连接符
   - 使用cmd /c执行批处理命令，避免直接在PowerShell中执行可能导致语法冲突
