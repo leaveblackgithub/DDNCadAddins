@@ -7,6 +7,7 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using DDNCadAddins.Core.Models;
+using DDNCadAddins.Core.Services;
 using ServiceACAD;
 using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 
@@ -16,8 +17,7 @@ namespace AddinsACAD.Commands
 {
     /// <summary>
     ///     SUBTRACTCLOSEDCURVE — 选择封闭曲线 A，再选择封闭曲线 B，
-    ///     A \ B（曲线 A 减去 A 与 B 的交集）.
-    ///     在同一事务中用 Region 布尔运算做差集.
+    ///     计算 A \ B（曲线 A 减去 A 与 B 的交集）并绘制结果多边形.
     ///     支持 Polyline、Circle、Ellipse、Spline.
     /// </summary>
     public class SubtractClosedCurveCommand
@@ -31,6 +31,7 @@ namespace AddinsACAD.Commands
                 var ed = doc.Editor;
                 var stopwatch = Stopwatch.StartNew();
                 string uid = "";
+                var isSuccess = false;
                 int resultPolyCount = 0;
                 int totalVertices = 0;
 
@@ -46,156 +47,123 @@ namespace AddinsACAD.Commands
                 if (resB.Status != PromptStatus.OK) return;
                 var idB = resB.ObjectId;
 
-                // ── 步骤 3: Region 布尔差集 + 采样为折线 ────────────
-                using (var tr = doc.Database.TransactionManager.StartTransaction())
+                // ── 步骤 3: 转换曲线 ──────────────────────────────────
+                List<CorePoint2D> polyA = null, polyB = null;
+                string typeA = "", typeB = "";
+
+                CadServiceManager._.ExecuteInTransactions(null, ts =>
                 {
-                    try
+                    var curveA = ts.GetObject<Curve>(idA, OpenMode.ForRead);
+                    var curveB = ts.GetObject<Curve>(idB, OpenMode.ForRead);
+                    if (curveA == null || curveB == null) return;
+                    typeA = curveA.GetType().Name;
+                    typeB = curveB.GetType().Name;
+                    if (!curveA.Closed || !curveB.Closed) return;
+                    polyA = CurveConverter.ConvertToPolygon(curveA);
+                    polyB = CurveConverter.ConvertToPolygon(curveB);
+                });
+
+                if (polyA == null || polyB == null || polyA.Count < 3 || polyB.Count < 3)
+                {
+                    ed.WriteMessage("\n曲线转换失败。");
+                    return;
+                }
+
+                // ── 步骤 4: 计算差集 A \ B ────────────────────────────
+                var clipper = new PolygonClipperService();
+
+                // 4a. 先求交集，用于判断包含关系
+                var intersection = clipper.ClipPolygon(polyA, polyB, keepInside: true);
+                bool hasInter = (intersection != null && intersection.Count > 0);
+
+                IReadOnlyList<IReadOnlyList<Point2D>> resultPolygons;
+
+                if (!hasInter)
+                {
+                    // 不相交 → 返回 A
+                    resultPolygons = new[] { polyA };
+                }
+                else
+                {
+                    // 4b. 直接求差集
+                    var diff = clipper.ClipPolygon(polyA, polyB, keepInside: false);
+                    if (diff != null && diff.Count > 0)
                     {
-                        var curveA = tr.GetObject(idA, OpenMode.ForRead) as Curve;
-                        var curveB = tr.GetObject(idB, OpenMode.ForRead) as Curve;
-                        if (curveA == null || curveB == null || !curveA.Closed || !curveB.Closed)
+                        resultPolygons = diff;
+
+                        // 检查是否是挖孔回退（差集返回了完整 A，但 B 在 A 内）
+                        bool lookLikeFallback = (diff.Count == 1 && diff[0].Count == polyA.Count);
+                        bool bInsideA = IsPolygonInside(polyB, polyA);
+
+                        if (lookLikeFallback && bInsideA)
                         {
-                            ed.WriteMessage("\n曲线无效或未闭合。");
-                            return;
-                        }
-
-                        // 克隆到当前空间（Region.CreateFromCurves 需要 DB 驻留）
-                        var btr = (BlockTableRecord)tr.GetObject(
-                            doc.Database.CurrentSpaceId, OpenMode.ForWrite);
-
-                        var cloneA = curveA.Clone() as Curve;
-                        var cloneB = curveB.Clone() as Curve;
-                        btr.AppendEntity(cloneA);
-                        tr.AddNewlyCreatedDBObject(cloneA, true);
-                        btr.AppendEntity(cloneB);
-                        tr.AddNewlyCreatedDBObject(cloneB, true);
-
-                        // 创建 Region — CreateFromCurves 将曲线消费进 Region
-                        var colA = new DBObjectCollection();
-                        colA.Add(cloneA);
-                        var regionsA = Region.CreateFromCurves(colA);
-
-                        var colB = new DBObjectCollection();
-                        colB.Add(cloneB);
-                        var regionsB = Region.CreateFromCurves(colB);
-
-                        if (regionsA.Count == 0 || regionsB.Count == 0)
-                        {
-                            ed.WriteMessage("\nRegion 创建失败。");
-                            return;
-                        }
-
-                        // regionsA[0] 是刚创建的 Region，已在 DB 中
-                        var regA = regionsA[0] as Region;
-                        var regB = regionsB[0] as Region;
-
-                        // 布尔差集
-                        regA.BooleanOperation(BooleanOperationType.BoolSubtract, regB);
-
-                        // 炸开得结果曲线
-                        var resultCurves = new DBObjectCollection();
-                        regA.Explode(resultCurves);
-
-                        // 收集结果
-                        var ptsList = new List<List<CorePoint2D>>();
-                        foreach (DBObject obj in resultCurves)
-                        {
-                            if (obj is Curve curve && curve.Closed)
-                            {
-                                var pts = CurveConverter.ConvertToPolygon(curve);
-                                if (pts != null && pts.Count >= 3)
-                                    ptsList.Add(new List<CorePoint2D>(pts));
-                            }
-                        }
-
-                        // 擦除临时 Region 和克隆（Region 会留在 DB 中需要清理）
-                        regA.Erase();
-                        regB.Erase();
-
-                        // 回滚事务（丢弃所有临时对象）
-                        tr.Abort();
-
-                        if (ptsList.Count == 0)
-                        {
-                            ed.WriteMessage("\n无结果（B 包含 A，A 被完全减去）。");
-                            return;
-                        }
-
-                        // 新事务：仅绘制结果
-                        using (var drawTr = doc.Database.TransactionManager.StartTransaction())
-                        {
-                            var drawBtr = (BlockTableRecord)drawTr.GetObject(
-                                doc.Database.CurrentSpaceId, OpenMode.ForWrite);
-
-                            // 确保图层
-                            var lt = (LayerTable)drawTr.GetObject(
-                                doc.Database.LayerTableId, OpenMode.ForRead);
-                            if (!lt.Has("Intersection"))
-                            {
-                                lt.UpgradeOpen();
-                                var ltr = new LayerTableRecord
-                                {
-                                    Name = "Intersection",
-                                    Color = Autodesk.AutoCAD.Colors.Color.FromColorIndex(
-                                        Autodesk.AutoCAD.Colors.ColorMethod.ByAci, 3)
-                                };
-                                lt.Add(ltr);
-                                drawTr.AddNewlyCreatedDBObject(ltr, true);
-                            }
-
-                            foreach (var pts in ptsList)
-                            {
-                                var pline = new Polyline();
-                                pline.SetDatabaseDefaults();
-                                pline.Closed = true;
-                                pline.ColorIndex = 3;
-                                pline.Layer = "Intersection";
-
-                                for (int i = 0; i < pts.Count; i++)
-                                    pline.AddVertexAt(i,
-                                        new Point2d(pts[i].X, pts[i].Y), 0, 0, 0);
-
-                                drawBtr.AppendEntity(pline);
-                                drawTr.AddNewlyCreatedDBObject(pline, true);
-                                resultPolyCount++;
-                                totalVertices += pts.Count;
-                            }
-
-                            drawTr.Commit();
+                            // B 完全在 A 内部 → 构造挖孔多边形
+                            resultPolygons = new[] {
+                                CreateHolePolygon(polyA, polyB)
+                            };
                         }
                     }
-                    catch (System.Exception ex)
+                    else
                     {
-                        ed.WriteMessage($"\nRegion 差集运算失败: {ex.Message}");
-                        Logger._.Error($"Region 差集失败: {ex.Message}", ex);
-                        try { tr.Abort(); } catch { }
-                        return;
+                        // 差集为空 → B 包含 A
+                        resultPolygons = Array.Empty<IReadOnlyList<Point2D>>();
                     }
                 }
 
+                // ── 步骤 5: 绘制结果 ─────────────────────────────────
+                if (resultPolygons.Count > 0)
+                {
+                    CadServiceManager._.ExecuteInTransactions("", ts =>
+                    {
+                        foreach (var poly in resultPolygons)
+                        {
+                            if (poly == null || poly.Count < 3) continue;
+
+                            var pline = new Polyline();
+                            pline.SetDatabaseDefaults();
+                            pline.Closed = true;
+                            pline.ColorIndex = 3;
+
+                            for (int i = 0; i < poly.Count; i++)
+                                pline.AddVertexAt(i,
+                                    new Point2d(poly[i].X, poly[i].Y), 0.0, 0.0, 0.0);
+
+                            try
+                            {
+                                ts.Style.GetOrCreateLayer("Intersection");
+                                pline.Layer = "Intersection";
+                            }
+                            catch { }
+
+                            ts.AppendEntityToCurrentSpace(pline);
+                            resultPolyCount++;
+                            totalVertices += poly.Count;
+                        }
+                    });
+                }
+
+                isSuccess = resultPolyCount > 0;
                 stopwatch.Stop();
 
-                // ── 步骤 4: 输出命令行信息 ──────────────────────────
-                if (resultPolyCount > 0)
+                // ── 步骤 6: 输出 ──────────────────────────────────────
+                if (isSuccess)
                 {
                     ed.WriteMessage(
                         $"\n差集结果：{resultPolyCount} 个封闭多边形，{totalVertices} 顶点");
                 }
                 else
                 {
-                    ed.WriteMessage("\n无结果。");
+                    ed.WriteMessage("\n无结果（B 包含 A，A 被完全减去）。");
                 }
 
-                // ── 步骤 5: TestRecorder 记录 ────────────────────────
+                // ── 步骤 7: TestRecorder ──────────────────────────────
                 try
                 {
-                    var polyA = SampleCurvePoints(idA);
-                    var polyB = SampleCurvePoints(idB);
                     var record = new CropTestRecord
                     {
                         Command = "SUBTRACTCLOSEDCURVE",
-                        Direction = "DifferenceRegion",
-                        IsSuccess = resultPolyCount > 0,
+                        Direction = "Difference",
+                        IsSuccess = isSuccess,
                         UcsOrigin = ucsO,
                         UcsXAxis = ucsX,
                         UcsYAxis = ucsY,
@@ -206,8 +174,8 @@ namespace AddinsACAD.Commands
                         ElapsedMs = stopwatch.ElapsedMilliseconds,
                         Entities = new List<CropEntitySnapshot>
                         {
-                            CreateSnapshot(idA.ToString(), "CurveA", polyA),
-                            CreateSnapshot(idB.ToString(), "CurveB", polyB),
+                            CreateSnapshot(idA.ToString(), typeA, polyA),
+                            CreateSnapshot(idB.ToString(), typeB, polyB),
                         },
                     };
                     uid = TestRecorder.Record(record);
@@ -228,25 +196,77 @@ namespace AddinsACAD.Commands
 
         // ──────────────────────────────────────────────────────────────
 
-        private static List<CorePoint2D> SampleCurvePoints(ObjectId curveId)
+        /// <summary>
+        ///     判断 inner 多边形是否完全在 outer 多边形内部.
+        /// </summary>
+        private static bool IsPolygonInside(
+            IReadOnlyList<CorePoint2D> inner,
+            IReadOnlyList<CorePoint2D> outer)
         {
-            try
+            foreach (var pt in inner)
+                if (!IsPointInPolygon(new Point2D(pt.X, pt.Y), outer))
+                    return false;
+            return true;
+        }
+
+        /// <summary>
+        ///     射线法判断点是否在闭合多边形内部.
+        /// </summary>
+        private static bool IsPointInPolygon(Point2D point, IReadOnlyList<CorePoint2D> polygon)
+        {
+            int count = polygon.Count;
+            if (count < 3) return false;
+            bool inside = false;
+            for (int i = 0, j = count - 1; i < count; j = i++)
             {
-                var pts = new List<CorePoint2D>();
-                var db = HostApplicationServices.WorkingDatabase;
-                using (var tr = db.TransactionManager.StartTransaction())
+                var pi = new Point2D(polygon[i].X, polygon[i].Y);
+                var pj = new Point2D(polygon[j].X, polygon[j].Y);
+                var cross = (pi.X - pj.X) * (point.Y - pj.Y) - (pi.Y - pj.Y) * (point.X - pj.X);
+                if (Math.Abs(cross) < 1e-12)
                 {
-                    var curve = tr.GetObject(curveId, OpenMode.ForRead) as Curve;
-                    if (curve != null)
-                    {
-                        var poly = CurveConverter.ConvertToPolygon(curve);
-                        if (poly != null) pts.AddRange(poly);
-                    }
-                    tr.Commit();
+                    var dot = (point.X - pj.X) * (pi.X - pj.X) + (point.Y - pj.Y) * (pi.Y - pj.Y);
+                    var lenSq = (pi.X - pj.X) * (pi.X - pj.X) + (pi.Y - pj.Y) * (pi.Y - pj.Y);
+                    if (lenSq > 0 && dot >= 0 && dot <= lenSq) return true;
                 }
-                return pts;
+                if ((pi.Y > point.Y) != (pj.Y > point.Y))
+                {
+                    var t = (point.X - pj.X) - (pi.X - pj.X) * (point.Y - pj.Y) / (pi.Y - pj.Y);
+                    if (t < 1e-12) inside = !inside;
+                }
             }
-            catch { return new List<CorePoint2D>(); }
+            return inside;
+        }
+
+        /// <summary>
+        ///     构造挖孔多边形：A 外环 + B 反向遍历.
+        ///     路径：A[0..n-1] → A[0] → B[0] → B[m-1..0] → B[0] → A[0]
+        /// </summary>
+        private static IReadOnlyList<Point2D> CreateHolePolygon(
+            IReadOnlyList<CorePoint2D> outer,
+            IReadOnlyList<CorePoint2D> inner)
+        {
+            var result = new List<Point2D>();
+
+            // A 外环（完整一圈）
+            foreach (var pt in outer)
+                result.Add(new Point2D(pt.X, pt.Y));
+            // 闭合到 A[0]
+            result.Add(new Point2D(outer[0].X, outer[0].Y));
+
+            // 桥接到 B[0]
+            result.Add(new Point2D(inner[0].X, inner[0].Y));
+
+            // B 反向遍历（形成孔洞）
+            for (int k = inner.Count - 1; k >= 0; k--)
+                result.Add(new Point2D(inner[k].X, inner[k].Y));
+
+            // 闭合到 B[0]
+            result.Add(new Point2D(inner[0].X, inner[0].Y));
+
+            // 桥接回 A[0]
+            result.Add(new Point2D(outer[0].X, outer[0].Y));
+
+            return result;
         }
 
         private static CropEntitySnapshot CreateSnapshot(
