@@ -51,8 +51,7 @@ namespace DDNCadAddins.Core.Services
             if (keepInside)
                 return this.ClipKeepInsideWithSources(subjectPolygon, normalizedClip);
             else
-                // keepOutside 暂不支持带来源标记，返回空
-                return Array.Empty<ClippedPolygonWithSources>();
+                return this.ClipKeepOutsideWithSources(subjectPolygon, normalizedClip);
         }
 
         /// <summary>
@@ -408,6 +407,208 @@ namespace DDNCadAddins.Core.Services
                     StartIndex = 0,
                     EndIndex = cleaned.Count - 1,
                     Source = SegmentSource.Intersection,
+                    Vertices = new List<Point2D>(cleaned)
+                });
+            }
+
+            return new[] { clippedPoly };
+        }
+
+        /// <summary>
+        ///     保留裁剪多边形外部的 subject 部分（差集），返回带来源标记的结果.
+        ///     仿照 ClipKeepInsideWithSources，用外部顶点 + CW 绕行.
+        /// </summary>
+        private IReadOnlyList<ClippedPolygonWithSources> ClipKeepOutsideWithSources(
+            IReadOnlyList<Point2D> subjectPolygon,
+            IReadOnlyList<Point2D> clipPolygon)
+        {
+            // ── 快速路径 1：subject 完全在 clip 外部 ──────────────────
+            bool allSubjOutside = true;
+            foreach (var pt in subjectPolygon)
+                if (this.IsPointInPolygon(pt, clipPolygon)) { allSubjOutside = false; break; }
+            if (allSubjOutside)
+            {
+                int sn = subjectPolygon.Count, cn = clipPolygon.Count;
+                bool edgeX = false;
+                for (int si = 0; si < sn && !edgeX; si++)
+                for (int ci = 0; ci < cn && !edgeX; ci++)
+                    if (this.TrySegmentIntersection(
+                            subjectPolygon[si], subjectPolygon[(si + 1) % sn],
+                            clipPolygon[ci], clipPolygon[(ci + 1) % cn], out _))
+                        edgeX = true;
+                if (!edgeX)
+                {
+                    // 完全不相交 → 返回整个 subject
+                    var clippedResult = new ClippedPolygonWithSources();
+                    clippedResult.Vertices.AddRange(subjectPolygon);
+                    clippedResult.Segments.Add(new ClippedSegment
+                    {
+                        StartIndex = 0,
+                        EndIndex = subjectPolygon.Count - 1,
+                        Source = SegmentSource.Subject,
+                        Vertices = new List<Point2D>(subjectPolygon)
+                    });
+                    return new[] { clippedResult };
+                }
+            }
+
+            // ── 快速路径 2：subject 完全在 clip 内部 → 无外部顶点 → 空 ──
+            bool allSubjInside = true;
+            foreach (var pt in subjectPolygon)
+                if (!this.IsPointInPolygon(pt, clipPolygon)) { allSubjInside = false; break; }
+            if (allSubjInside)
+                return Array.Empty<ClippedPolygonWithSources>();
+
+            // ── 展开序列：在每条 subject 边上插入与 clip 的交点 ─────────
+            int sCount = subjectPolygon.Count;
+            int cCount = clipPolygon.Count;
+            var expanded = new List<Point2D>();
+
+            for (int i = 0; i < sCount; i++)
+            {
+                var a = subjectPolygon[i];
+                var b = subjectPolygon[(i + 1) % sCount];
+                expanded.Add(a);
+
+                var xpts = new List<KeyValuePair<double, Point2D>>();
+                for (int ci = 0; ci < cCount; ci++)
+                {
+                    if (this.TrySegmentIntersectionParametric(
+                            a, b,
+                            clipPolygon[ci], clipPolygon[(ci + 1) % cCount],
+                            out double t, out Point2D xp))
+                    {
+                        if (t > 1e-9 && t < 1.0 - 1e-9)
+                            xpts.Add(new KeyValuePair<double, Point2D>(t, xp));
+                    }
+                }
+                xpts.Sort((x, y) => x.Key.CompareTo(y.Key));
+                foreach (var kv in xpts)
+                    expanded.Add(kv.Value);
+            }
+
+            // ── 追踪：收集外部顶点，遇到 clip 内部时 CW 绕行 ────────────
+            int eCount = expanded.Count;
+            int startIdx = -1;
+            for (int k = 0; k < eCount; k++)
+                if (!this.IsPointInPolygon(expanded[k], clipPolygon)) { startIdx = k; break; }
+
+            if (startIdx < 0)
+                return Array.Empty<ClippedPolygonWithSources>();
+
+            var clippedPoly = new ClippedPolygonWithSources();
+            int idx = startIdx;
+            int visited = 0;
+            int subjSegStart = -1;
+
+            while (visited <= eCount)
+            {
+                var pt = expanded[idx];
+                if (!this.IsPointInPolygon(pt, clipPolygon))
+                {
+                    // 来自 Subject 的外部顶点
+                    if (subjSegStart < 0)
+                        subjSegStart = clippedPoly.Vertices.Count;
+
+                    clippedPoly.Vertices.Add(pt);
+                    idx = (idx + 1) % eCount;
+                    visited++;
+                    if (visited > 1 && idx == startIdx) break;
+                }
+                else
+                {
+                    // 进入 clip 区域：关闭当前 Subject 段
+                    if (subjSegStart >= 0)
+                    {
+                        int subjSegEnd = clippedPoly.Vertices.Count - 1;
+                        if (subjSegEnd >= subjSegStart)
+                        {
+                            var subjVerts = new List<Point2D>();
+                            for (int k = subjSegStart; k <= subjSegEnd; k++)
+                                subjVerts.Add(clippedPoly.Vertices[k]);
+                            clippedPoly.Segments.Add(new ClippedSegment
+                            {
+                                StartIndex = subjSegStart,
+                                EndIndex = subjSegEnd,
+                                Source = SegmentSource.Subject,
+                                Vertices = subjVerts
+                            });
+                        }
+                        subjSegStart = -1;
+                    }
+
+                    // entry = 第一个连续 inside 点
+                    var entry = expanded[idx];
+
+                    // 找最后一个连续 inside 点（出射交点）
+                    int j = idx;
+                    int safety = 0;
+                    while (this.IsPointInPolygon(expanded[j], clipPolygon) && safety < eCount)
+                    {
+                        j = (j + 1) % eCount;
+                        safety++;
+                    }
+                    var exitPt = expanded[(j + eCount - 1) % eCount];
+
+                    // 沿 clip 边界 CW（反向）从 entry 绕行到 exitPt
+                    var clipVerts = this.CollectClipBoundaryVertsCW(entry, exitPt, clipPolygon);
+
+                    int clipStartIdx = clippedPoly.Vertices.Count;
+                    foreach (var cv in clipVerts)
+                        clippedPoly.Vertices.Add(cv);
+
+                    clippedPoly.Segments.Add(new ClippedSegment
+                    {
+                        StartIndex = clipStartIdx,
+                        EndIndex = clippedPoly.Vertices.Count - 1,
+                        Source = SegmentSource.Clip,
+                        Vertices = new List<Point2D>(clipVerts)
+                    });
+
+                    idx = j;
+                    visited += safety;
+                    if (idx == startIdx) break;
+                }
+            }
+
+            // 关闭最后一个 Subject 段
+            if (subjSegStart >= 0)
+            {
+                int subjSegEnd = clippedPoly.Vertices.Count - 1;
+                if (subjSegEnd >= subjSegStart)
+                {
+                    var subjVerts = new List<Point2D>();
+                    for (int k = subjSegStart; k <= subjSegEnd; k++)
+                        subjVerts.Add(clippedPoly.Vertices[k]);
+                    clippedPoly.Segments.Add(new ClippedSegment
+                    {
+                        StartIndex = subjSegStart,
+                        EndIndex = subjSegEnd,
+                        Source = SegmentSource.Subject,
+                        Vertices = subjVerts
+                    });
+                }
+            }
+
+            if (clippedPoly.Vertices.Count < 3)
+                return Array.Empty<ClippedPolygonWithSources>();
+
+            var deduped = this.RemoveAdjacentDuplicates(clippedPoly.Vertices);
+            if (deduped.Count < 3)
+                return Array.Empty<ClippedPolygonWithSources>();
+            var cleaned = this.RemoveCollinearVertices(deduped);
+            if (cleaned.Count < 3)
+                return Array.Empty<ClippedPolygonWithSources>();
+
+            clippedPoly.Vertices = cleaned;
+
+            if (clippedPoly.Segments.Count == 0)
+            {
+                clippedPoly.Segments.Add(new ClippedSegment
+                {
+                    StartIndex = 0,
+                    EndIndex = cleaned.Count - 1,
+                    Source = SegmentSource.Subject,
                     Vertices = new List<Point2D>(cleaned)
                 });
             }

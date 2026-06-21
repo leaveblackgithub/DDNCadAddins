@@ -17,13 +17,13 @@ using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 namespace AddinsACAD.Commands
 {
     /// <summary>
-    ///     SUBTRACTCLOSEDCURVE — 选择一条封闭曲线 A 作为 SUBTRACT 曲线，另一条封闭曲线 B 被 SUBTRACT.
-    ///     计算 A 与 B 的交集区域（布尔交集）并绘制结果多边形.
-    ///     支持 Polyline、Circle、Ellipse（精确）、Spline（采样，同 GENERATEHATCHBOUNDARY 精度）.
-    ///     - 不相交 → 无结果
-    ///     - B 包含 A → 返回 A
-    ///     - A 包含 B → 返回 B
-    ///     - A 与 B 相交 → 返回交集区域的封闭多边形
+    ///     SUBTRACTCLOSEDCURVE — 选择封闭曲线 A，再选择封闭曲线 B，
+    ///     计算 A \ B（曲线 A 减去 A 与 B 的交集）并绘制结果多边形.
+    ///     支持 Polyline、Circle、Ellipse、Spline.
+    ///     - 不相交 → 返回 A
+    ///     - A 包含 B → 返回 A 减去 B 区域后的剩余部分
+    ///     - B 包含 A → 无结果（A 完全被减掉）
+    ///     - 相交 → 返回 A 除掉交集部分的封闭多边形
     /// </summary>
     public class SubtractClosedCurveCommand
     {
@@ -52,30 +52,28 @@ namespace AddinsACAD.Commands
                 if (curveB == null) return;
                 var polyB = curveB.Polygon;
 
-                // ── 步骤 3: 计算布尔交集（带来源标记）───────────────────────
-                //   PolygonClipperService.ClipPolygonWithSources(subject=B, clip=A, keepInside=true)
-                //   返回 subject 在 clip 内部的部分 = A ∩ B，包含每段的来源标记
+                // ── 步骤 3: 计算差集 A \ B（带来源标记）───────────────────────
+                //   ClipPolygonWithSources(subject=A, clip=B, keepInside=false)
+                //   返回 subject(A) 在 clip(B) 外部的部分 = A \ B
                 var clipper = new PolygonClipperService();
-                var intersectionWithSources = clipper.ClipPolygonWithSources(polyB, polyA, keepInside: true);
+                var differenceWithSources = clipper.ClipPolygonWithSources(polyA, polyB, keepInside: false);
 
-                bool noDisjoint = (intersectionWithSources == null || intersectionWithSources.Count == 0);
+                bool noResult = (differenceWithSources == null || differenceWithSources.Count == 0);
 
                 // ── 步骤 4: 混合绘制结果多边形 ──────────────────────────────
-                //   根据段来源标记决定绘制方式：
-                //   - 来自 Clip（曲线 A）的段 → 用 CurveFit
-                //   - 来自 Subject（折线 B）的段 → 保持折线
+                //   - 来自 Subject（曲线 A）的段 → 用 CurveFit
+                //   - 来自 Clip（折线 B）的段 → 保持折线
                 bool isCurveA = curveA.Type != "Polyline";
                 bool isCurveB = curveB.Type != "Polyline";
 
-                if (!noDisjoint)
+                if (!noResult)
                 {
                     CadServiceManager._.ExecuteInTransactions("", ts =>
                     {
-                        foreach (var clippedPoly in intersectionWithSources)
+                        foreach (var clippedPoly in differenceWithSources)
                         {
                             if (clippedPoly == null || clippedPoly.IsEmpty) continue;
 
-                            // 混合绘制：根据段来源决定绘制方式
                             int vertexCount = DrawMixedPolygon(ts, clippedPoly, isCurveA, isCurveB, 3);
                             resultPolyCount++;
                             totalVertices += vertexCount;
@@ -91,11 +89,11 @@ namespace AddinsACAD.Commands
                 {
                     string outputType = (isCurveA || isCurveB) ? "混合" : "折线";
                     ed.WriteMessage(
-                        $"\n交集结果：{resultPolyCount} 个封闭多边形，{outputType} {totalVertices}");
+                        $"\n差集结果：{resultPolyCount} 个封闭多边形，{outputType} {totalVertices}");
                 }
                 else
                 {
-                    ed.WriteMessage("\n不相交或包含关系导致无结果。");
+                    ed.WriteMessage("\n无结果（B 包含 A，A 被完全减去）。");
                 }
 
                 // ── 步骤 6: TestRecorder 记录 ────────────────────────────
@@ -104,7 +102,7 @@ namespace AddinsACAD.Commands
                     var record = new CropTestRecord
                     {
                         Command = "SUBTRACTCLOSEDCURVE",
-                        Direction = "Intersection",
+                        Direction = "Difference",
                         IsSuccess = isSuccess,
                         UcsOrigin = ucsO,
                         UcsXAxis = ucsX,
@@ -232,14 +230,14 @@ namespace AddinsACAD.Commands
         /// </summary>
         private static int DrawMixedPolygon(
             ITransactionService ts, ClippedPolygonWithSources clippedPoly,
-            bool isCurveA, bool isCurveB, int colorIndex)
+            bool isCurveSubject, bool isCurveClip, int colorIndex)
         {
             // 全是折线段 → 直接绘制闭合 Polyline
             bool hasCurveSegment = false;
             foreach (var seg in clippedPoly.Segments)
             {
-                if ((seg.Source == SegmentSource.Clip && isCurveA) ||
-                    (seg.Source == SegmentSource.Subject && isCurveB))
+                if ((seg.Source == SegmentSource.Clip && isCurveClip) ||
+                    (seg.Source == SegmentSource.Subject && isCurveSubject))
                 { hasCurveSegment = true; break; }
             }
             if (!hasCurveSegment)
@@ -251,8 +249,8 @@ namespace AddinsACAD.Commands
             foreach (var seg in clippedPoly.Segments)
             {
                 if (seg.Vertices.Count < 2) continue;
-                bool isCurve = (seg.Source == SegmentSource.Clip && isCurveA)
-                    || (seg.Source == SegmentSource.Subject && isCurveB);
+                bool isCurve = (seg.Source == SegmentSource.Clip && isCurveClip)
+                    || (seg.Source == SegmentSource.Subject && isCurveSubject);
 
                 ObjectId segId;
                 if (isCurve)
