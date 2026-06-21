@@ -32,7 +32,12 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="Commands\CropCircleCommand.cs" />
     <Compile Include="Commands\CropLineCommand.cs" />
     <Compile Include="Commands\CropPolylineCommand.cs" />
+    <Compile Include="Commands\CropHatchCommand.cs" />
+    <Compile Include="Commands\CloneHatchCommand.cs" />
     <Compile Include="Commands\CommandTestsCommand.cs" />
+    <Compile Include="Commands\CropTestsCommand.cs" />
+    <Compile Include="Commands\GenerateHatchBoundaryCommand.cs" />
+    <Compile Include="Commands\SubtractClosedCurveCommand.cs" />
     <Compile Include="TestCommands\CreateTestBlockForExplodeCommand.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TestCommands\AutoCADTestsCommand.cs" />
@@ -46,7 +51,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="ServiceTests\CropPolylineServiceTests.cs" />
     <Compile Include="ServiceTests\TransactionServiceTest.cs" />
     <Compile Include="ServiceTests\TransactionServiceExtendedTests.cs" />
-    <!-- UnitTests ��Ǩ���� DDNCadAddins.Core.Tests -->
+    <Compile Include="ServiceTests\SubtractClosedCurveIntegrationTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -120,4 +125,3 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Error Condition="!Exists('$(SolutionDir)packages\NUnit.3.13.2\build\NUnit.props')" Text="$([System.String]::Format('$(ErrorText)', '$(SolutionDir)packages\NUnit.3.13.2\build\NUnit.props'))" />
   </Target>
 </Project>
-

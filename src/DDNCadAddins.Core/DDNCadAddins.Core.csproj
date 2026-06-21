@@ -23,7 +23,9 @@
     <Compile Include="Interfaces\ILayerRepository.cs" />
     <Compile Include="Interfaces\IStyleValidationService.cs" />
     <Compile Include="Interfaces\ICropGeometryService.cs" />
+    <Compile Include="Interfaces\IPolygonClipperService.cs" />
     <Compile Include="Interfaces\IXClipBoundaryGeometryService.cs" />
+    <Compile Include="Interfaces\ICurveSampler.cs" />
     <Compile Include="Models\BlockCleanupOptions.cs" />
     <Compile Include="Models\BlockCleanupResult.cs" />
     <Compile Include="Models\BlockExplodeResult.cs" />
@@ -35,6 +37,7 @@
     <Compile Include="Models\LayerStateSnapshot.cs" />
     <Compile Include="Models\Matrix3D.cs" />
     <Compile Include="Models\OpResult.cs" />
+    <Compile Include="Models\ClippedPolygonWithSources.cs" />
     <Compile Include="Models\Point2D.cs" />
     <Compile Include="Models\CropTestRecord.cs" />
     <Compile Include="Services\CalculatorService.cs" />
@@ -46,7 +49,9 @@
     <Compile Include="Services\PropertyUtils.cs" />
     <Compile Include="Services\StyleValidationService.cs" />
     <Compile Include="Services\CropGeometryService.cs" />
+    <Compile Include="Services\PolygonClipperService.cs" />
     <Compile Include="Services\XClipBoundaryGeometryService.cs" />
+    <Compile Include="Services\CurveSampler.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
