@@ -17,7 +17,7 @@ namespace AddinsACAD.Commands
     /// <summary>
     ///     SUBTRACTCLOSEDCURVE — 选择封闭曲线 A，再选择封闭曲线 B，
     ///     A \ B（曲线 A 减去 A 与 B 的交集）.
-    ///     在侧数据库中用 Region 布尔运算做精确差集，结果采样为折线绘制.
+    ///     在同一事务中用 Region 布尔运算做差集.
     ///     支持 Polyline、Circle、Ellipse、Spline.
     /// </summary>
     public class SubtractClosedCurveCommand
@@ -28,7 +28,6 @@ namespace AddinsACAD.Commands
             try
             {
                 var doc = Application.DocumentManager.MdiActiveDocument;
-                var db = doc.Database;
                 var ed = doc.Editor;
                 var stopwatch = Stopwatch.StartNew();
                 string uid = "";
@@ -47,14 +46,10 @@ namespace AddinsACAD.Commands
                 if (resB.Status != PromptStatus.OK) return;
                 var idB = resB.ObjectId;
 
-                // ── 步骤 3: 用侧数据库做 Region 布尔差集 ─────────────
-                var resultPoints = new List<List<CorePoint2D>>();
-
-                using (var sideDb = new Database(false, true))
+                // ── 步骤 3: Region 布尔差集 + 采样为折线 ────────────
+                using (var tr = doc.Database.TransactionManager.StartTransaction())
                 {
-                    // 克隆曲线到侧数据库
-                    ObjectId cloneAId, cloneBId;
-                    using (var tr = db.TransactionManager.StartTransaction())
+                    try
                     {
                         var curveA = tr.GetObject(idA, OpenMode.ForRead) as Curve;
                         var curveB = tr.GetObject(idB, OpenMode.ForRead) as Curve;
@@ -64,143 +59,123 @@ namespace AddinsACAD.Commands
                             return;
                         }
 
-                        var typeA = curveA.GetType().Name;
-                        var typeB = curveB.GetType().Name;
+                        // 克隆到当前空间（Region.CreateFromCurves 需要 DB 驻留）
+                        var btr = (BlockTableRecord)tr.GetObject(
+                            doc.Database.CurrentSpaceId, OpenMode.ForWrite);
 
-                        using (var sideTr = sideDb.TransactionManager.StartTransaction())
+                        var cloneA = curveA.Clone() as Curve;
+                        var cloneB = curveB.Clone() as Curve;
+                        btr.AppendEntity(cloneA);
+                        tr.AddNewlyCreatedDBObject(cloneA, true);
+                        btr.AppendEntity(cloneB);
+                        tr.AddNewlyCreatedDBObject(cloneB, true);
+
+                        // 创建 Region — CreateFromCurves 将曲线消费进 Region
+                        var colA = new DBObjectCollection();
+                        colA.Add(cloneA);
+                        var regionsA = Region.CreateFromCurves(colA);
+
+                        var colB = new DBObjectCollection();
+                        colB.Add(cloneB);
+                        var regionsB = Region.CreateFromCurves(colB);
+
+                        if (regionsA.Count == 0 || regionsB.Count == 0)
                         {
-                            var btr = (BlockTableRecord)sideTr.GetObject(
-                                sideDb.CurrentSpaceId, OpenMode.ForWrite);
-
-                            var cloneA = curveA.Clone() as Curve;
-                            var cloneB = curveB.Clone() as Curve;
-                            if (cloneA == null || cloneB == null)
-                            {
-                                ed.WriteMessage("\n克隆曲线失败。");
-                                return;
-                            }
-                            cloneAId = btr.AppendEntity(cloneA);
-                            sideTr.AddNewlyCreatedDBObject(cloneA, true);
-                            cloneBId = btr.AppendEntity(cloneB);
-                            sideTr.AddNewlyCreatedDBObject(cloneB, true);
-                            sideTr.Commit();
-                        }
-                        tr.Commit();
-                    }
-
-                    // 做 Region 布尔运算
-                    using (var sideTr = sideDb.TransactionManager.StartTransaction())
-                    {
-                        try
-                        {
-                            var cloneA = sideTr.GetObject(cloneAId, OpenMode.ForRead) as Curve;
-                            var cloneB = sideTr.GetObject(cloneBId, OpenMode.ForRead) as Curve;
-                            if (cloneA == null || cloneB == null)
-                            {
-                                ed.WriteMessage("\n侧数据库读取失败。");
-                                return;
-                            }
-
-                            // 创建 Region
-                            var colA = new DBObjectCollection();
-                            colA.Add(cloneA);
-                            var regionsA = Region.CreateFromCurves(colA);
-                            var colB = new DBObjectCollection();
-                            colB.Add(cloneB);
-                            var regionsB = Region.CreateFromCurves(colB);
-
-                            if (regionsA == null || regionsA.Count == 0 ||
-                                regionsB == null || regionsB.Count == 0)
-                            {
-                                ed.WriteMessage("\nRegion 创建失败。");
-                                return;
-                            }
-
-                            var regA = sideTr.GetObject(regionsA[0].ObjectId, OpenMode.ForWrite) as Region;
-                            var regB = sideTr.GetObject(regionsB[0].ObjectId, OpenMode.ForWrite) as Region;
-                            if (regA == null || regB == null)
-                            {
-                                ed.WriteMessage("\n无法打开 Region。");
-                                return;
-                            }
-
-                            // 布尔差集 regA = regA - regB
-                            try
-                            {
-                                regA.BooleanOperation(
-                                    BooleanOperationType.BoolSubtract, regB);
-                            }
-                            catch { }
-
-                            // 炸开得到临时曲线对象
-                            var resultCurves = new DBObjectCollection();
-                            regA.Explode(resultCurves);
-
-                            if (resultCurves.Count == 0)
-                            {
-                                ed.WriteMessage("\n无结果（A 被完全减去）。");
-                                return;
-                            }
-
-                            // 采样曲线顶点
-                            foreach (DBObject obj in resultCurves)
-                            {
-                                if (obj is Curve curve && (curve.Closed || curve is Circle))
-                                {
-                                    var pts = CurveConverter.ConvertToPolygon(curve);
-                                    if (pts != null && pts.Count >= 3)
-                                        resultPoints.Add(new List<CorePoint2D>(pts));
-                                }
-                            }
-
-                            // 清理侧数据库临时对象
-                            sideTr.Abort();
-                        }
-                        catch (System.Exception ex)
-                        {
-                            ed.WriteMessage($"\nRegion 差集运算失败: {ex.Message}");
-                            Logger._.Error($"Region 差集失败: {ex.Message}", ex);
+                            ed.WriteMessage("\nRegion 创建失败。");
                             return;
                         }
-                    }
-                }
 
-                // ── 步骤 4: 在主数据库中绘制结果 ────────────────────
-                if (resultPoints.Count == 0)
-                {
-                    ed.WriteMessage("\n无结果（B 包含 A 或布尔运算失败）。");
-                    stopwatch.Stop();
-                    return;
-                }
+                        // regionsA[0] 是刚创建的 Region，已在 DB 中
+                        var regA = regionsA[0] as Region;
+                        var regB = regionsB[0] as Region;
 
-                CadServiceManager._.ExecuteInTransactions("", ts =>
-                {
-                    foreach (var pts in resultPoints)
-                    {
-                        if (pts.Count < 3) continue;
+                        // 布尔差集
+                        regA.BooleanOperation(BooleanOperationType.BoolSubtract, regB);
 
-                        var pline = new Polyline();
-                        pline.SetDatabaseDefaults();
-                        foreach (var pt in pts)
-                            pline.AddVertexAt(pline.NumberOfVertices,
-                                new Point2d(pt.X, pt.Y), 0.0, 0.0, 0.0);
-                        pline.Closed = true;
-                        pline.ColorIndex = 3;
-                        try
+                        // 炸开得结果曲线
+                        var resultCurves = new DBObjectCollection();
+                        regA.Explode(resultCurves);
+
+                        // 收集结果
+                        var ptsList = new List<List<CorePoint2D>>();
+                        foreach (DBObject obj in resultCurves)
                         {
-                            ts.Style.GetOrCreateLayer("Intersection");
-                            pline.Layer = "Intersection";
+                            if (obj is Curve curve && curve.Closed)
+                            {
+                                var pts = CurveConverter.ConvertToPolygon(curve);
+                                if (pts != null && pts.Count >= 3)
+                                    ptsList.Add(new List<CorePoint2D>(pts));
+                            }
                         }
-                        catch { }
-                        ts.AppendEntityToCurrentSpace(pline);
-                        resultPolyCount++;
-                        totalVertices += pts.Count;
+
+                        // 擦除临时 Region 和克隆（Region 会留在 DB 中需要清理）
+                        regA.Erase();
+                        regB.Erase();
+
+                        // 回滚事务（丢弃所有临时对象）
+                        tr.Abort();
+
+                        if (ptsList.Count == 0)
+                        {
+                            ed.WriteMessage("\n无结果（B 包含 A，A 被完全减去）。");
+                            return;
+                        }
+
+                        // 新事务：仅绘制结果
+                        using (var drawTr = doc.Database.TransactionManager.StartTransaction())
+                        {
+                            var drawBtr = (BlockTableRecord)drawTr.GetObject(
+                                doc.Database.CurrentSpaceId, OpenMode.ForWrite);
+
+                            // 确保图层
+                            var lt = (LayerTable)drawTr.GetObject(
+                                doc.Database.LayerTableId, OpenMode.ForRead);
+                            if (!lt.Has("Intersection"))
+                            {
+                                lt.UpgradeOpen();
+                                var ltr = new LayerTableRecord
+                                {
+                                    Name = "Intersection",
+                                    Color = Autodesk.AutoCAD.Colors.Color.FromColorIndex(
+                                        Autodesk.AutoCAD.Colors.ColorMethod.ByAci, 3)
+                                };
+                                lt.Add(ltr);
+                                drawTr.AddNewlyCreatedDBObject(ltr, true);
+                            }
+
+                            foreach (var pts in ptsList)
+                            {
+                                var pline = new Polyline();
+                                pline.SetDatabaseDefaults();
+                                pline.Closed = true;
+                                pline.ColorIndex = 3;
+                                pline.Layer = "Intersection";
+
+                                for (int i = 0; i < pts.Count; i++)
+                                    pline.AddVertexAt(i,
+                                        new Point2d(pts[i].X, pts[i].Y), 0, 0, 0);
+
+                                drawBtr.AppendEntity(pline);
+                                drawTr.AddNewlyCreatedDBObject(pline, true);
+                                resultPolyCount++;
+                                totalVertices += pts.Count;
+                            }
+
+                            drawTr.Commit();
+                        }
                     }
-                });
+                    catch (System.Exception ex)
+                    {
+                        ed.WriteMessage($"\nRegion 差集运算失败: {ex.Message}");
+                        Logger._.Error($"Region 差集失败: {ex.Message}", ex);
+                        try { tr.Abort(); } catch { }
+                        return;
+                    }
+                }
 
                 stopwatch.Stop();
 
-                // ── 步骤 5: 输出命令行信息 ──────────────────────────
+                // ── 步骤 4: 输出命令行信息 ──────────────────────────
                 if (resultPolyCount > 0)
                 {
                     ed.WriteMessage(
@@ -211,7 +186,7 @@ namespace AddinsACAD.Commands
                     ed.WriteMessage("\n无结果。");
                 }
 
-                // ── 步骤 6: TestRecorder 记录 ────────────────────────
+                // ── 步骤 5: TestRecorder 记录 ────────────────────────
                 try
                 {
                     var polyA = SampleCurvePoints(idA);
