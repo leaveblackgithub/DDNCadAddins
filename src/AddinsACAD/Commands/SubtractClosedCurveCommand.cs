@@ -7,7 +7,6 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using DDNCadAddins.Core.Models;
-using DDNCadAddins.Core.Services;
 using ServiceACAD;
 using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 
@@ -18,10 +17,10 @@ namespace AddinsACAD.Commands
     /// <summary>
     ///     SUBTRACTCLOSEDCURVE — 选择封闭曲线 A，再选择封闭曲线 B，
     ///     计算 A \ B（曲线 A 减去 A 与 B 的交集）并绘制结果多边形.
-    ///     支持 Polyline、Circle、Ellipse、Spline.
-    ///     - 不相交 → 返回 A（A 与 B 无交集，A 不变）
-    ///     - A 包含 B → 返回 A 减去 B 区域后的剩余部分
-    ///     - B 包含 A → 无结果（A 全部在 B 内部，A 被完全减去）
+    ///     使用 AutoCAD Region 布尔运算实现精确差集.
+    ///     - 不相交 → 返回 A
+    ///     - A 包含 B → 返回 A 减去 B 区域后的剩余部分（环形）
+    ///     - B 包含 A → 无结果（A 完全被减掉）
     ///     - A 与 B 相交 → 返回 A 除掉交集部分的封闭多边形
     /// </summary>
     public class SubtractClosedCurveCommand
@@ -32,6 +31,7 @@ namespace AddinsACAD.Commands
             try
             {
                 var doc = Application.DocumentManager.MdiActiveDocument;
+                var db = doc.Database;
                 var ed = doc.Editor;
                 var stopwatch = Stopwatch.StartNew();
                 string uid = "";
@@ -41,43 +41,133 @@ namespace AddinsACAD.Commands
 
                 TestRecorder.CaptureUcs(out var ucsO, out var ucsX, out var ucsY);
 
-                // ── 步骤 1: 选择曲线 A（SUBTRACT 曲线）───────────────────
-                var curveA = this.SelectClosedCurve(ed, "A", out var idA);
-                if (curveA == null) return;
-                var polyA = curveA.Polygon;
+                // ── 步骤 1: 选择曲线 A ─────────────────────────────────
+                var resA = ed.GetEntity(new PromptEntityOptions("\n选择闭合曲线 A: "));
+                if (resA.Status != PromptStatus.OK) return;
+                var idA = resA.ObjectId;
 
-                // ── 步骤 2: 选择曲线 B（被 SUBTRACT 曲线）─────────────────
-                var curveB = this.SelectClosedCurve(ed, "B", out var idB);
-                if (curveB == null) return;
-                var polyB = curveB.Polygon;
+                // ── 步骤 2: 选择曲线 B ─────────────────────────────────
+                var resB = ed.GetEntity(new PromptEntityOptions("\n选择闭合曲线 B: "));
+                if (resB.Status != PromptStatus.OK) return;
+                var idB = resB.ObjectId;
 
-                // ── 步骤 3: 计算差集 A \ B ──────────────────────────────
-                //   ClipPolygon(A, B, keepInside=false) = A 中在 B 外部的部分
-                var clipper = new PolygonClipperService();
-                var difference = clipper.ClipPolygon(polyA, polyB, keepInside: false);
-
-                bool noResult = (difference == null || difference.Count == 0);
-
-                // ── 步骤 4: 绘制结果多边形 ──────────────────────────────
-                if (!noResult)
+                // ── 步骤 3: 用 Region 布尔运算做差集 ───────────────────
+                CadServiceManager._.ExecuteInTransactions("", ts =>
                 {
-                    CadServiceManager._.ExecuteInTransactions("", ts =>
+                    // 读原始曲线
+                    var curveA = ts.GetObject<Curve>(idA, OpenMode.ForRead);
+                    var curveB = ts.GetObject<Curve>(idB, OpenMode.ForRead);
+                    if (curveA == null || curveB == null)
                     {
-                        foreach (var poly in difference)
-                        {
-                            if (poly == null || poly.Count < 3) continue;
+                        ed.WriteMessage("\n无法读取曲线。");
+                        return;
+                    }
 
-                            int vertexCount = DrawPolygonPlain(ts, poly, 3);
+                    // 克隆曲线到当前空间（Region.CreateFromCurves 需要 DB 驻留）
+                    var cloneA = curveA.Clone() as Curve;
+                    var cloneB = curveB.Clone() as Curve;
+                    if (cloneA == null || cloneB == null)
+                    {
+                        ed.WriteMessage("\n克隆曲线失败。");
+                        return;
+                    }
+                    ts.AppendEntityToCurrentSpace(cloneA);
+                    ts.AppendEntityToCurrentSpace(cloneB);
+
+                    // 创建 Region
+                    var dbColA = new DBObjectCollection();
+                    dbColA.Add(cloneA);
+                    var regionsA = Region.CreateFromCurves(dbColA);
+
+                    var dbColB = new DBObjectCollection();
+                    dbColB.Add(cloneB);
+                    var regionsB = Region.CreateFromCurves(dbColB);
+
+                    if (regionsA == null || regionsA.Count == 0 ||
+                        regionsB == null || regionsB.Count == 0)
+                    {
+                        ed.WriteMessage("\n无法从曲线创建 Region。");
+                        return;
+                    }
+
+                    var regionA = regionsA[0] as Region;
+                    var regionB = regionsB[0] as Region;
+                    if (regionA == null || regionB == null)
+                    {
+                        ed.WriteMessage("\nRegion 创建失败。");
+                        return;
+                    }
+
+                    // 重新打开 Region 为写模式
+                    var regA = ts.GetObject<Region>(regionA.ObjectId, OpenMode.ForWrite);
+                    var regB = ts.GetObject<Region>(regionB.ObjectId, OpenMode.ForWrite);
+                    if (regA == null || regB == null)
+                    {
+                        ed.WriteMessage("\n无法打开 Region。");
+                        return;
+                    }
+
+                    // 执行布尔差集
+                    try
+                    {
+                        regA.BooleanOperation(
+                            BooleanOperationType.BoolSubtract, regB);
+                    }
+                    catch
+                    {
+                        // 不相交：regA 保持不变
+                    }
+
+                    // 炸开结果 Region → 临时曲线对象
+                    var resultCurves = new DBObjectCollection();
+                    regA.Explode(resultCurves);
+
+                    // 收集所有闭合曲线，加到当前空间
+                    foreach (DBObject obj in resultCurves)
+                    {
+                        if (obj is Curve c && c.Closed)
+                        {
+                            var id = ts.AppendEntityToCurrentSpace(c);
+                            if (id.IsNull)
+                            {
+                                c.Dispose();
+                                continue;
+                            }
+                            try
+                            {
+                                ts.Style.GetOrCreateLayer("Intersection");
+                                c.Layer = "Intersection";
+                            }
+                            catch { }
+                            c.ColorIndex = 3;
+
                             resultPolyCount++;
-                            totalVertices += vertexCount;
+                            if (c is Polyline pl)
+                                totalVertices += pl.NumberOfVertices;
+                            else if (c is Circle)
+                                totalVertices += 20;
+                            else if (c is Ellipse)
+                                totalVertices += 30;
+                            else
+                                totalVertices += 20;
                         }
-                    });
-                }
+                        else
+                        {
+                            obj.Dispose();
+                        }
+                    }
+
+                    // 清理临时对象（忽略异常）
+                    try { ts.GetObject<Entity>(cloneA.ObjectId, OpenMode.ForWrite)?.Erase(); } catch { }
+                    try { ts.GetObject<Entity>(cloneB.ObjectId, OpenMode.ForWrite)?.Erase(); } catch { }
+                    try { ts.GetObject<Entity>(regionA.ObjectId, OpenMode.ForWrite)?.Erase(); } catch { }
+                    try { ts.GetObject<Entity>(regionB.ObjectId, OpenMode.ForWrite)?.Erase(); } catch { }
+                });
 
                 isSuccess = resultPolyCount > 0;
                 stopwatch.Stop();
 
-                // ── 步骤 5: 输出命令行信息 ──────────────────────────────
+                // ── 步骤 4: 输出命令行信息 ──────────────────────────
                 if (isSuccess)
                 {
                     ed.WriteMessage(
@@ -85,16 +175,18 @@ namespace AddinsACAD.Commands
                 }
                 else
                 {
-                    ed.WriteMessage("\n无结果（B 包含 A，A 被完全减去）。");
+                    ed.WriteMessage("\n无结果（B 包含 A 或布尔运算失败）。");
                 }
 
-                // ── 步骤 6: TestRecorder 记录 ────────────────────────────
+                // ── 步骤 5: TestRecorder 记录 ────────────────────────
                 try
                 {
+                    var polyA = SampleCurvePoints(idA);
+                    var polyB = SampleCurvePoints(idB);
                     var record = new CropTestRecord
                     {
                         Command = "SUBTRACTCLOSEDCURVE",
-                        Direction = "Difference",
+                        Direction = "DifferenceRegion",
                         IsSuccess = isSuccess,
                         UcsOrigin = ucsO,
                         UcsXAxis = ucsX,
@@ -106,8 +198,8 @@ namespace AddinsACAD.Commands
                         ElapsedMs = stopwatch.ElapsedMilliseconds,
                         Entities = new List<CropEntitySnapshot>
                         {
-                            CreateSnapshot(idA.ToString(), curveA.Type, polyA),
-                            CreateSnapshot(idB.ToString(), curveB.Type, polyB),
+                            CreateSnapshot(idA.ToString(), "CurveA", polyA),
+                            CreateSnapshot(idB.ToString(), "CurveB", polyB),
                         },
                     };
                     uid = TestRecorder.Record(record);
@@ -128,96 +220,32 @@ namespace AddinsACAD.Commands
 
         // ──────────────────────────────────────────────────────────────
 
-        /// <summary>曲线选择结果.</summary>
-        private sealed class CurveSelection
-        {
-            public string Type;          // "Polyline"/"Circle"/"Ellipse"/"Spline"
-            public List<CorePoint2D> Polygon;
-        }
-
         /// <summary>
-        ///     选择单条闭合曲线并转换为多边形.
+        ///     对曲线采样，生成 Polygon 点列表（用于 TestRecorder）.
         /// </summary>
-        private CurveSelection SelectClosedCurve(Editor ed, string label, out ObjectId id)
+        private static List<CorePoint2D> SampleCurvePoints(ObjectId curveId)
         {
-            id = ObjectId.Null;
             try
             {
-                var opt = new PromptEntityOptions($"\n选择闭合曲线 {label}: ");
-                opt.SetRejectMessage($"\n请选择闭合的 Polyline/Circle/Ellipse/Spline 作为曲线 {label}。");
-                opt.AddAllowedClass(typeof(Curve), false);
-                var res = ed.GetEntity(opt);
-                if (res.Status != PromptStatus.OK)
+                var pts = new List<CorePoint2D>();
+                var db = HostApplicationServices.WorkingDatabase;
+                using (var tr = db.TransactionManager.StartTransaction())
                 {
-                    ed.WriteMessage($"\n未选择曲线 {label}。");
-                    return null;
+                    var curve = tr.GetObject(curveId, OpenMode.ForRead) as Curve;
+                    if (curve != null)
+                    {
+                        var poly = CurveConverter.ConvertToPolygon(curve);
+                        if (poly != null)
+                            pts.AddRange(poly);
+                    }
+                    tr.Commit();
                 }
-
-                id = res.ObjectId;
-                var capturedId = id;
-                CurveSelection sel = null;
-
-                CadServiceManager._.ExecuteInTransactions(null, ts =>
-                {
-                    var curve = ts.GetObject<Curve>(capturedId, OpenMode.ForRead);
-                    if (curve == null || !curve.Closed)
-                    {
-                        ed.WriteMessage($"\n曲线 {label} 未闭合。");
-                        return;
-                    }
-
-                    var polygon = CurveConverter.ConvertToPolygon(curve);
-                    if (polygon == null || polygon.Count < 3)
-                    {
-                        ed.WriteMessage($"\n曲线 {label} 转换失败（顶点 < 3）。");
-                        return;
-                    }
-
-                    string type = curve.GetType().Name;
-                    sel = new CurveSelection { Type = type, Polygon = polygon };
-                });
-
-                if (sel == null) id = ObjectId.Null;
-                return sel;
-            }
-            catch (System.Exception ex)
-            {
-                Logger._.Error($"选择曲线 {label} 失败: {ex.Message}", ex);
-                return null;
-            }
-        }
-
-        /// <summary>
-        ///     绘制普通折线多边形（在当前空间）.
-        ///     返回顶点数.
-        /// </summary>
-        private static int DrawPolygonPlain(
-            ITransactionService ts, IReadOnlyList<CorePoint2D> loop, int colorIndex)
-        {
-            var pline = new Polyline();
-            pline.SetDatabaseDefaults();
-
-            foreach (var pt in loop)
-                pline.AddVertexAt(pline.NumberOfVertices,
-                    new Point2d(pt.X, pt.Y), 0.0, 0.0, 0.0);
-
-            pline.Closed = true;
-            pline.ColorIndex = colorIndex;
-
-            // 确保 Intersection 图层存在，避免 eKeyNotFound
-            try
-            {
-                ts.Style.GetOrCreateLayer("Intersection");
-                pline.Layer = "Intersection";
+                return pts;
             }
             catch
             {
-                // 图层创建失败时继续使用当前图层，不阻断绘制
+                return new List<CorePoint2D>();
             }
-
-            ts.AppendEntityToCurrentSpace(pline);
-
-            return loop.Count;
         }
 
         /// <summary>
