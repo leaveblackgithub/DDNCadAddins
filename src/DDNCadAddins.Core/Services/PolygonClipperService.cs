@@ -187,7 +187,6 @@ namespace DDNCadAddins.Core.Services
 
         /// <summary>
         ///     保留裁剪多边形内部的 subject 部分（交集），返回带来源标记的结果.
-        ///     用于混合绘制：曲线段用 CurveFit，折线段保持折线.
         /// </summary>
         private IReadOnlyList<ClippedPolygonWithSources> ClipKeepInsideWithSources(
             IReadOnlyList<Point2D> subjectPolygon,
@@ -201,7 +200,6 @@ namespace DDNCadAddins.Core.Services
             {
                 var clippedResult = new ClippedPolygonWithSources();
                 clippedResult.Vertices.AddRange(subjectPolygon);
-                // 整个多边形来自 Subject
                 clippedResult.Segments.Add(new ClippedSegment
                 {
                     StartIndex = 0,
@@ -220,7 +218,6 @@ namespace DDNCadAddins.Core.Services
             {
                 var clippedResult = new ClippedPolygonWithSources();
                 clippedResult.Vertices.AddRange(clipPolygon);
-                // 整个多边形来自 Clip
                 clippedResult.Segments.Add(new ClippedSegment
                 {
                     StartIndex = 0,
@@ -252,7 +249,7 @@ namespace DDNCadAddins.Core.Services
                     return Array.Empty<ClippedPolygonWithSources>();
             }
 
-            // ── 展开序列：在每条 subject 边上插入与 clip 的交点 ─────────
+            // ── 展开序列 ──────────────────────────────────────────────
             int sCount = subjectPolygon.Count;
             int cCount = clipPolygon.Count;
             var expanded = new List<Point2D>();
@@ -280,7 +277,7 @@ namespace DDNCadAddins.Core.Services
                     expanded.Add(kv.Value);
             }
 
-            // ── 追踪：收集内部顶点，遇到外部段时沿 clip 边界绕行 ────────
+            // ── 追踪 ──────────────────────────────────────────────────
             int eCount = expanded.Count;
             int startIdx = -1;
             for (int k = 0; k < eCount; k++)
@@ -292,14 +289,13 @@ namespace DDNCadAddins.Core.Services
             var clippedPoly = new ClippedPolygonWithSources();
             int idx = startIdx;
             int visited = 0;
-            int subjSegStart = -1; // 当前 Subject 段的起始索引
+            int subjSegStart = -1;
 
             while (visited <= eCount)
             {
                 var pt = expanded[idx];
                 if (this.IsPointInPolygon(pt, clipPolygon))
                 {
-                    // 来自 Subject 的顶点：记录段起始位置
                     if (subjSegStart < 0)
                         subjSegStart = clippedPoly.Vertices.Count;
 
@@ -310,7 +306,6 @@ namespace DDNCadAddins.Core.Services
                 }
                 else
                 {
-                    // 离开 clip 区域：关闭当前 Subject 段
                     if (subjSegStart >= 0)
                     {
                         int subjSegEnd = clippedPoly.Vertices.Count - 1;
@@ -330,10 +325,7 @@ namespace DDNCadAddins.Core.Services
                         subjSegStart = -1;
                     }
 
-                    // 记录离开 clip 的交点
                     var exitPt = expanded[(idx + eCount - 1) % eCount];
-
-                    // 找进入 clip 的交点
                     int j = idx;
                     int safety = 0;
                     while (!this.IsPointInPolygon(expanded[j], clipPolygon) && safety < eCount)
@@ -342,11 +334,8 @@ namespace DDNCadAddins.Core.Services
                         safety++;
                     }
                     var entry = expanded[j];
-
-                    // 沿 clip 边界绕行
                     var clipVerts = this.CollectClipBoundaryVertsCCW(exitPt, entry, clipPolygon);
 
-                    // 添加 Clip 段
                     int clipStartIdx = clippedPoly.Vertices.Count;
                     foreach (var cv in clipVerts)
                         clippedPoly.Vertices.Add(cv);
@@ -365,7 +354,6 @@ namespace DDNCadAddins.Core.Services
                 }
             }
 
-            // 关闭最后一个 Subject 段（循环结束时可能还在 clip 内部）
             if (subjSegStart >= 0)
             {
                 int subjSegEnd = clippedPoly.Vertices.Count - 1;
@@ -387,9 +375,6 @@ namespace DDNCadAddins.Core.Services
             if (clippedPoly.Vertices.Count < 3)
                 return Array.Empty<ClippedPolygonWithSources>();
 
-            // 后处理：去重和去共线
-            // 注意：清理后 clippedPoly.Vertices 可能改变，但 Segments 中的 Vertices 是独立副本，
-            // DrawMixedPolygon 使用 seg.Vertices 绘制，不受影响
             var deduped = this.RemoveAdjacentDuplicates(clippedPoly.Vertices);
             if (deduped.Count < 3)
                 return Array.Empty<ClippedPolygonWithSources>();
@@ -399,7 +384,6 @@ namespace DDNCadAddins.Core.Services
 
             clippedPoly.Vertices = cleaned;
 
-            // 安全网：如果 Segments 为空（不应发生），用整个多边形作为混合来源
             if (clippedPoly.Segments.Count == 0)
             {
                 clippedPoly.Segments.Add(new ClippedSegment
@@ -416,224 +400,112 @@ namespace DDNCadAddins.Core.Services
 
         /// <summary>
         ///     保留裁剪多边形外部的 subject 部分（差集），返回带来源标记的结果.
-        ///     仿照 ClipKeepInsideWithSources，用外部顶点 + CW 绕行.
+        ///     两步法：先用已验证的 ClipKeepOutside 求几何，再反推顶点来源标记.
         /// </summary>
         private IReadOnlyList<ClippedPolygonWithSources> ClipKeepOutsideWithSources(
             IReadOnlyList<Point2D> subjectPolygon,
             IReadOnlyList<Point2D> clipPolygon)
         {
-            // ── 快速路径 1：subject 完全在 clip 外部 ──────────────────
-            bool allSubjOutside = true;
-            foreach (var pt in subjectPolygon)
-                if (this.IsPointInPolygon(pt, clipPolygon)) { allSubjOutside = false; break; }
-            if (allSubjOutside)
-            {
-                int sn = subjectPolygon.Count, cn = clipPolygon.Count;
-                bool edgeX = false;
-                for (int si = 0; si < sn && !edgeX; si++)
-                for (int ci = 0; ci < cn && !edgeX; ci++)
-                    if (this.TrySegmentIntersection(
-                            subjectPolygon[si], subjectPolygon[(si + 1) % sn],
-                            clipPolygon[ci], clipPolygon[(ci + 1) % cn], out _))
-                        edgeX = true;
-                if (!edgeX)
-                {
-                    // 完全不相交 → 返回整个 subject
-                    var clippedResult = new ClippedPolygonWithSources();
-                    clippedResult.Vertices.AddRange(subjectPolygon);
-                    clippedResult.Segments.Add(new ClippedSegment
-                    {
-                        StartIndex = 0,
-                        EndIndex = subjectPolygon.Count - 1,
-                        Source = SegmentSource.Subject,
-                        Vertices = new List<Point2D>(subjectPolygon)
-                    });
-                    return new[] { clippedResult };
-                }
-            }
-
-            // ── 快速路径 2：subject 完全在 clip 内部 → 无外部顶点 → 空 ──
-            bool allSubjInside = true;
-            foreach (var pt in subjectPolygon)
-                if (!this.IsPointInPolygon(pt, clipPolygon)) { allSubjInside = false; break; }
-            if (allSubjInside)
+            // 第一步：用已验证的几何差集算法求结果
+            var geomResult = this.ClipKeepOutside(subjectPolygon, clipPolygon);
+            if (geomResult == null || geomResult.Count == 0)
                 return Array.Empty<ClippedPolygonWithSources>();
 
-            // ── 展开序列：在每条 subject 边上插入与 clip 的交点 ─────────
-            int sCount = subjectPolygon.Count;
-            int cCount = clipPolygon.Count;
-            var expanded = new List<Point2D>();
+            var results = new List<ClippedPolygonWithSources>();
 
-            for (int i = 0; i < sCount; i++)
+            foreach (var poly in geomResult)
             {
-                var a = subjectPolygon[i];
-                var b = subjectPolygon[(i + 1) % sCount];
-                expanded.Add(a);
+                if (poly == null || poly.Count < 3) continue;
 
-                var xpts = new List<KeyValuePair<double, Point2D>>();
-                for (int ci = 0; ci < cCount; ci++)
+                var clipped = new ClippedPolygonWithSources();
+                clipped.Vertices.AddRange(poly);
+
+                // 第二步：反推顶点来源
+                var currentSource = SegmentSource.Subject;
+                int segStart = 0;
+
+                for (int i = 0; i < poly.Count; i++)
                 {
-                    if (this.TrySegmentIntersectionParametric(
-                            a, b,
-                            clipPolygon[ci], clipPolygon[(ci + 1) % cCount],
-                            out double t, out Point2D xp))
+                    var edgeStart = poly[i];
+                    var edgeEnd = poly[(i + 1) % poly.Count];
+                    bool onSubject = IsVertexOnPolygon(edgeStart, subjectPolygon) || IsVertexOnPolygon(edgeEnd, subjectPolygon);
+                    bool onClip = IsVertexOnPolygon(edgeStart, clipPolygon) || IsVertexOnPolygon(edgeEnd, clipPolygon);
+                    SegmentSource edgeSrc = (onClip && !onSubject) ? SegmentSource.Clip : SegmentSource.Subject;
+
+                    if (edgeSrc != currentSource || i == poly.Count - 1)
                     {
-                        if (t > 1e-9 && t < 1.0 - 1e-9)
-                            xpts.Add(new KeyValuePair<double, Point2D>(t, xp));
-                    }
-                }
-                xpts.Sort((x, y) => x.Key.CompareTo(y.Key));
-                foreach (var kv in xpts)
-                    expanded.Add(kv.Value);
-            }
-
-            // ── 追踪：收集外部顶点，遇到 clip 内部时 CW 绕行 ────────────
-            int eCount = expanded.Count;
-            int startIdx = -1;
-            for (int k = 0; k < eCount; k++)
-                if (!this.IsPointInPolygon(expanded[k], clipPolygon)) { startIdx = k; break; }
-
-            if (startIdx < 0)
-                return Array.Empty<ClippedPolygonWithSources>();
-
-            var clippedPoly = new ClippedPolygonWithSources();
-            int idx = startIdx;
-            int visited = 0;
-            int subjSegStart = -1;
-
-            while (visited <= eCount)
-            {
-                var pt = expanded[idx];
-                if (!this.IsPointInPolygon(pt, clipPolygon))
-                {
-                    // 来自 Subject 的外部顶点
-                    if (subjSegStart < 0)
-                        subjSegStart = clippedPoly.Vertices.Count;
-
-                    clippedPoly.Vertices.Add(pt);
-                    idx = (idx + 1) % eCount;
-                    visited++;
-                    if (visited > 1 && idx == startIdx) break;
-                }
-                else
-                {
-                    // 进入 clip 区域：关闭当前 Subject 段
-                    if (subjSegStart >= 0)
-                    {
-                        int subjSegEnd = clippedPoly.Vertices.Count - 1;
-                        if (subjSegEnd >= subjSegStart)
+                        int segEnd = (i == poly.Count - 1) ? poly.Count - 1 : i - 1;
+                        if (segEnd >= segStart)
                         {
-                            var subjVerts = new List<Point2D>();
-                            for (int k = subjSegStart; k <= subjSegEnd; k++)
-                                subjVerts.Add(clippedPoly.Vertices[k]);
-                            clippedPoly.Segments.Add(new ClippedSegment
+                            var segVerts = new List<Point2D>();
+                            for (int k = segStart; k <= segEnd; k++)
+                                segVerts.Add(poly[k]);
+                            clipped.Segments.Add(new ClippedSegment
                             {
-                                StartIndex = subjSegStart,
-                                EndIndex = subjSegEnd,
-                                Source = SegmentSource.Subject,
-                                Vertices = subjVerts
+                                StartIndex = segStart, EndIndex = segEnd,
+                                Source = currentSource, Vertices = segVerts
                             });
                         }
-                        subjSegStart = -1;
+                        segStart = i;
+                        currentSource = edgeSrc;
                     }
-
-                    // entry = 第一个连续 inside 点
-                    var entry = expanded[idx];
-
-                    // 找最后一个连续 inside 点（出射交点）
-                    int j = idx;
-                    int safety = 0;
-                    while (this.IsPointInPolygon(expanded[j], clipPolygon) && safety < eCount)
-                    {
-                        j = (j + 1) % eCount;
-                        safety++;
-                    }
-                    var exitPt = expanded[(j + eCount - 1) % eCount];
-
-                    // 沿 clip 边界 CW（反向）从 entry 绕行到 exitPt
-                    var clipVerts = this.CollectClipBoundaryVertsCW(entry, exitPt, clipPolygon);
-
-                    int clipStartIdx = clippedPoly.Vertices.Count;
-                    foreach (var cv in clipVerts)
-                        clippedPoly.Vertices.Add(cv);
-
-                    clippedPoly.Segments.Add(new ClippedSegment
-                    {
-                        StartIndex = clipStartIdx,
-                        EndIndex = clippedPoly.Vertices.Count - 1,
-                        Source = SegmentSource.Clip,
-                        Vertices = new List<Point2D>(clipVerts)
-                    });
-
-                    idx = j;
-                    visited += safety;
-                    if (idx == startIdx) break;
                 }
-            }
 
-            // 关闭最后一个 Subject 段
-            if (subjSegStart >= 0)
-            {
-                int subjSegEnd = clippedPoly.Vertices.Count - 1;
-                if (subjSegEnd >= subjSegStart)
+                if (segStart < poly.Count)
                 {
-                    var subjVerts = new List<Point2D>();
-                    for (int k = subjSegStart; k <= subjSegEnd; k++)
-                        subjVerts.Add(clippedPoly.Vertices[k]);
-                    clippedPoly.Segments.Add(new ClippedSegment
+                    int segEnd = poly.Count - 1;
+                    if (segEnd >= segStart)
                     {
-                        StartIndex = subjSegStart,
-                        EndIndex = subjSegEnd,
+                        var segVerts = new List<Point2D>();
+                        for (int k = segStart; k <= segEnd; k++)
+                            segVerts.Add(poly[k]);
+                        clipped.Segments.Add(new ClippedSegment
+                        {
+                            StartIndex = segStart, EndIndex = segEnd,
+                            Source = currentSource, Vertices = segVerts
+                        });
+                    }
+                }
+
+                if (clipped.Segments.Count == 0)
+                {
+                    clipped.Segments.Add(new ClippedSegment
+                    {
+                        StartIndex = 0, EndIndex = poly.Count - 1,
                         Source = SegmentSource.Subject,
-                        Vertices = subjVerts
+                        Vertices = new List<Point2D>(poly)
                     });
                 }
+
+                results.Add(clipped);
             }
 
-            if (clippedPoly.Vertices.Count < 3)
-                return Array.Empty<ClippedPolygonWithSources>();
+            return results;
+        }
 
-            var deduped = this.RemoveAdjacentDuplicates(clippedPoly.Vertices);
-            if (deduped.Count < 3)
-                return Array.Empty<ClippedPolygonWithSources>();
-            var cleaned = this.RemoveCollinearVertices(deduped);
-            if (cleaned.Count < 3)
-                return Array.Empty<ClippedPolygonWithSources>();
-
-            clippedPoly.Vertices = cleaned;
-
-            if (clippedPoly.Segments.Count == 0)
+        private static bool IsVertexOnPolygon(Point2D pt, IReadOnlyList<Point2D> poly)
+        {
+            for (int i = 0; i < poly.Count; i++)
             {
-                clippedPoly.Segments.Add(new ClippedSegment
-                {
-                    StartIndex = 0,
-                    EndIndex = cleaned.Count - 1,
-                    Source = SegmentSource.Subject,
-                    Vertices = new List<Point2D>(cleaned)
-                });
+                var a = poly[i];
+                var b = poly[(i + 1) % poly.Count];
+                var cross = (b.X - a.X) * (pt.Y - a.Y) - (b.Y - a.Y) * (pt.X - a.X);
+                if (Math.Abs(cross) > 1e-6) continue;
+                var dot = (pt.X - a.X) * (b.X - a.X) + (pt.Y - a.Y) * (b.Y - a.Y);
+                var lenSq = (b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y);
+                if (lenSq > 1e-12 && dot >= -1e-6 && dot <= lenSq + 1e-6)
+                    return true;
             }
-
-            return new[] { clippedPoly };
+            return false;
         }
 
         /// <summary>
         ///     保留裁剪多边形外部的 subject 部分（差集）.
-        ///
-        ///     算法：
-        ///     1. 在 subject 每条边上插入与 clip 的所有交点（展开序列）
-        ///     2. 沿展开序列收集外部顶点
-        ///     3. 遇到进入 clip 时：
-        ///        entry = 展开序列中第一个 inside 点（即入射交点）
-        ///        exit  = 展开序列中最后一个连续 inside 点（即出射交点）
-        ///        沿 clip 边界 CW（顺时针/反向）从 entry 绕行到 exit，
-        ///        走过的是 clip 内部交集边界的对应段
-        ///     4. 挖孔场景（clip 完全在 subject 内，无交点）近似返回 subject 外环
         /// </summary>
         private IReadOnlyList<IReadOnlyList<Point2D>> ClipKeepOutside(
             IReadOnlyList<Point2D> subjectPolygon,
             IReadOnlyList<Point2D> clipPolygon)
         {
-            // ── 快速路径 ──────────────────────────────────────────────
             bool anySubjOutside = false;
             foreach (var pt in subjectPolygon)
                 if (!this.IsPointInPolygon(pt, clipPolygon)) { anySubjOutside = true; break; }
@@ -646,7 +518,6 @@ namespace DDNCadAddins.Core.Services
 
             if (!anySubjInside)
             {
-                // subject 顶点全在 clip 外，检查是否有边相交
                 int sn = subjectPolygon.Count, cn = clipPolygon.Count;
                 bool edgeX = false;
                 for (int si = 0; si < sn && !edgeX; si++)
@@ -655,12 +526,10 @@ namespace DDNCadAddins.Core.Services
                             subjectPolygon[si], subjectPolygon[(si + 1) % sn],
                             clipPolygon[ci],    clipPolygon[(ci + 1) % cn], out _))
                         edgeX = true;
-                // 无边相交（包括 clip 完全在 subject 内挖孔）→ 近似返回 subject
                 if (!edgeX)
                     return new[] { subjectPolygon };
             }
 
-            // ── 展开序列：在每条 subject 边上插入与 clip 的交点 ─────────
             int sCount = subjectPolygon.Count;
             int cCount = clipPolygon.Count;
             var expanded = new List<Point2D>();
@@ -688,7 +557,6 @@ namespace DDNCadAddins.Core.Services
                     expanded.Add(kv.Value);
             }
 
-            // ── 追踪：收集外部顶点，遇到 clip 内部时 CW 绕行 ────────────
             int eCount = expanded.Count;
             int startIdx = -1;
             for (int k = 0; k < eCount; k++)
@@ -713,10 +581,7 @@ namespace DDNCadAddins.Core.Services
                 }
                 else
                 {
-                    // entry = 展开序列中第一个连续 inside 点（入射交点）
                     var entry = expanded[idx];
-
-                    // 找最后一个连续 inside 点（出射交点）
                     int j = idx;
                     int safety = 0;
                     while (this.IsPointInPolygon(expanded[j], clipPolygon) && safety < eCount)
@@ -725,8 +590,6 @@ namespace DDNCadAddins.Core.Services
                         safety++;
                     }
                     var exitPt = expanded[(j + eCount - 1) % eCount];
-
-                    // 沿 clip 边界 CW（反向）从 entry 绕行到 exitPt
                     var clipVerts = this.CollectClipBoundaryVertsCW(entry, exitPt, clipPolygon);
                     output.AddRange(clipVerts);
 
@@ -746,14 +609,6 @@ namespace DDNCadAddins.Core.Services
             return new[] { (IReadOnlyList<Point2D>)cleaned };
         }
 
-        /// <summary>
-        ///     沿 clip 边界 CW（顺时针/反向）从 entry 绕行到 exitPt（包含两端点）.
-        ///
-        ///     CW 绕行规则（clip 为 CCW 时）：
-        ///       entry 在 clip 边 startEdge 上 → 从 clip[startEdge]（边的起点）反向走
-        ///       exit  在 clip 边 endEdge   上 → 走到 clip[(endEdge+1)%n]（边的终点）
-        ///       反向遍历：cur = startEdge, startEdge-1, ... 直到走到 endEdge+1
-        /// </summary>
         private List<Point2D> CollectClipBoundaryVertsCW(
             Point2D entry, Point2D exitPt, IReadOnlyList<Point2D> clip)
         {
@@ -770,25 +625,18 @@ namespace DDNCadAddins.Core.Services
                 return result;
             }
 
-            // CW：从 startEdge 的起点反向走到 endEdge 的终点
-            // clip[startEdge] = 边起点，clip[(endEdge+1)%n] = 边终点
-            // 先加再判，确保 stop 节点也被包含（修复 CW 绕行缺少最后一个顶点的 bug）
             int cur = startEdge;
             int stop = (endEdge + 1) % n;
             for (int safety = 0; safety < n + 2; safety++)
             {
                 result.Add(clip[cur]);
                 if (cur == stop) break;
-                cur = (cur + n - 1) % n;  // 反向（CW）
+                cur = (cur + n - 1) % n;
             }
             result.Add(exitPt);
             return result;
         }
 
-        /// <summary>
-        ///     沿 clip 边界从 startPt 绕行到 endPt（包含两端点）.
-        ///     自动选择较短路径（内侧段），支持凹多边形.
-        /// </summary>
         private List<Point2D> CollectClipBoundaryVertsCCW(
             Point2D startPt, Point2D endPt, IReadOnlyList<Point2D> clip)
         {
@@ -805,13 +653,11 @@ namespace DDNCadAddins.Core.Services
                 return result;
             }
 
-            // 选择较短路径（内侧段）
             int ccwSteps = (endEdge - startEdge + n) % n;
             int cwSteps = (startEdge - endEdge + n) % n;
 
             if (ccwSteps <= cwSteps)
             {
-                // CCW 是短路：从 startEdge 的终点正向走到 endEdge 的起点
                 int cur = (startEdge + 1) % n;
                 int stop = endEdge;
                 for (int safety = 0; safety < n + 2; safety++)
@@ -823,7 +669,6 @@ namespace DDNCadAddins.Core.Services
             }
             else
             {
-                // CW 是短路：从 startEdge 的起点反向走到 endEdge 的终点
                 int cur = startEdge;
                 int stop = (endEdge + 1) % n;
                 for (int safety = 0; safety < n + 2; safety++)
@@ -837,7 +682,6 @@ namespace DDNCadAddins.Core.Services
             return result;
         }
 
-        /// <summary>找点所在的 clip 边索引（-1 = 未找到）.</summary>
         private int FindEdgeContainingPoint(Point2D pt, IReadOnlyList<Point2D> poly)
         {
             int n = poly.Count;
@@ -855,7 +699,6 @@ namespace DDNCadAddins.Core.Services
             return -1;
         }
 
-        /// <summary>线段相交并返回参数 t（沿 p1→p2 的比例）.</summary>
         private bool TrySegmentIntersectionParametric(
             Point2D p1, Point2D p2, Point2D p3, Point2D p4,
             out double t, out Point2D intersection)
@@ -879,9 +722,6 @@ namespace DDNCadAddins.Core.Services
             return cross >= -1e-12;
         }
 
-        /// <summary>
-        ///     射线法判断点是否在闭合多边形内部（含边界）.
-        /// </summary>
         private bool IsPointInPolygon(Point2D point, IReadOnlyList<Point2D> polygon)
         {
             var count = polygon.Count;
@@ -894,11 +734,9 @@ namespace DDNCadAddins.Core.Services
                 var pi = polygon[i];
                 var pj = polygon[j];
 
-                // 检查点是否在多边形边上
                 var cross = (pi.X - pj.X) * (point.Y - pj.Y) - (pi.Y - pj.Y) * (point.X - pj.X);
                 if (Math.Abs(cross) < 1e-12)
                 {
-                    // 点在边的无限延长线上，检查是否在线段范围内
                     var dot = (point.X - pj.X) * (pi.X - pj.X) + (point.Y - pj.Y) * (pi.Y - pj.Y);
                     var lenSq = (pi.X - pj.X) * (pi.X - pj.X) + (pi.Y - pj.Y) * (pi.Y - pj.Y);
                     if (lenSq > 0 && dot >= 0 && dot <= lenSq)
@@ -916,9 +754,6 @@ namespace DDNCadAddins.Core.Services
             return inside;
         }
 
-        /// <summary>
-        ///     找 subject 边与 clip 多边形的交点（取离起点最近的交点）.
-        /// </summary>
         private Point2D FindClipEdgeIntersection(
             Point2D subjectStart, Point2D subjectEnd, IReadOnlyList<Point2D> clipPolygon)
         {
@@ -947,9 +782,6 @@ namespace DDNCadAddins.Core.Services
             return bestPt;
         }
 
-        /// <summary>
-        ///     两条线段是否相交，返回交点.
-        /// </summary>
         private bool TrySegmentIntersection(
             Point2D p1, Point2D p2, Point2D p3, Point2D p4, out Point2D intersection)
         {
@@ -974,9 +806,6 @@ namespace DDNCadAddins.Core.Services
             return true;
         }
 
-        /// <summary>
-        ///     无限直线交点（参数法），供 Sutherland-Hodgman 使用.
-        /// </summary>
         private Point2D LineLineIntersection(Point2D p1, Point2D p2, Point2D p3, Point2D p4)
         {
             var dx1 = p2.X - p1.X;
@@ -986,7 +815,6 @@ namespace DDNCadAddins.Core.Services
 
             var denominator = (dx1 * dy2) - (dy1 * dx2);
 
-            // 平行 → 取中点
             if (Math.Abs(denominator) < 1e-12)
                 return new Point2D((p2.X + p1.X) / 2.0, (p2.Y + p1.Y) / 2.0);
 
@@ -994,17 +822,8 @@ namespace DDNCadAddins.Core.Services
             return new Point2D(p1.X + (t * dx1), p1.Y + (t * dy1));
         }
 
-        /// <summary>
-        ///     移除相邻重复顶点.
-        /// </summary>
-
-        /// <summary>
-        ///     确保多边形为 CCW（逆时针）方向。Sutherland-Hodgman 算法要求裁剪多边形为 CCW.
-        ///     若多边形面积为负（CW 顺时针），则反转顶点顺序.
-        /// </summary>
         private static IReadOnlyList<Point2D> EnsureCCW(IReadOnlyList<Point2D> polygon)
         {
-            // Shoelace formula: signed area > 0 = CCW
             double area = 0;
             int n = polygon.Count;
             for (int i = 0; i < n; i++)
@@ -1015,9 +834,8 @@ namespace DDNCadAddins.Core.Services
             }
             area /= 2;
 
-            if (area >= 0) return polygon; // Already CCW (or degenerate/zero area)
+            if (area >= 0) return polygon;
 
-            // Reverse to make CCW
             var reversed = new List<Point2D>(n);
             for (int i = n - 1; i >= 0; i--)
                 reversed.Add(polygon[i]);
@@ -1043,17 +861,13 @@ namespace DDNCadAddins.Core.Services
             return result;
         }
 
-        /// <summary>
-        ///     移除多边形中近共线的冗余顶点（Sutherland-Hodgman 裁剪后处理）.
-        ///     共线顶点会在 AutoCAD 中产生意外的 SOLID 填充或缺口伪影.
-        /// </summary>
         private List<Point2D> RemoveCollinearVertices(List<Point2D> polygon)
         {
             int n = polygon.Count;
             if (n < 3) return polygon;
 
             var result = new List<Point2D>();
-            const double areaEps = 1e-12; // 三角形面积阈值（平方单位）
+            const double areaEps = 1e-12;
 
             for (int i = 0; i < n; i++)
             {
@@ -1061,17 +875,14 @@ namespace DDNCadAddins.Core.Services
                 var curr = polygon[i];
                 var next = polygon[(i + 1) % n];
 
-                // 三角形 (prev, curr, next) 的有向面积 ×2 = |cross(prev→curr, prev→next)|
                 var cross = (curr.X - prev.X) * (next.Y - prev.Y)
                           - (curr.Y - prev.Y) * (next.X - prev.X);
-                var area2 = Math.Abs(cross); // 面积 ×2
+                var area2 = Math.Abs(cross);
 
-                // 仅保留非共线顶点（面积足够大的三角）
                 if (area2 > areaEps)
                     result.Add(curr);
             }
 
-            // 若清理后顶点太少，回退到原始列表
             return result.Count >= 3 ? result : polygon;
         }
     }
