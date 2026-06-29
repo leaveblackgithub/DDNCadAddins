@@ -51,19 +51,17 @@ namespace AddinsACAD.Commands
         ///     G = GENERATEXCLIPBOUNDARY (生成XClip边界)
         ///     E = EXPLODEASSHOWN (按显示状态爆炸图块)
         ///     H = GENERATEHATCHBOUNDARY (提取Hatch边界)
-        ///     S = SPLITBOUNDARY (拆分Hatch边界)
         ///     B = SUBTRACTCLOSEDCURVE (封闭曲线布尔交集)
         /// </summary>
         private static string AskSubCommand(Editor ed)
         {
             var kw = new PromptKeywordOptions(
-                "\n选择测试子命令 C=CROPTESTS K=CLONEHATCH G=GENERATEXCLIPBOUNDARY E=EXPLODEASSHOWN H=GENERATEHATCHBOUNDARY S=SPLITBOUNDARY B=SUBTRACTCLOSEDCURVE [C/K/G/E/H/S/B]");
+                "\n选择测试子命令 C=CROPTESTS K=CLONEHATCH G=GENERATEXCLIPBOUNDARY E=EXPLODEASSHOWN H=GENERATEHATCHBOUNDARY B=SUBTRACTCLOSEDCURVE [C/K/G/E/H/B]");
             kw.Keywords.Add("C");
             kw.Keywords.Add("K");
             kw.Keywords.Add("G");
             kw.Keywords.Add("E");
             kw.Keywords.Add("H");
-            kw.Keywords.Add("S");
             kw.Keywords.Add("B");
             kw.Keywords.Default = "C";
             kw.AllowNone = true;
@@ -87,7 +85,6 @@ namespace AddinsACAD.Commands
                 case "G": return "GENERATEXCLIPBOUNDARY";
                 case "E": return "EXPLODEASSHOWN";
                 case "H": return "GENERATEHATCHBOUNDARY";
-                case "S": return "SPLITBOUNDARY";
                 case "B": return "SUBTRACTCLOSEDCURVE";
                 default:  return null;
             }

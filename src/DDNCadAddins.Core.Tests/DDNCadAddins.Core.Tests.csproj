@@ -33,8 +33,6 @@
     <Compile Include="CropGeometryServiceTests.cs" />
     <Compile Include="PolygonClipperServiceTests.cs" />
     <Compile Include="CurveSamplerTests.cs" />
-    <Compile Include="HatchCropLogicTests.cs" />
-    <Compile Include="SplitBoundaryTests.cs" />
     <Compile Include="SubtractIntersectionTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

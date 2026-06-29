@@ -32,10 +32,8 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="Commands\CropCircleCommand.cs" />
     <Compile Include="Commands\CropLineCommand.cs" />
     <Compile Include="Commands\CropPolylineCommand.cs" />
-    <Compile Include="Commands\CropHatchCommand.cs" />
     <Compile Include="Commands\CloneHatchCommand.cs" />
     <Compile Include="Commands\CommandTestsCommand.cs" />
-    <Compile Include="Commands\CropTestsCommand.cs" />
     <Compile Include="Commands\GenerateHatchBoundaryCommand.cs" />
     <Compile Include="Commands\SubtractClosedCurveCommand.cs" />
     <Compile Include="TestCommands\CreateTestBlockForExplodeCommand.cs" />
@@ -51,7 +49,6 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="ServiceTests\CropPolylineServiceTests.cs" />
     <Compile Include="ServiceTests\TransactionServiceTest.cs" />
     <Compile Include="ServiceTests\TransactionServiceExtendedTests.cs" />
-    <Compile Include="ServiceTests\SubtractClosedCurveIntegrationTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

@@ -41,6 +41,7 @@ Features:
     <Compile Include="CadServiceManager.cs" />
     <Compile Include="EditorService.cs" />
     <Compile Include="GeometryHelper.cs" />
+    <Compile Include="HatchBoundaryExtractor.cs" />
     <Compile Include="ExplodeAsShownResult.cs" />
     <Compile Include="ICommandCancellation.cs" />
     <Compile Include="CropService.cs" />
@@ -49,6 +50,7 @@ Features:
     <Compile Include="CropLineService.cs" />
     <Compile Include="CropPolylineService.cs" />
     <Compile Include="CropUtils.cs" />
+    <Compile Include="CurveConverter.cs" />
     <Compile Include="CropSplineService.cs" />
     <Compile Include="CropEllipseService.cs" />
     <Compile Include="Crop3DPolylineService.cs" />

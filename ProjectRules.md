@@ -1,42 +1,57 @@
-# DDNCadAddins项目规则索引
+# DDNCadAddins 项目规则索引
 
-本文档提供了DDNCadAddins项目中所有规则文档的索引和简要说明，方便团队成员查找和遵循相关规则。
+> 版本：1.3.0 | 最后更新：2026-06-29
+
+本文档提供了 DDNCadAddins 项目中所有规则文档的索引和简要说明。
 
 ## 核心规则文档
 
 | 文档 | 位置 | 说明 |
 |------|------|------|
-| **项目基本规则** | `CursorRules.txt` | 定义基本项目规则、编码标准和工作流程 |
-| **SOLID原则规则** | `.cursorrules` | Cursor AI专用的SOLID原则定义，自动指导代码生成和审查 |
-| **SOLID应用指南** | `docs/SOLID_Guidelines.md` | SOLID原则在项目中的详细应用指南和代码示例 |
-| **SOLID检查工具** | `SOLIDChecker.bat` | 自动检查代码是否遵循SOLID原则并生成报告 |
+| **AI 项目规则（主）** | [`.cursorrules`](.cursorrules) | AI 开发规则，含 ARCHITECTURE.md 维护要求和圆弧/椭圆精确计算规则 |
+| **架构文档** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 项目架构设计文档，命令注册表，关键约定 |
+| **SOLID 检查说明** | [`SOLIDCheck_Instructions.txt`](SOLIDCheck_Instructions.txt) | SOLID 原则检查说明 |
+| **SOLID 应用指南** | [`docs/SOLID_Guidelines.md`](docs/SOLID_Guidelines.md) | SOLID 原则详细应用指南和代码示例 |
+| **代码分析配置说明** | [`README-CodeAnalysis.md`](README-CodeAnalysis.md) | 代码分析器配置和 SOLID 检查说明 |
+| **NuGet 分析器管理** | [`nuget-analyzers.md`](nuget-analyzers.md) | 分析器清单和清理/恢复指南 |
+| **分析器工具说明** | [`analyzer-tools-readme.md`](analyzer-tools-readme.md) | 分析器管理批处理工具使用说明 |
+
+### Cursor 专用规则
+
+| 规则 | 位置 | 说明 |
+|------|------|------|
+| AutoCAD 资源管理 | [`.cursor/rules/autocad_resource_management.mdc`](.cursor/rules/autocad_resource_management.mdc) | AutoCAD 对象资源释放规范 |
+| AutoCAD 测试安全 | [`.cursor/rules/autocad_test_safety.mdc`](.cursor/rules/autocad_test_safety.mdc) | 测试死锁预防和图纸污染防护 |
+| 语法错误预防 | [`.cursor/rules/cursor_syntax_check.mdc`](.cursor/rules/cursor_syntax_check.mdc) | Cursor 生成代码的语法错误预防 |
+| OpResult/Logger 规范 | [`.cursor/rules/opresult_logger_rules.mdc`](.cursor/rules/opresult_logger_rules.mdc) | OpResult 返回类型和 Logger 使用规范 |
+| 未使用代码检测 | [`.cursor/rules/unused_code_detector.mdc`](.cursor/rules/unused_code_detector.mdc) | 检测未使用的代码元素 |
+
+### 其他 IDE 兼容规则
+
+| 规则 | 位置 | 说明 |
+|------|------|------|
+| Trae 项目规则 | [`.trae/rules/project_rules.md`](.trae/rules/project_rules.md) | Trae IDE 兼容引用（指向 .cursorrules） |
+
+## 已归档/删除的过时文件
+
+| 文件 | 状态 | 替代 |
+|------|------|------|
+| `.prompt` | ❌ 已删除 | 内容已合并到 `.cursorrules` |
 
 ## 如何使用这些规则
 
 1. **新加入项目的开发人员**：
-   - 首先阅读`CursorRules.txt`了解基本规则
-   - 然后阅读`docs/SOLID_Guidelines.md`熟悉SOLID原则的具体应用
-   - 在本地环境中运行`SOLIDChecker.bat`确保理解如何检查代码质量
+   - 首先阅读 `docs/ARCHITECTURE.md` 了解项目架构
+   - 然后阅读 `.cursorrules` 了解编码规范
+   - 阅读 `docs/SOLID_Guidelines.md` 熟悉 SOLID 原则的具体应用
 
 2. **日常开发流程**：
-   - 编写代码时参考SOLID应用指南
-   - 提交前使用SOLIDChecker.bat检查代码质量
-   - 代码审查时使用规则文档作为参考标准
+   - 修改架构前必须查阅 `docs/ARCHITECTURE.md`
+   - 修改架构后必须更新 `docs/ARCHITECTURE.md`
+   - 圆弧/椭圆几何计算必须使用参数化公式，禁止分段采样
+   - 提交前使用 SOLIDCheck_Instructions.txt 检查代码质量
 
-3. **使用Cursor AI进行开发**：
-   - 确保项目根目录包含`.cursorrules`文件
-   - 使用Cursor的AI辅助功能时，AI会自动应用这些规则
-   - 利用Ctrl+Shift+L快捷键打开AI面板进行SOLID原则检查
-
-## 规则更新流程
-
-1. 规则变更需经团队讨论并取得共识
-2. 更新相应规则文档并更新版本号/日期
-3. 通知所有团队成员规则变更
-4. 在下一次团队会议上回顾规则变更及其影响
-
-## 规则遵循情况的监控
-
-1. 每次代码审查必须检查SOLID原则遵循情况
-2. 每周项目例会回顾SOLID检查报告
-3. 定期更新规则以反映项目的发展和团队的反馈 
+3. **规则更新流程**：
+   - AI 规则修改 `.cursorrules`（唯一权威来源）
+   - `.trae/rules/project_rules.md` 不独立维护
+   - `.cursor/rules/` 下规则为 Cursor IDE 专用
