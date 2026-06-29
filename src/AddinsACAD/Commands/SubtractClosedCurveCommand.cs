@@ -91,9 +91,13 @@ namespace AddinsACAD.Commands
                     ed.WriteMessage(
                         $"\n差集结果：{resultPolyCount} 个封闭多边形，{outputType} {totalVertices}");
                 }
-                else
+                else if (noResult)
                 {
                     ed.WriteMessage("\n无结果（B 包含 A，A 被完全减去）。");
+                }
+                else
+                {
+                    ed.WriteMessage("\n差集绘制失败（几何计算成功，但绘制时发生异常）。");
                 }
 
                 // ── 步骤 6: TestRecorder 记录 ────────────────────────────
@@ -347,6 +351,15 @@ namespace AddinsACAD.Commands
         private static ObjectId CreateCurveFitSegment(
             ITransactionService ts, List<CorePoint2D> vertices, int colorIndex, int segIndex = -1)
         {
+            // CurveFit() 要求至少 3 个顶点，否则抛 eNotApplicable。
+            // 顶点不足时退化为直线段，避免异常导致整个事务 Abort。
+            if (vertices == null || vertices.Count < 1) return ObjectId.Null;
+            if (vertices.Count < 3)
+            {
+                Logger._.Debug($"  CreateCurveFitSegment[{segIndex}] 顶点数={vertices.Count}<3，退化为直线段");
+                return CreateStraightSegment(ts, vertices, colorIndex, segIndex);
+            }
+
             var poly2d = new Polyline2d
             {
                 PolyType = Poly2dType.SimplePoly,
