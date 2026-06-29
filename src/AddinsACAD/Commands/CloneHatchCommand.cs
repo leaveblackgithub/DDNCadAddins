@@ -127,7 +127,7 @@ namespace AddinsACAD.Commands
                 {
                     try
                     {
-                        // 4a: 深克隆源 Hatch（保留内部图案线条偏移数据），替换边界为新边界
+                        // 4a: 重新生成 Hatch（应用源参数），替代深克隆
                         var created = CloneHatchWithNewBoundaries(ts, sourceId, p, boundaryIds, ed, out newHatchId);
                         if (created)
                             ed.WriteMessage(
@@ -196,11 +196,11 @@ namespace AddinsACAD.Commands
         }
 
         /// <summary>
-        ///     深克隆源 Hatch（保留内部图案线条偏移数据），替换边界为新选对象.
-        ///     这是解决 SetHatchPattern 重新加载工厂默认图案导致线条偏移不同的根本方案.
+        ///     重新生成 Hatch（不深克隆），应用源 Hatch 的填充参数 + 新边界。
+        ///     用 new Hatch() + SetHatchPattern 替代 source.Clone()，避免深克隆开销。
         /// </summary>
         /// <param name="ts">事务服务.</param>
-        /// <param name="sourceId">源 Hatch 的 ObjectId.</param>
+        /// <param name="sourceId">源 Hatch 的 ObjectId（仅用于读取参数，已由调用方提取到 HatchParams 中）.</param>
         /// <param name="p">源 Hatch 提取的填充参数.</param>
         /// <param name="boundaryIds">新边界对象的 ObjectId 数组.</param>
         /// <param name="ed">编辑器（用于输出提示）.</param>
@@ -214,11 +214,17 @@ namespace AddinsACAD.Commands
 
             try
             {
-                // 1. 用 Hatch.Clone() 深克隆源 Hatch（保留所有内部图案线条偏移数据）
-                var source = ts.GetObject<Hatch>(sourceId, OpenMode.ForRead);
-                if (source == null || source.IsErased) return false;
-
-                var hatch = (Hatch)source.Clone();
+                // 1. 创建新 Hatch，应用源 Hatch 的填充参数（图案名称/比例/角度/原点等）
+                var hatch = new Hatch();
+                hatch.SetHatchPattern(p.PatternType, p.PatternName);
+                hatch.PatternScale  = p.PatternScale;
+                hatch.PatternAngle  = p.PatternAngle;
+                hatch.PatternDouble = p.PatternDouble;
+                hatch.PatternSpace  = p.PatternSpace;
+                hatch.Origin        = p.Origin;
+                hatch.HatchStyle    = p.Style;
+                hatch.Normal        = p.Normal;
+                hatch.Elevation     = p.Elevation;
 
                 // 2. 加入数据库
                 if (ts.AppendEntityToCurrentSpace(hatch).IsNull)
@@ -230,17 +236,10 @@ namespace AddinsACAD.Commands
 
                 newHatchId = hatch.ObjectId;
 
-                // 3. 移除克隆 Hatch 的所有旧边界环（从最后一个开始往前删，避免索引偏移）
-                int numLoops = hatch.NumberOfLoops;
-                for (int i = numLoops - 1; i >= 0; i--)
-                {
-                    hatch.RemoveLoopAt(i);
-                }
-
-                // 4. 用边界实体的几何顶点追加新环（而非 ObjectId 引用，避免形状错误）
-                hatch.Associative = true;
-                hatch.HatchStyle  = p.Style;
-
+                // 3. 追加边界环
+                //    优先尝试关联方式（传 ObjectIdCollection），失败则回退到顶点方式。
+                //    注意：Associative = true 必须在 AppendLoop(ObjectIdCollection) 之后设置，
+                //    否则 AutoCAD 引擎无法建立边界关联，EvaluateHatch 时填充不完整。
                 var appended = 0;
                 foreach (var id in boundaryIds)
                 {
@@ -250,18 +249,32 @@ namespace AddinsACAD.Commands
 
                     try
                     {
-                        var pts = new Point2dCollection();
-                        var bulges = new DoubleCollection();
-                        if (!ExtractCurveGeometry(curve, pts, bulges)) continue;
-
-                        hatch.AppendLoop(HatchLoopTypes.Outermost, pts, bulges);
+                        // 关联方式：用 ObjectIdCollection 追加环，AutoCAD 自动读取几何
+                        var idCol = new ObjectIdCollection { id };
+                        hatch.AppendLoop(HatchLoopTypes.Outermost, idCol);
                         appended++;
                     }
-                    catch (System.Exception ex)
+                    catch (System.Exception)
                     {
-                        Logger._.Warn($"边界 {id} 追加失败: {ex.Message}");
+                        // 回退：用顶点方式追加（非关联，但至少保证几何正确）
+                        try
+                        {
+                            var pts = new Point2dCollection();
+                            var bulges = new DoubleCollection();
+                            if (!ExtractCurveGeometry(curve, pts, bulges)) continue;
+                            hatch.AppendLoop(HatchLoopTypes.Outermost, pts, bulges);
+                            appended++;
+                        }
+                        catch (System.Exception ex2)
+                        {
+                            Logger._.Warn($"边界 {id} 追加失败: {ex2.Message}");
+                        }
                     }
                 }
+
+                // 关联性必须在所有 AppendLoop(ObjectIdCollection) 完成后设置
+                if (appended > 0)
+                    hatch.Associative = true;
 
                 if (appended == 0)
                 {
@@ -271,6 +284,7 @@ namespace AddinsACAD.Commands
                     return false;
                 }
 
+                // 4. 评估填充
                 hatch.EvaluateHatch(true);
                 return true;
             }

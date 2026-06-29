@@ -142,9 +142,42 @@ namespace ServiceACAD
                     else if (ent is Hatch h)
                     {
                         snap.Type = "Hatch";
-                        snap.KeyGeometry = new List<CorePoint2D> { new CorePoint2D(h.Origin.X, h.Origin.Y) };
                         snap.KeyParams = new List<double> { h.PatternScale, h.PatternAngle };
-                        snap.ExtraInfo = $"PATTERN={h.PatternName}, PatternType={h.PatternType}, Style={h.HatchStyle}, Double={h.PatternDouble}, Space={h.PatternSpace}, Elevation={h.Elevation}, Layer={h.Layer}";
+
+                        // 记录所有边界环的顶点（用于诊断填充是否完整）
+                        var loopPts = new List<CorePoint2D>();
+                        loopPts.Add(new CorePoint2D(h.Origin.X, h.Origin.Y)); // index 0 = origin
+                        int loopCount = h.NumberOfLoops;
+                        var loopSummary = new System.Text.StringBuilder();
+                        for (int li = 0; li < loopCount; li++)
+                        {
+                            try
+                            {
+                                var loop = h.GetLoopAt(li);
+                                int ptsBefore = loopPts.Count;
+                                if (loop.Polyline != null && loop.Polyline.Count > 0)
+                                {
+                                    // BulgeVertex 方式（Polyline 环）
+                                    foreach (BulgeVertex bv in loop.Polyline)
+                                        loopPts.Add(new CorePoint2D(bv.Vertex.X, bv.Vertex.Y));
+                                }
+                                else if (loop.Curves != null)
+                                {
+                                    // Curves 方式（LineSegment2d / CircularArc2d 等）
+                                    foreach (Curve2d c2d in loop.Curves)
+                                    {
+                                        loopPts.Add(new CorePoint2D(c2d.StartPoint.X, c2d.StartPoint.Y));
+                                        loopPts.Add(new CorePoint2D(c2d.EndPoint.X, c2d.EndPoint.Y));
+                                    }
+                                }
+                                int ptsAdded = loopPts.Count - ptsBefore;
+                                if (li > 0) loopSummary.Append("|");
+                                loopSummary.Append($"L{li}:{ptsAdded}pts,Type={loop.LoopType}");
+                            }
+                            catch { loopSummary.Append($"|L{li}:err"); }
+                        }
+                        snap.KeyGeometry = loopPts;
+                        snap.ExtraInfo = $"PATTERN={h.PatternName}, PatternType={h.PatternType}, Style={h.HatchStyle}, Double={h.PatternDouble}, Space={h.PatternSpace}, Elevation={h.Elevation}, Layer={h.Layer}, Associative={h.Associative}, Loops={loopCount}[{loopSummary}]";
                     }
                     else
                     {
