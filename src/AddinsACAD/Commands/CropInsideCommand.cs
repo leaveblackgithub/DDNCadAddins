@@ -148,6 +148,7 @@ namespace AddinsACAD.Commands
 
         /// <summary>
         ///     选择闭合曲线作为裁剪边界（圆、椭圆、闭合多段线、闭合样条线等）.
+        ///     委托给 <see cref="CurveToPolygonConverter.ConvertCurveToPolygon"/> 自动选择精确/拟合策略.
         /// </summary>
         /// <returns>边界顶点列表（WCS），如果取消或选择无效则返回 null.</returns>
         private List<DDNCadAddins.Core.Models.Point2D> SelectBoundaryPolyline(Editor ed, out ObjectId boundaryId)
@@ -185,36 +186,13 @@ namespace AddinsACAD.Commands
                         return;
                     }
 
-                    const int sampleCount = 64;
-                    var startParam = curve.StartParam;
-                    var endParam = curve.EndParam;
-
-                    for (var i = 0; i < sampleCount; i++)
+                    // 使用 CurveToPolygonConverter 自动选择精确/拟合策略
+                    var generator = new ServiceACAD.CurveToPolygonConverter();
+                    var polygon = generator.ConvertCurveToPolygon(curve);
+                    if (polygon != null && polygon.Count >= 3)
                     {
-                        var param = startParam + (endParam - startParam) * i / sampleCount;
-                        var pt = curve.GetPointAtParameter(Math.Min(param, endParam));
-                        points.Add(new DDNCadAddins.Core.Models.Point2D(pt.X, pt.Y));
+                        points.AddRange(polygon);
                     }
-
-                    var deduped = new List<DDNCadAddins.Core.Models.Point2D>();
-                    foreach (var p in points)
-                    {
-                        if (deduped.Count == 0)
-                        {
-                            deduped.Add(p);
-                            continue;
-                        }
-
-                        var last = deduped[deduped.Count - 1];
-                        var dx = Math.Abs(last.X - p.X);
-                        var dy = Math.Abs(last.Y - p.Y);
-                        if (dx > 1e-6 || dy > 1e-6)
-                        {
-                            deduped.Add(p);
-                        }
-                    }
-
-                    points = deduped;
                 });
 
                 if (points.Count < 3)

@@ -10,25 +10,25 @@ namespace ServiceACAD
     /// <summary>
     ///     Hatch 边界提取器 — 将 AutoCAD Hatch 实体的边界环（Loop）转换为 Core 层多边形.
     ///     处理关联/非关联 Hatch，支持 LineSegment2d / CircularArc2d / EllipticalArc2d / NurbCurve2d.
-    ///     曲线生成委托给 <see cref="HatchBoundaryGenerator"/>，自动选择精确/拟合策略.
+    ///     曲线生成委托给 <see cref="CurveToPolygonConverter"/>，自动选择精确/拟合策略.
     /// </summary>
     public class HatchBoundaryExtractor
     {
-        private readonly HatchBoundaryGenerator _generator;
+        private readonly CurveToPolygonConverter _generator;
 
         /// <summary>
-        ///     默认构造函数（使用 HatchBoundaryGenerator 默认实例）.
+        ///     默认构造函数（使用 CurveToPolygonConverter 默认实例）.
         /// </summary>
         public HatchBoundaryExtractor()
         {
-            this._generator = new HatchBoundaryGenerator();
+            this._generator = new CurveToPolygonConverter();
         }
 
         /// <summary>
-        ///     构造函数（注入 HatchBoundaryGenerator，便于 Moq 测试）.
+        ///     构造函数（注入 CurveToPolygonConverter，便于 Moq 测试）.
         /// </summary>
-        /// <param name="generator">边界生成器.</param>
-        public HatchBoundaryExtractor(HatchBoundaryGenerator generator)
+        /// <param name="generator">曲线→多边形转换器.</param>
+        public HatchBoundaryExtractor(CurveToPolygonConverter generator)
         {
             this._generator = generator ?? throw new ArgumentNullException(nameof(generator));
         }

@@ -10,7 +10,7 @@ namespace ServiceACAD
 {
     /// <summary>
     ///     曲线→多边形转换器：将各种 AutoCAD Curve 类型转换为多边形顶点列表.
-    ///     内部委托给 <see cref="HatchBoundaryGenerator"/>，自动选择精确/拟合策略.
+    ///     内部委托给 <see cref="CurveToPolygonConverter"/>，自动选择精确/拟合策略.
     ///     - Polyline：逐顶点+凸度提取（精确，使用 ExactCurveGenerator）
     ///     - Circle：用2个半圆+bulges=1.0表示（精确）
     ///     - Ellipse：提取关键顶点+凸度（精确）
@@ -18,7 +18,7 @@ namespace ServiceACAD
     /// </summary>
     public static class CurveConverter
     {
-        private static readonly HatchBoundaryGenerator Generator = new HatchBoundaryGenerator();
+        private static readonly CurveToPolygonConverter Generator = new CurveToPolygonConverter();
 
         /// <summary>
         ///     将闭合 Curve 转换为多边形顶点列表 (WCS).

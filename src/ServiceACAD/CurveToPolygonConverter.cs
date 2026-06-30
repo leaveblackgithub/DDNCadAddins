@@ -9,14 +9,14 @@ using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 namespace ServiceACAD
 {
     /// <summary>
-    ///     边界生成器 — 将各种 AutoCAD Curve 类型转换为多边形顶点或 CAD 实体.
+    ///     曲线→多边形转换器 — 将各种 AutoCAD Curve 类型转换为多边形顶点或 CAD 实体.
     ///     <para>
     ///         内部自动选择精确/拟合策略：
     ///         - 精确（ExactCurveGenerator）：直线 / Polyline（凸度弧段精确展开）/ 圆弧 / 圆 / 完整椭圆
     ///         - 拟合（FittedCurveGenerator）：椭圆弧/Spline/3DPolyline/MLine/Leader 等
     ///     </para>
     /// </summary>
-    public class HatchBoundaryGenerator
+    public class CurveToPolygonConverter
     {
         private readonly ExactCurveGenerator _exactGen;
         private readonly FittedCurveGenerator _fittedGen;
@@ -24,7 +24,7 @@ namespace ServiceACAD
         /// <summary>
         ///     默认构造函数.
         /// </summary>
-        public HatchBoundaryGenerator()
+        public CurveToPolygonConverter()
         {
             this._exactGen = new ExactCurveGenerator();
             this._fittedGen = new FittedCurveGenerator();
@@ -33,7 +33,7 @@ namespace ServiceACAD
         /// <summary>
         ///     构造函数（依赖注入，便于测试）.
         /// </summary>
-        public HatchBoundaryGenerator(ExactCurveGenerator exactGen, FittedCurveGenerator fittedGen)
+        public CurveToPolygonConverter(ExactCurveGenerator exactGen, FittedCurveGenerator fittedGen)
         {
             this._exactGen = exactGen ?? new ExactCurveGenerator();
             this._fittedGen = fittedGen ?? new FittedCurveGenerator();

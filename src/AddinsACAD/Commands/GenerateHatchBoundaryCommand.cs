@@ -55,8 +55,8 @@ namespace AddinsACAD.Commands
                     }
                     typeLog += $"Style={style}|";
 
-                    // 使用 HatchBoundaryGenerator 统一处理每个环
-                    var generator = new HatchBoundaryGenerator();
+                    // 使用 CurveToPolygonConverter 统一处理每个环
+                    var generator = new CurveToPolygonConverter();
 
                     for (int li = loopStart; li < loopEnd; li++)
                     {
