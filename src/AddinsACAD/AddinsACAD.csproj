@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!--
 AddinsACAD.csproj - AutoCAD Commands and Tests Project File
 -->
@@ -34,6 +34,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="Commands\CropPolylineCommand.cs" />
     <Compile Include="Commands\CloneHatchCommand.cs" />
     <Compile Include="Commands\CommandTestsCommand.cs" />
+    <Compile Include="Commands\CropTestsCommand.cs" />
     <Compile Include="Commands\GenerateHatchBoundaryCommand.cs" />
     <Compile Include="Commands\SubtractClosedCurveCommand.cs" />
     <Compile Include="TestCommands\CreateTestBlockForExplodeCommand.cs" />
