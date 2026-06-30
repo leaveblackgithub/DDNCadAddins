@@ -89,8 +89,7 @@ Features:
     <Compile Include="TransactionServiceForEntity.cs" />
     <Compile Include="TransactionServiceForBlock.cs" />
     <Compile Include="TransactionServiceForStyle.cs" />
-    <Compile Include="CurveConverter.cs" />
-    <Compile Include="HatchBoundaryExtractor.cs" />
+    <Compile Include="HatchBoundaryGenerator.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

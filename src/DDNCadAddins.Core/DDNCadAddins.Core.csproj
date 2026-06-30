@@ -52,6 +52,8 @@
     <Compile Include="Services\PolygonClipperService.cs" />
     <Compile Include="Services\XClipBoundaryGeometryService.cs" />
     <Compile Include="Services\CurveSampler.cs" />
+    <Compile Include="Services\ExactCurveGenerator.cs" />
+    <Compile Include="Services\FittedCurveGenerator.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

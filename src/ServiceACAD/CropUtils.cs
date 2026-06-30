@@ -12,10 +12,12 @@ namespace ServiceACAD
     /// <summary>
     ///     裁剪工具 — 供 placeholder 服务复用.
     ///     <para>非曲线实体：边界框 + 保留/删除.</para>
-    ///     <para>曲线实体：采样 + 中点分类 + 拆分.</para>
+    ///     <para>曲线实体：采样 + 中点分类 + 拆分（使用 FittedCurveGenerator 统一采样）.</para>
     /// </summary>
     internal static class CropUtils
     {
+        private static readonly FittedCurveGenerator FittedGen = new FittedCurveGenerator();
+
         /// <summary>非曲线实体的裁剪结果.</summary>
         internal struct NonCurveResult
         {
@@ -63,6 +65,7 @@ namespace ServiceACAD
             {
                 r.KeptCount = 1;
             }
+
             return r;
         }
 
@@ -110,9 +113,13 @@ namespace ServiceACAD
                 EraseEntity(curve);
                 r.DeletedCount = 1;
             }
+
             return r;
         }
 
+        /// <summary>
+        ///     将曲线采样为直线段列表 — 委托给 <see cref="FittedCurveGenerator"/>.
+        /// </summary>
         private static List<Line> SampleCurveIntoLineSegments(Curve curve, int count)
         {
             var result = new List<Line>();
@@ -120,21 +127,35 @@ namespace ServiceACAD
             {
                 var startParam = curve.StartParam;
                 var endParam = curve.EndParam;
-                var step = (endParam - startParam) / count;
-                var prev = curve.GetPointAtParameter(startParam);
-                for (var i = 1; i <= count; i++)
+                var startPt = new Point2D(curve.StartPoint.X, curve.StartPoint.Y);
+                var endPt = new Point2D(curve.EndPoint.X, curve.EndPoint.Y);
+
+                // 使用 FittedCurveGenerator 获取采样点
+                var sampledPts = FittedGen.GenerateGenericCurve(
+                    startPt, endPt,
+                    t =>
+                    {
+                        var param = startParam + (endParam - startParam) * t;
+                        if (param > endParam) param = endParam;
+                        var pt = curve.GetPointAtParameter(param);
+                        return new Point2D(pt.X, pt.Y);
+                    },
+                    count);
+
+                // 将采样点转换为 Line 实体
+                for (var i = 0; i < sampledPts.Count - 1; i++)
                 {
-                    var param = startParam + step * i;
-                    if (param > endParam) param = endParam;
-                    var curr = curve.GetPointAtParameter(param);
-                    var seg = new Line(prev, curr)
+                    var p1 = sampledPts[i];
+                    var p2 = sampledPts[i + 1];
+                    var seg = new Line(
+                        new Point3d(p1.X, p1.Y, 0.0),
+                        new Point3d(p2.X, p2.Y, 0.0))
                     {
                         Layer = curve.Layer,
                         Color = curve.Color,
                         Linetype = curve.Linetype,
                     };
                     result.Add(seg);
-                    prev = curr;
                 }
             }
             catch (Exception ex)
@@ -143,6 +164,7 @@ namespace ServiceACAD
                 foreach (var s in result) s.Dispose();
                 return new List<Line>();
             }
+
             return result;
         }
 
