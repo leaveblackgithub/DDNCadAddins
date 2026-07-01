@@ -258,14 +258,17 @@ namespace ServiceACAD
 
         private List<CorePoint2D> ConvertEllipse(Ellipse e)
         {
-            // Ellipse 是完整椭圆 → 用精确4点
+            // 完整椭圆 → 密集采样（128点）确保裁剪精度
             var minorRatio = e.MinorRadius / e.MajorRadius;
             var center = new CorePoint2D(e.Center.X, e.Center.Y);
-            var pts = this._exactGen.GenerateFullEllipse(center, e.MajorRadius, minorRatio);
             var result = new List<CorePoint2D>();
-            foreach (var pt in pts)
+            const int ellipseSamples = 128;
+            for (int i = 0; i <= ellipseSamples; i++)
             {
-                result.Add(new CorePoint2D(pt.X, pt.Y));
+                var angle = 2.0 * Math.PI * i / ellipseSamples;
+                var x = center.X + e.MajorRadius * Math.Cos(angle);
+                var y = center.Y + e.MajorRadius * Math.Sin(angle) * minorRatio;
+                result.Add(new CorePoint2D(x, y));
             }
 
             return result.Count >= 3 ? result : null;
@@ -273,11 +276,11 @@ namespace ServiceACAD
 
         private List<CorePoint2D> ConvertSpline(Spline s)
         {
+            // 闭合 Spline 边界 → 密集采样 200 点确保裁剪精度
             var startPt = new Point2D(s.StartPoint.X, s.StartPoint.Y);
             var endPt = new Point2D(s.EndPoint.X, s.EndPoint.Y);
-            int numCtrlPts = s.NumControlPoints;
 
-            var pts = this._fittedGen.GenerateSpline(
+            var pts = this._fittedGen.GenerateGenericCurve(
                 startPt, endPt,
                 t =>
                 {
@@ -285,7 +288,7 @@ namespace ServiceACAD
                     var pt = s.GetPointAtParameter(param);
                     return new Point2D(pt.X, pt.Y);
                 },
-                numCtrlPts);
+                200);
 
             var result = new List<CorePoint2D>();
             foreach (var pt in pts)
