@@ -145,6 +145,13 @@ namespace ServiceACAD
                 if (extents.MinPoint.DistanceTo(extents.MaxPoint) < 1e-9)
                     return false;
 
+                // Spline/Ellipse/Polyline3d 使用精确参数搜索，跳过包围盒快速分类
+                // （因为边界可能是采样多边形，包围盒分类可能误判相交为完全在内/外）
+                if (entity is Spline || entity is Ellipse || entity is Polyline3d)
+                {
+                    return this.TrySplitOrProcessEntity(entity, serviceTrans, result, keepInside, boundaryPoints);
+                }
+
                 var minPt = new CorePoint2D(extents.MinPoint.X, extents.MinPoint.Y);
                 var maxPt = new CorePoint2D(extents.MaxPoint.X, extents.MaxPoint.Y);
                 var containment = this._cropGeometry.ClassifyBoundingBox(minPt, maxPt, boundaryPoints);
