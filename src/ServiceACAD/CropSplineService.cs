@@ -18,8 +18,8 @@ namespace ServiceACAD
 
     /// <summary>
     ///     Spline 裁剪服务 — 使用 AutoCAD API 精确交点 + GetSplitCurves 拆分.
-    ///     不再使用采样法，而是通过 IntersectWith 获取精确交点，
-    ///     再用 GetSplitCurves 在交点处拆分，逐段中点判断保留/删除.
+    ///     通过 IntersectWith 获取精确交点，再用 GetSplitCurves 在交点处拆分，
+    ///     逐段中点判断保留/删除。边界 Polyline 与 Spline 在同一平面（使用 Spline 的法线）.
     /// </summary>
     public class CropSplineService
     {
@@ -73,8 +73,13 @@ namespace ServiceACAD
                     }
                     catch
                     {
-                        // 求交失败，回退到删除
-                        DeleteEntity(spline, result);
+                        // 求交失败，回退到中点判断 + 删除
+                        var midPt = spline.GetPointAtParameter((spline.StartParam + spline.EndParam) / 2.0);
+                        var inside = this._geometry.IsPointInPolygon(new CorePoint2D(midPt.X, midPt.Y), bpts);
+                        if ((keepInside && inside) || (!keepInside && !inside))
+                            result.KeptCount++;
+                        else
+                            DeleteEntity(spline, result);
                         return;
                     }
 
@@ -154,7 +159,7 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        ///     将边界多边形顶点列表构建为闭合 Polyline（用于 IntersectWith）.
+        ///     将边界多边形顶点列表构建为闭合 Polyline.
         /// </summary>
         private static Polyline BuildBoundaryPolyline(IReadOnlyList<CorePoint2D> bpts)
         {

@@ -18,8 +18,8 @@ namespace ServiceACAD
 
     /// <summary>
     ///     Ellipse 裁剪服务 — 使用 AutoCAD API 精确交点 + GetSplitCurves 拆分.
-    ///     不再使用采样法，而是通过 IntersectWith 获取精确交点，
-    ///     再用 GetSplitCurves 在交点处拆分，逐段中点判断保留/删除.
+    ///     通过 IntersectWith 获取精确交点，再用 GetSplitCurves 在交点处拆分，
+    ///     逐段中点判断保留/删除。边界 Polyline 与 Ellipse 在同一平面.
     /// </summary>
     public class CropEllipseService
     {
@@ -73,7 +73,13 @@ namespace ServiceACAD
                     }
                     catch
                     {
-                        DeleteEntity(ellipse, result);
+                        // 求交失败，回退到中点判断
+                        var midPt = ellipse.GetPointAtParameter((ellipse.StartParam + ellipse.EndParam) / 2.0);
+                        var inside = this._geometry.IsPointInPolygon(new CorePoint2D(midPt.X, midPt.Y), bpts);
+                        if ((keepInside && inside) || (!keepInside && !inside))
+                            result.KeptCount++;
+                        else
+                            DeleteEntity(ellipse, result);
                         return;
                     }
 
@@ -153,7 +159,7 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        ///     将边界多边形顶点列表构建为闭合 Polyline（用于 IntersectWith）.
+        ///     将边界多边形顶点列表构建为闭合 Polyline.
         /// </summary>
         private static Polyline BuildBoundaryPolyline(IReadOnlyList<CorePoint2D> bpts)
         {

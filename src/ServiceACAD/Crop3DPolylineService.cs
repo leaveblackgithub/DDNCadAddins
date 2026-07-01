@@ -18,8 +18,8 @@ namespace ServiceACAD
 
     /// <summary>
     ///     3DPolyline 裁剪服务 — 使用 AutoCAD API 精确交点 + GetSplitCurves 拆分.
-    ///     不再使用采样法，而是通过 IntersectWith 获取精确交点，
-    ///     再用 GetSplitCurves 在交点处拆分，逐段中点判断保留/删除.
+    ///     通过 IntersectWith 获取精确交点，再用 GetSplitCurves 在交点处拆分，
+    ///     逐段中点判断保留/删除.
     /// </summary>
     public class Crop3DPolylineService
     {
@@ -60,7 +60,7 @@ namespace ServiceACAD
                 if (shouldDelete) { DeleteEntity(poly3d, result); return; }
                 if (containment != DDNCadAddins.Core.Models.ContainmentResult.Intersects) { result.KeptCount++; return; }
 
-                // 2. 构建边界多段线用于求交（使用当前 UCS 平面）
+                // 2. 构建边界多段线
                 using (var boundaryCurve = BuildBoundaryPolyline2d(bpts))
                 {
                     if (boundaryCurve == null) { result.SkippedCount++; return; }
@@ -73,7 +73,13 @@ namespace ServiceACAD
                     }
                     catch
                     {
-                        DeleteEntity(poly3d, result);
+                        // 求交失败，回退到中点判断
+                        var midPt = poly3d.GetPointAtParameter((poly3d.StartParam + poly3d.EndParam) / 2.0);
+                        var inside = this._geometry.IsPointInPolygon(new CorePoint2D(midPt.X, midPt.Y), bpts);
+                        if ((keepInside && inside) || (!keepInside && !inside))
+                            result.KeptCount++;
+                        else
+                            DeleteEntity(poly3d, result);
                         return;
                     }
 
@@ -153,8 +159,7 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        ///     将边界多边形顶点列表构建为闭合 Polyline（用于 IntersectWith）.
-        ///     使用 WCS 平面（Z=0）.
+        ///     将边界多边形顶点列表构建为闭合 Polyline.
         /// </summary>
         private static Polyline BuildBoundaryPolyline2d(IReadOnlyList<CorePoint2D> bpts)
         {
