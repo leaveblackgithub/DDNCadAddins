@@ -51,6 +51,7 @@ Features:
     <Compile Include="CropPolylineService.cs" />
     <Compile Include="CropUtils.cs" />
     <Compile Include="CurveConverter.cs" />
+    <Compile Include="CurveToExactSegmentConverter.cs" />
     <Compile Include="CropSplineService.cs" />
     <Compile Include="CropEllipseService.cs" />
     <Compile Include="Crop3DPolylineService.cs" />

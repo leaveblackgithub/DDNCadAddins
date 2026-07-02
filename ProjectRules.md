@@ -32,6 +32,13 @@
 |------|------|------|
 | Trae 项目规则 | [`.trae/rules/project_rules.md`](.trae/rules/project_rules.md) | Trae IDE 兼容引用（指向 .cursorrules） |
 
+### ZOO (VS Code) 角色提示词配置
+
+| 规则 | 位置 | 说明 |
+|------|------|------|
+| ZOO 自定义模式 | [`.roomodes`](.roomodes) | ZOO 各角色（Code/Architect/Ask/Debug/Orchestrator）系统提示词调整配置 |
+| 提示词调整分析 | [`docs/ZOO_PROMPT_ADJUSTMENT_ANALYSIS.md`](docs/ZOO_PROMPT_ADJUSTMENT_ANALYSIS.md) | ZOO 默认提示词与项目规则的冲突分析和调整说明 |
+
 ## 已归档/删除的过时文件
 
 | 文件 | 状态 | 替代 |
@@ -55,3 +62,4 @@
    - AI 规则修改 `.cursorrules`（唯一权威来源）
    - `.trae/rules/project_rules.md` 不独立维护
    - `.cursor/rules/` 下规则为 Cursor IDE 专用
+   - `.roomodes` 为 ZOO (VS Code) 角色提示词配置，当 `.cursorrules` 核心规则变更时需同步检查更新

@@ -7,6 +7,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
+using DDNCadAddins.Core.Interfaces;
 using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using ServiceACAD;
@@ -18,10 +19,14 @@ namespace AddinsACAD.Commands
 {
     /// <summary>
     ///     SUBTRACTCLOSEDCURVE — 选择封闭曲线 A，再选择封闭曲线 B，
-    ///     计算 A \ B（曲线 A 减去 A 与 B 的交集）并绘制结果多边形.
+    ///     计算 A \ B（曲线 A 减去 A 与 B 的交集）并绘制结果.
     ///     支持 Polyline、Circle、Ellipse、Spline.
+    ///     <para>
+    ///         精确模式：使用 <see cref="CurveSubtractService"/> 逐边精确求交，
+    ///         交点采用解析解（直线-圆/直线-椭圆二次方程），子线段参数化生成.
+    ///     </para>
     ///     - 不相交 → 返回 A
-    ///     - A 包含 B → 返回 A 减去 B 区域后的剩余部分
+    ///     - A 包含 B → 返回 A 减去 B 区域后的剩余部分（带内孔环）
     ///     - B 包含 A → 无结果（A 完全被减掉）
     ///     - 相交 → 返回 A 除掉交集部分的封闭多边形
     /// </summary>
@@ -45,38 +50,37 @@ namespace AddinsACAD.Commands
                 // ── 步骤 1: 选择曲线 A（SUBTRACT 曲线）───────────────────
                 var curveA = this.SelectClosedCurve(ed, "A", out var idA);
                 if (curveA == null) return;
-                var polyA = curveA.Polygon;
 
                 // ── 步骤 2: 选择曲线 B（被 SUBTRACT 曲线）─────────────────
                 var curveB = this.SelectClosedCurve(ed, "B", out var idB);
                 if (curveB == null) return;
-                var polyB = curveB.Polygon;
 
-                // ── 步骤 3: 计算差集 A \ B（带来源标记）───────────────────────
-                //   ClipPolygonWithSources(subject=A, clip=B, keepInside=false)
-                //   返回 subject(A) 在 clip(B) 外部的部分 = A \ B
-                var clipper = new PolygonClipperService();
-                var differenceWithSources = clipper.ClipPolygonWithSources(polyA, polyB, keepInside: false);
+                // ── 步骤 3: 精确差集 A \ B ────────────────────────────────
+                //   双向拆分：A 按 B 交点拆分，B 按 A 交点拆分
+                //   保留 A 不在 B 内部的子段 + B 在 A 内部的子段（反向）
+                var subtractService = new CurveSubtractService();
+                var subtractResult = subtractService.Subtract(
+                    curveA.ExactSegments, curveA.Boundary,
+                    curveB.ExactSegments, curveB.Boundary);
 
-                bool noResult = (differenceWithSources == null || differenceWithSources.Count == 0);
+                bool noResult = !subtractResult.IsSuccess || subtractResult.Data.IsEmpty;
 
-                // ── 步骤 4: 混合绘制结果多边形 ──────────────────────────────
-                //   - 来自 Subject（曲线 A）的段 → 用 CurveFit
-                //   - 来自 Clip（折线 B）的段 → 保持折线
-                bool isCurveA = curveA.Type != "Polyline";
-                bool isCurveB = curveB.Type != "Polyline";
-
-                if (!noResult)
+                // ── 步骤 4: 绘制结果（精确段→Polyline）────────────────────
+                if (!noResult && subtractResult.IsSuccess)
                 {
                     CadServiceManager._.ExecuteInTransactions("", ts =>
                     {
-                        foreach (var clippedPoly in differenceWithSources)
+                        foreach (var loop in subtractResult.Data.Loops)
                         {
-                            if (clippedPoly == null || clippedPoly.IsEmpty) continue;
+                            if (loop == null || loop.Count == 0) continue;
 
-                            int vertexCount = DrawMixedPolygon(ts, clippedPoly, isCurveA, isCurveB, 3);
-                            resultPolyCount++;
-                            totalVertices += vertexCount;
+                            int vertexCount = CurveToExactSegmentConverter.DrawExactSegments(
+                                ts, loop, 3);
+                            if (vertexCount > 0)
+                            {
+                                resultPolyCount++;
+                                totalVertices += vertexCount;
+                            }
                         }
                     });
                 }
@@ -87,9 +91,8 @@ namespace AddinsACAD.Commands
                 // ── 步骤 5: 输出命令行信息 ──────────────────────────────────
                 if (isSuccess)
                 {
-                    string outputType = (isCurveA || isCurveB) ? "混合" : "折线";
                     ed.WriteMessage(
-                        $"\n差集结果：{resultPolyCount} 个封闭多边形，{outputType} {totalVertices}");
+                        $"\n差集结果：{resultPolyCount} 个封闭环，共 {totalVertices} 个顶点（精确边界）");
                 }
                 else if (noResult)
                 {
@@ -111,15 +114,15 @@ namespace AddinsACAD.Commands
                         UcsOrigin = ucsO,
                         UcsXAxis = ucsX,
                         UcsYAxis = ucsY,
-                        BoundaryVertices = new List<Point2D>(polyA),
-                        BoundaryVertexCount = polyA.Count,
+                        BoundaryVertices = new List<Point2D>(curveA.Polygon),
+                        BoundaryVertexCount = curveA.Polygon.Count,
                         TotalEntityCount = 2,
                         KeptCount = resultPolyCount,
                         ElapsedMs = stopwatch.ElapsedMilliseconds,
                         Entities = new List<CropEntitySnapshot>
                         {
-                            CreateSnapshot(idA.ToString(), curveA.Type, polyA),
-                            CreateSnapshot(idB.ToString(), curveB.Type, polyB),
+                            CreateSnapshot(idA.ToString(), curveA.Type, curveA.Polygon),
+                            CreateSnapshot(idB.ToString(), curveB.Type, curveB.Polygon),
                         },
                     };
                     uid = TestRecorder.Record(record);
@@ -143,12 +146,21 @@ namespace AddinsACAD.Commands
         /// <summary>曲线选择结果.</summary>
         private sealed class CurveSelection
         {
-            public string Type;          // "Polyline"/"Circle"/"Ellipse"/"Spline"
+            /// <summary>曲线类型名称.</summary>
+            public string Type;
+
+            /// <summary>采样多边形顶点（用于 TestRecorder）.</summary>
             public List<CorePoint2D> Polygon;
+
+            /// <summary>精确段列表（用于精确差集计算）.</summary>
+            public List<ExactSegment> ExactSegments;
+
+            /// <summary>精确裁剪边界（用于精确求交和包含测试）.</summary>
+            public ICropBoundary Boundary;
         }
 
         /// <summary>
-        ///     选择单条闭合曲线并转换为多边形.
+        ///     选择单条闭合曲线，转换为精确段列表和裁剪边界.
         /// </summary>
         private CurveSelection SelectClosedCurve(Editor ed, string label, out ObjectId id)
         {
@@ -178,15 +190,38 @@ namespace AddinsACAD.Commands
                         return;
                     }
 
+                    // 精确段列表
+                    var exactSegments = CurveToExactSegmentConverter.ConvertToExactSegments(curve);
+                    if (exactSegments == null || exactSegments.Count == 0)
+                    {
+                        ed.WriteMessage($"\n曲线 {label} 精确段转换失败。");
+                        return;
+                    }
+
+                    // 精确裁剪边界
+                    var boundary = CurveToExactSegmentConverter.ConvertToCropBoundary(curve);
+                    if (boundary == null)
+                    {
+                        ed.WriteMessage($"\n曲线 {label} 边界转换失败。");
+                        return;
+                    }
+
+                    // 采样多边形（用于 TestRecorder 记录）
                     var polygon = CurveConverter.ConvertToPolygon(curve);
                     if (polygon == null || polygon.Count < 3)
                     {
-                        ed.WriteMessage($"\n曲线 {label} 转换失败（顶点 < 3）。");
+                        ed.WriteMessage($"\n曲线 {label} 多边形转换失败（顶点 < 3）。");
                         return;
                     }
 
                     string type = curve.GetType().Name;
-                    sel = new CurveSelection { Type = type, Polygon = polygon };
+                    sel = new CurveSelection
+                    {
+                        Type = type,
+                        Polygon = polygon,
+                        ExactSegments = exactSegments,
+                        Boundary = boundary
+                    };
                 });
 
                 if (sel == null) id = ObjectId.Null;
@@ -197,302 +232,6 @@ namespace AddinsACAD.Commands
                 Logger._.Error($"选择曲线 {label} 失败: {ex.Message}", ex);
                 return null;
             }
-        }
-
-        /// <summary>
-        ///     绘制曲线拟合的闭合多边形（在当前空间）.
-        ///     用于全曲线类型（如曲线完全包含的场景）.
-        ///     返回顶点数.
-        /// </summary>
-        private static int DrawPolygonCurveFit(
-            ITransactionService ts, IReadOnlyList<CorePoint2D> loop, int colorIndex)
-        {
-            var poly2d = new Polyline2d
-            {
-                PolyType = Poly2dType.SimplePoly,
-                Closed = true,
-                ColorIndex = colorIndex
-            };
-            if (ts.AppendEntityToCurrentSpace(poly2d).IsNull)
-                return 0;
-            foreach (var pt in loop)
-            {
-                var vertex = new Vertex2d(
-                    new Point3d(pt.X, pt.Y, 0.0), 0.0, 0.0, 0.0, 0.0);
-                poly2d.AppendVertex(vertex);
-                ts.AddNewlyCreatedDBObject(vertex, true);
-            }
-            poly2d.CurveFit();
-            try { ts.Style.GetOrCreateLayer("Intersection"); poly2d.Layer = "Intersection"; }
-            catch { }
-            return Math.Max(1, loop.Count / 4);
-        }
-
-        /// <summary>
-        ///     混合绘制：先对曲线段分别 CurveFit，再 JOIN 所有段并 CLOSE.
-        ///     返回总顶点数.
-        /// </summary>
-        private static int DrawMixedPolygon(
-            ITransactionService ts, ClippedPolygonWithSources clippedPoly,
-            bool isCurveSubject, bool isCurveClip, int colorIndex)
-        {
-            // 全是折线段 → 直接绘制闭合 Polyline
-            bool hasCurveSegment = false;
-            foreach (var seg in clippedPoly.Segments)
-            {
-                if ((seg.Source == SegmentSource.Clip && isCurveClip) ||
-                    (seg.Source == SegmentSource.Subject && isCurveSubject))
-                { hasCurveSegment = true; break; }
-            }
-            if (!hasCurveSegment)
-                return DrawPolygonPlain(ts, clippedPoly.Vertices, colorIndex);
-
-            // 逐段收集顶点+凸度，跳过段间重复端点
-            var segmentIds = new List<ObjectId>();
-            int segIndex = 0;
-            foreach (var seg in clippedPoly.Segments)
-            {
-                if (seg.Vertices.Count < 2) continue;
-                bool isCurve = (seg.Source == SegmentSource.Clip && isCurveClip)
-                    || (seg.Source == SegmentSource.Subject && isCurveSubject);
-
-                ObjectId segId;
-                if (isCurve)
-                    segId = CreateCurveFitSegment(ts, seg.Vertices, colorIndex, segIndex);
-                else
-                    segId = CreateStraightSegment(ts, seg.Vertices, colorIndex, segIndex);
-
-                if (!segId.IsNull)
-                    segmentIds.Add(segId);
-                segIndex++;
-            }
-
-            if (segmentIds.Count == 0) return 0;
-            if (segmentIds.Count == 1)
-            {
-                ClosePolylineById(ts, segmentIds[0]);
-                return clippedPoly.Vertices.Count;
-            }
-
-            // ── 第二步：JOIN 所有段到第一个 ────────────────────────────
-            var firstPline = ts.GetObject<Polyline>(segmentIds[0], OpenMode.ForWrite);
-            if (firstPline == null) return 0;
-
-            // 诊断：记录第一个 Polyline 的首尾端点
-            Logger._.Debug($"DrawMixedPolygon JOIN 开始 — 共 {segmentIds.Count} 段");
-            if (firstPline.NumberOfVertices > 0)
-            {
-                var firstStart = firstPline.GetPoint3dAt(0);
-                var firstEnd = firstPline.GetPoint3dAt(firstPline.NumberOfVertices - 1);
-                Logger._.Debug($"  Seg[0] firstPline Start={firstStart}, End={firstEnd}, VtxCount={firstPline.NumberOfVertices}");
-            }
-
-            for (int i = 1; i < segmentIds.Count; i++)
-            {
-                int vtxBefore = firstPline.NumberOfVertices;
-
-                // 诊断：JOIN 前检查连接端点
-                if (firstPline.NumberOfVertices > 0)
-                {
-                    var segEntity = ts.GetObject<Entity>(segmentIds[i], OpenMode.ForRead);
-                    if (segEntity is Polyline nextPlineRO && nextPlineRO.NumberOfVertices > 0)
-                    {
-                        var firstEnd = firstPline.GetPoint3dAt(firstPline.NumberOfVertices - 1);
-                        var nextStart = nextPlineRO.GetPoint3dAt(0);
-                        var nextEnd = nextPlineRO.GetPoint3dAt(nextPlineRO.NumberOfVertices - 1);
-                        double distStart = firstEnd.DistanceTo(nextStart);
-                        double distEnd = firstEnd.DistanceTo(nextEnd);
-                        Logger._.Debug($"  JOIN[{i}] firstPline.End={firstEnd} ↔ seg.Start={nextStart} dist={distStart:F6}");
-                        Logger._.Debug($"  JOIN[{i}] firstPline.End={firstEnd} ↔ seg.End={nextEnd} dist={distEnd:F6}");
-                    }
-                }
-
-                // 重新以写模式获取段实体并 JOIN
-                var segEntityWrite = ts.GetObject<Entity>(segmentIds[i], OpenMode.ForWrite);
-                if (segEntityWrite != null)
-                {
-                    firstPline.JoinEntity(segEntityWrite);
-
-                    int vtxAfter = firstPline.NumberOfVertices;
-                    bool joined = (vtxAfter > vtxBefore);
-                    Logger._.Debug($"  JOIN[{i}] 结果: VtxBefore={vtxBefore}, VtxAfter={vtxAfter}, Joined={joined}");
-
-                    // JOIN 成功 → 删除被合并的段实体，否则残留
-                    if (joined)
-                        segEntityWrite.Erase();
-                }
-                else
-                {
-                    Logger._.Debug($"  JOIN[{i}] 结果: segEntityWrite 为 null，跳过");
-                }
-            }
-
-            // ── 第三步：CLOSE ──────────────────────────────────────────
-            if (firstPline.NumberOfVertices > 0)
-            {
-                var closeStart = firstPline.GetPoint3dAt(0);
-                var closeEnd = firstPline.GetPoint3dAt(firstPline.NumberOfVertices - 1);
-                double closeDist = closeStart.DistanceTo(closeEnd);
-                Logger._.Debug($"  CLOSE前: Start={closeStart}, End={closeEnd}, Gap={closeDist:F6}, VtxCount={firstPline.NumberOfVertices}");
-            }
-            firstPline.Closed = true;
-
-            if (firstPline.NumberOfVertices > 0)
-            {
-                Logger._.Debug($"  CLOSE后: Closed={firstPline.Closed}, VtxCount={firstPline.NumberOfVertices}");
-            }
-
-            return clippedPoly.Vertices.Count;
-        }
-
-        /// <summary>
-        ///     创建曲线拟合段：Polyline2d → CurveFit → 转为 Polyline.
-        /// </summary>
-        private static ObjectId CreateCurveFitSegment(
-            ITransactionService ts, List<CorePoint2D> vertices, int colorIndex, int segIndex = -1)
-        {
-            // CurveFit() 要求至少 3 个顶点，否则抛 eNotApplicable。
-            // 顶点不足时退化为直线段，避免异常导致整个事务 Abort。
-            if (vertices == null || vertices.Count < 1) return ObjectId.Null;
-            if (vertices.Count < 3)
-            {
-                Logger._.Debug($"  CreateCurveFitSegment[{segIndex}] 顶点数={vertices.Count}<3，退化为直线段");
-                return CreateStraightSegment(ts, vertices, colorIndex, segIndex);
-            }
-
-            var poly2d = new Polyline2d
-            {
-                PolyType = Poly2dType.SimplePoly,
-                Closed = false,
-                ColorIndex = colorIndex
-            };
-            var poly2dId = ts.AppendEntityToCurrentSpace(poly2d);
-            if (poly2dId.IsNull) return ObjectId.Null;
-
-            // 诊断：记录输入顶点
-            Logger._.Debug($"  CreateCurveFitSegment[{segIndex}] 输入顶点数={vertices.Count}, First=({vertices[0].X:F6},{vertices[0].Y:F6}), Last=({vertices[vertices.Count - 1].X:F6},{vertices[vertices.Count - 1].Y:F6})");
-
-            foreach (var pt in vertices)
-            {
-                var vertex = new Vertex2d(
-                    new Point3d(pt.X, pt.Y, 0.0), 0.0, 0.0, 0.0, 0.0);
-                poly2d.AppendVertex(vertex);
-                ts.AddNewlyCreatedDBObject(vertex, true);
-            }
-            poly2d.CurveFit();
-
-            // 诊断：读取 CurveFit 后的 Polyline2d 顶点（转换前）
-            var fitVerts = new List<(Point3d Pos, double Bulge)>();
-            foreach (ObjectId vid in poly2d)
-            {
-                var v2d = ts.GetObject<Vertex2d>(vid);
-                if (v2d != null)
-                    fitVerts.Add((v2d.Position, v2d.Bulge));
-            }
-            if (fitVerts.Count > 0)
-            {
-                Logger._.Debug($"  CreateCurveFitSegment[{segIndex}] CurveFit后顶点数={fitVerts.Count}, First=({fitVerts[0].Pos.X:F6},{fitVerts[0].Pos.Y:F6}) bulge={fitVerts[0].Bulge:F6}, Last=({fitVerts[fitVerts.Count - 1].Pos.X:F6},{fitVerts[fitVerts.Count - 1].Pos.Y:F6}) bulge={fitVerts[fitVerts.Count - 1].Bulge:F6}");
-                // 诊断端点偏移
-                double firstDelta = Math.Abs(fitVerts[0].Pos.X - vertices[0].X) + Math.Abs(fitVerts[0].Pos.Y - vertices[0].Y);
-                double lastDelta = Math.Abs(fitVerts[fitVerts.Count - 1].Pos.X - vertices[vertices.Count - 1].X)
-                    + Math.Abs(fitVerts[fitVerts.Count - 1].Pos.Y - vertices[vertices.Count - 1].Y);
-                Logger._.Debug($"  CreateCurveFitSegment[{segIndex}] 端点偏移: FirstDelta={firstDelta:F6}, LastDelta={lastDelta:F6}");
-            }
-
-            // 读取 CurveFit 后的顶点和凸度，转为 Polyline
-            var resultPline = new Polyline();
-            resultPline.SetDatabaseDefaults();
-            resultPline.ColorIndex = colorIndex;
-            int idx = 0;
-            foreach (var fv in fitVerts)
-            {
-                resultPline.AddVertexAt(idx,
-                    new Point2d(fv.Pos.X, fv.Pos.Y),
-                    fv.Bulge, 0.0, 0.0);
-                idx++;
-            }
-
-            // 诊断：转换后 Polyline 端点
-            if (resultPline.NumberOfVertices > 0)
-            {
-                var plStart = resultPline.GetPoint2dAt(0);
-                var plEnd = resultPline.GetPoint2dAt(resultPline.NumberOfVertices - 1);
-                Logger._.Debug($"  CreateCurveFitSegment[{segIndex}] 转换后Polyline: VtxCount={resultPline.NumberOfVertices}, Start=({plStart.X:F6},{plStart.Y:F6}), End=({plEnd.X:F6},{plEnd.Y:F6})");
-            }
-
-            // 删除中间 Polyline2d，保留 Polyline
-            var p2dToErase = ts.GetObject<Polyline2d>(poly2dId, OpenMode.ForWrite);
-            if (p2dToErase != null) p2dToErase.Erase();
-            var plineId = ts.AppendEntityToCurrentSpace(resultPline);
-            try { ts.Style.GetOrCreateLayer("Intersection"); resultPline.Layer = "Intersection"; }
-            catch { }
-            return plineId;
-        }
-
-        /// <summary>
-        ///     创建直线段 Polyline（不闭合）.
-        /// </summary>
-        private static ObjectId CreateStraightSegment(
-            ITransactionService ts, List<CorePoint2D> vertices, int colorIndex, int segIndex = -1)
-        {
-            var pline = new Polyline();
-            pline.SetDatabaseDefaults();
-            pline.ColorIndex = colorIndex;
-            for (int i = 0; i < vertices.Count; i++)
-                pline.AddVertexAt(i,
-                    new Point2d(vertices[i].X, vertices[i].Y), 0.0, 0.0, 0.0);
-
-            // 诊断：记录直线段端点
-            Logger._.Debug($"  CreateStraightSegment[{segIndex}] VtxCount={pline.NumberOfVertices}, Start=({vertices[0].X:F6},{vertices[0].Y:F6}), End=({vertices[vertices.Count - 1].X:F6},{vertices[vertices.Count - 1].Y:F6})");
-
-            try { ts.Style.GetOrCreateLayer("Intersection"); pline.Layer = "Intersection"; }
-            catch { }
-            return ts.AppendEntityToCurrentSpace(pline);
-        }
-
-        /// <summary>
-        ///     通过 ObjectId 将 Polyline 闭合.
-        /// </summary>
-        private static void ClosePolylineById(ITransactionService ts, ObjectId plineId)
-        {
-            var pline = ts.GetObject<Polyline>(plineId, OpenMode.ForWrite);
-            if (pline != null)
-                pline.Closed = true;
-        }
-
-        // 已移除未使用的 ReadCurveFitVertices 和 ReadStraightVertices 方法
-        /// <summary>
-        ///     绘制普通折线多边形（在当前空间）.
-        ///     用于两个都是折线类型的情况，保持折线特性.
-        ///     返回顶点数.
-        /// </summary>
-        private static int DrawPolygonPlain(
-            ITransactionService ts, IReadOnlyList<CorePoint2D> loop, int colorIndex)
-        {
-            var pline = new Polyline();
-            pline.SetDatabaseDefaults();
-
-            foreach (var pt in loop)
-                pline.AddVertexAt(pline.NumberOfVertices,
-                    new Point2d(pt.X, pt.Y), 0.0, 0.0, 0.0);
-
-            pline.Closed = true;
-            pline.ColorIndex = colorIndex;
-
-            // 确保 Intersection 图层存在，避免 eKeyNotFound
-            try
-            {
-                ts.Style.GetOrCreateLayer("Intersection");
-                pline.Layer = "Intersection";
-            }
-            catch
-            {
-                // 图层创建失败时继续使用当前图层，不阻断绘制
-            }
-
-            ts.AppendEntityToCurrentSpace(pline);
-
-            return loop.Count;
         }
 
         /// <summary>

@@ -39,6 +39,7 @@
     <Compile Include="Models\Matrix3D.cs" />
     <Compile Include="Models\OpResult.cs" />
     <Compile Include="Models\ClippedPolygonWithSources.cs" />
+    <Compile Include="Models\ExactSegment.cs" />
     <Compile Include="Models\Point2D.cs" />
     <Compile Include="Models\CropTestRecord.cs" />
     <Compile Include="Services\CalculatorService.cs" />
@@ -56,6 +57,7 @@
     <Compile Include="Services\PolygonClipperService.cs" />
     <Compile Include="Services\XClipBoundaryGeometryService.cs" />
     <Compile Include="Services\CurveSampler.cs" />
+    <Compile Include="Services\CurveSubtractService.cs" />
     <Compile Include="Services\ExactCurveGenerator.cs" />
     <Compile Include="Services\FittedCurveGenerator.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

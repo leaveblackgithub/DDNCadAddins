@@ -35,6 +35,7 @@
     <Compile Include="PolygonClipperServiceTests.cs" />
     <Compile Include="CurveSamplerTests.cs" />
     <Compile Include="SubtractIntersectionTests.cs" />
+    <Compile Include="CurveSubtractServiceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
