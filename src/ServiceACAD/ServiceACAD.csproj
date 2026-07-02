@@ -90,6 +90,7 @@ Features:
     <Compile Include="TransactionServiceForBlock.cs" />
     <Compile Include="TransactionServiceForStyle.cs" />
     <Compile Include="CurveToPolygonConverter.cs" />
+    <Compile Include="CropBoundaryFactory.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

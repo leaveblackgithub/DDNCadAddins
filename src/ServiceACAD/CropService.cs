@@ -5,6 +5,7 @@ using Autodesk.AutoCAD.Geometry;
 using DDNCadAddins.Core.Interfaces;
 using DDNCadAddins.Core.Services;
 using DDNCadAddins.Core.Models;
+using ICropBoundary = DDNCadAddins.Core.Interfaces.ICropBoundary;
 using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 using OpResult = ServiceACAD.OpResult;
 using OpResultOfCropResult = ServiceACAD.OpResult<ServiceACAD.CropResult>;
@@ -32,7 +33,7 @@ namespace ServiceACAD
         private readonly CropSolidService _solidService;
 
         // ── 注册表：用字典消除 if-else 分派链 ──
-        private delegate bool EntityHandler(Entity entity, IReadOnlyList<CorePoint2D> boundaryPoints,
+        private delegate bool EntityHandler(Entity entity, ICropBoundary boundary,
             bool keepInside, ITransactionService ts, CropResult result);
 
         private readonly Dictionary<Type, EntityHandler> _curveHandlers;
@@ -91,12 +92,15 @@ namespace ServiceACAD
             {
                 if (input == null)
                     return OpResultOfCropResult.Fail("裁剪输入参数为空");
-                if (input.BoundaryPoints == null || input.BoundaryPoints.Count < 3)
-                    return OpResultOfCropResult.Fail("裁剪边界顶点不足");
                 if (input.EntityIds == null || input.EntityIds.Count == 0)
                     return OpResultOfCropResult.Fail("待裁剪的实体列表为空");
                 if (input.TransactionService == null)
                     return OpResultOfCropResult.Fail("事务服务引用为空");
+
+                // ★ 优先使用 ICropBoundary（精确圆/椭圆），兼容旧的多边形顶点
+                var boundary = input.GetEffectiveBoundary();
+                if (boundary == null)
+                    return OpResultOfCropResult.Fail("裁剪边界无效（Boundary 和 BoundaryPoints 均未设置）");
 
                 var result = new CropResult();
                 foreach (var entityId in input.EntityIds)
@@ -110,7 +114,7 @@ namespace ServiceACAD
                         if (entity == null || entity.IsErased)
                             continue;
 
-                        var handled = this.CropEntity(entity, input.BoundaryPoints, keepInside, input.TransactionService, result);
+                        var handled = this.CropEntity(entity, boundary, keepInside, input.TransactionService, result);
                         if (!handled)
                         {
                             result.SkippedCount++;
@@ -136,7 +140,7 @@ namespace ServiceACAD
             }
         }
 
-        private bool CropEntity(Entity entity, IReadOnlyList<CorePoint2D> boundaryPoints,
+        private bool CropEntity(Entity entity, ICropBoundary boundary,
             bool keepInside, ITransactionService serviceTrans, CropResult result)
         {
             try
@@ -149,12 +153,12 @@ namespace ServiceACAD
                 // （因为边界可能是采样多边形，包围盒分类可能误判相交为完全在内/外）
                 if (entity is Spline || entity is Ellipse || entity is Polyline3d)
                 {
-                    return this.TrySplitOrProcessEntity(entity, serviceTrans, result, keepInside, boundaryPoints);
+                    return this.TrySplitOrProcessEntity(entity, serviceTrans, result, keepInside, boundary);
                 }
 
                 var minPt = new CorePoint2D(extents.MinPoint.X, extents.MinPoint.Y);
                 var maxPt = new CorePoint2D(extents.MaxPoint.X, extents.MaxPoint.Y);
-                var containment = this._cropGeometry.ClassifyBoundingBox(minPt, maxPt, boundaryPoints);
+                var containment = boundary.ClassifyBoundingBox(minPt, maxPt);
 
                 bool shouldDelete = keepInside
                     ? containment == ContainmentResult.Outside
@@ -165,7 +169,7 @@ namespace ServiceACAD
                 if (shouldDelete)
                     return this.TryDeleteEntity(entity, result);
                 if (shouldSplit)
-                    return this.TrySplitOrProcessEntity(entity, serviceTrans, result, keepInside, boundaryPoints);
+                    return this.TrySplitOrProcessEntity(entity, serviceTrans, result, keepInside, boundary);
 
                 result.KeptCount++;
                 return true;
@@ -196,11 +200,11 @@ namespace ServiceACAD
         }
 
         private bool TrySplitOrProcessEntity(Entity entity, ITransactionService serviceTrans,
-            CropResult result, bool keepInside, IReadOnlyList<CorePoint2D> boundaryPoints)
+            CropResult result, bool keepInside, ICropBoundary boundary)
         {
             if (entity is Curve curve)
-                return this.SplitCurve(curve, serviceTrans, result, keepInside, boundaryPoints);
-            return this.ProcessNonCurveEntity(entity, serviceTrans, result, keepInside, boundaryPoints);
+                return this.SplitCurve(curve, serviceTrans, result, keepInside, boundary);
+            return this.ProcessNonCurveEntity(entity, serviceTrans, result, keepInside, boundary);
         }
 
         // ════════════════════════════════════════════════════════════════
@@ -208,13 +212,13 @@ namespace ServiceACAD
         // ════════════════════════════════════════════════════════════════
 
         private bool SplitCurve(Curve curve, ITransactionService serviceTrans,
-            CropResult result, bool keepInside, IReadOnlyList<CorePoint2D> boundaryPoints)
+            CropResult result, bool keepInside, ICropBoundary boundary)
         {
             try
             {
                 if (this._curveHandlers.TryGetValue(curve.GetType(), out var handler))
-                    return handler(curve, boundaryPoints, keepInside, serviceTrans, result);
-                return this.SplitGenericCurve(curve, serviceTrans, result, keepInside, boundaryPoints);
+                    return handler(curve, boundary, keepInside, serviceTrans, result);
+                return this.SplitGenericCurve(curve, serviceTrans, result, keepInside, boundary);
             }
             catch (Exception ex)
             {
@@ -223,13 +227,13 @@ namespace ServiceACAD
             }
         }
 
-        private bool HandlePolyline(Polyline pline, IReadOnlyList<CorePoint2D> bp,
+        private bool HandlePolyline(Polyline pline, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { pline.ObjectId };
             var result = ki
-                ? this._polylineService.CropPolylinesInside(bp, ids, ts)
-                : this._polylineService.CropPolylinesOutside(bp, ids, ts);
+                ? this._polylineService.CropPolylinesInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._polylineService.CropPolylinesOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(pline, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
@@ -238,13 +242,13 @@ namespace ServiceACAD
             return true;
         }
 
-        private bool HandleCircle(Circle circle, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleCircle(Circle circle, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { circle.ObjectId };
             var result = ki
-                ? this._circleService.CropCirclesInside(bp, ids, ts)
-                : this._circleService.CropCirclesOutside(bp, ids, ts);
+                ? this._circleService.CropCirclesInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._circleService.CropCirclesOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(circle, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
@@ -253,13 +257,13 @@ namespace ServiceACAD
             return true;
         }
 
-        private bool HandleArc(Arc arc, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleArc(Arc arc, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { arc.ObjectId };
             var result = ki
-                ? this._arcService.CropArcsInside(bp, ids, ts)
-                : this._arcService.CropArcsOutside(bp, ids, ts);
+                ? this._arcService.CropArcsInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._arcService.CropArcsOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(arc, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
@@ -268,13 +272,13 @@ namespace ServiceACAD
             return true;
         }
 
-        private bool HandleLine(Line line, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleLine(Line line, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { line.ObjectId };
             var result = ki
-                ? this._lineService.CropLinesInside(bp, ids, ts)
-                : this._lineService.CropLinesOutside(bp, ids, ts);
+                ? this._lineService.CropLinesInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._lineService.CropLinesOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(line, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
@@ -283,52 +287,52 @@ namespace ServiceACAD
             return true;
         }
 
-        private bool HandleSpline(Spline spline, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleSpline(Spline spline, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { spline.ObjectId };
             var result = ki
-                ? this._splineService.CropSplinesInside(bp, ids, ts)
-                : this._splineService.CropSplinesOutside(bp, ids, ts);
+                ? this._splineService.CropSplinesInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._splineService.CropSplinesOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(spline, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
             return true;
         }
 
-        private bool HandleEllipse(Ellipse ellipse, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleEllipse(Ellipse ellipse, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { ellipse.ObjectId };
             var result = ki
-                ? this._ellipseService.CropEllipsesInside(bp, ids, ts)
-                : this._ellipseService.CropEllipsesOutside(bp, ids, ts);
+                ? this._ellipseService.CropEllipsesInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._ellipseService.CropEllipsesOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(ellipse, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
             return true;
         }
 
-        private bool HandlePolyline3d(Polyline3d pl3d, IReadOnlyList<CorePoint2D> bp,
+        private bool HandlePolyline3d(Polyline3d pl3d, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { pl3d.ObjectId };
             var result = ki
-                ? this._polyline3dService.Crop3DPolylinesInside(bp, ids, ts)
-                : this._polyline3dService.Crop3DPolylinesOutside(bp, ids, ts);
+                ? this._polyline3dService.Crop3DPolylinesInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._polyline3dService.Crop3DPolylinesOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(pl3d, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
             return true;
         }
 
-        private bool HandleLeader(Leader leader, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleLeader(Leader leader, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { leader.ObjectId };
             var result = ki
-                ? this._leaderService.CropLeadersInside(bp, ids, ts)
-                : this._leaderService.CropLeadersOutside(bp, ids, ts);
+                ? this._leaderService.CropLeadersInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._leaderService.CropLeadersOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(leader, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
@@ -340,12 +344,12 @@ namespace ServiceACAD
         // ════════════════════════════════════════════════════════════════
 
         private bool ProcessNonCurveEntity(Entity entity, ITransactionService serviceTrans,
-            CropResult result, bool keepInside, IReadOnlyList<CorePoint2D> boundaryPoints)
+            CropResult result, bool keepInside, ICropBoundary boundary)
         {
             try
             {
                 if (this._nonCurveHandlers.TryGetValue(entity.GetType(), out var handler))
-                    return handler(entity, boundaryPoints, keepInside, serviceTrans, result);
+                    return handler(entity, boundary, keepInside, serviceTrans, result);
                 return this.TryDeleteEntity(entity, result);
             }
             catch (Exception ex)
@@ -355,91 +359,91 @@ namespace ServiceACAD
             }
         }
 
-        private bool HandleHatch(Hatch hatch, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleHatch(Hatch hatch, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { hatch.ObjectId };
             var result = ki
-                ? this._hatchService.CropHatchesInside(bp, ids, ts)
-                : this._hatchService.CropHatchesOutside(bp, ids, ts);
+                ? this._hatchService.CropHatchesInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._hatchService.CropHatchesOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(hatch, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.KeptCount += result.Data.KeptCount;
             return true;
         }
 
-        private bool HandleBlockRef(BlockReference blkRef, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleBlockRef(BlockReference blkRef, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { blkRef.ObjectId };
             var result = ki
-                ? this._blockService.CropBlocksInside(bp, ids, ts)
-                : this._blockService.CropBlocksOutside(bp, ids, ts);
+                ? this._blockService.CropBlocksInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._blockService.CropBlocksOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(blkRef, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.KeptCount += result.Data.KeptCount;
             return true;
         }
 
-        private bool HandleDBText(DBText text, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleDBText(DBText text, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { text.ObjectId };
             var result = ki
-                ? this._textService.CropTextsInside(bp, ids, ts)
-                : this._textService.CropTextsOutside(bp, ids, ts);
+                ? this._textService.CropTextsInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._textService.CropTextsOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(text, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.KeptCount += result.Data.KeptCount;
             return true;
         }
 
-        private bool HandleMText(MText mtext, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleMText(MText mtext, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { mtext.ObjectId };
             var result = ki
-                ? this._mtextService.CropMTextsInside(bp, ids, ts)
-                : this._mtextService.CropMTextsOutside(bp, ids, ts);
+                ? this._mtextService.CropMTextsInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._mtextService.CropMTextsOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(mtext, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.KeptCount += result.Data.KeptCount;
             return true;
         }
 
-        private bool HandleDimension(Dimension dim, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleDimension(Dimension dim, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { dim.ObjectId };
             var result = ki
-                ? this._dimService.CropDimsInside(bp, ids, ts)
-                : this._dimService.CropDimsOutside(bp, ids, ts);
+                ? this._dimService.CropDimsInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._dimService.CropDimsOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(dim, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.KeptCount += result.Data.KeptCount;
             return true;
         }
 
-        private bool HandleDBPoint(DBPoint pt, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleDBPoint(DBPoint pt, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { pt.ObjectId };
             var result = ki
-                ? this._pointService.CropPointsInside(bp, ids, ts)
-                : this._pointService.CropPointsOutside(bp, ids, ts);
+                ? this._pointService.CropPointsInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._pointService.CropPointsOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(pt, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.KeptCount += result.Data.KeptCount;
             return true;
         }
 
-        private bool HandleSolid(Solid solid, IReadOnlyList<CorePoint2D> bp,
+        private bool HandleSolid(Solid solid, ICropBoundary bp,
             bool ki, ITransactionService ts, CropResult r)
         {
             var ids = new List<ObjectId> { solid.ObjectId };
             var result = ki
-                ? this._solidService.CropSolidsInside(bp, ids, ts)
-                : this._solidService.CropSolidsOutside(bp, ids, ts);
+                ? this._solidService.CropSolidsInside(bp.GetApproximatePolygon(), ids, ts)
+                : this._solidService.CropSolidsOutside(bp.GetApproximatePolygon(), ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(solid, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.KeptCount += result.Data.KeptCount;
@@ -451,7 +455,7 @@ namespace ServiceACAD
         // ════════════════════════════════════════════════════════════════
 
         private bool SplitLine(Line line, ITransactionService serviceTrans, CropResult result,
-            bool keepInside, IReadOnlyList<CorePoint2D> boundaryPoints)
+            bool keepInside, ICropBoundary boundary)
         {
             try
             {
@@ -459,7 +463,7 @@ namespace ServiceACAD
                 var end3d = line.EndPoint;
                 var startPt = new CorePoint2D(start3d.X, start3d.Y);
                 var endPt = new CorePoint2D(end3d.X, end3d.Y);
-                var intersections = this._cropGeometry.FindLineSegmentIntersections(startPt, endPt, boundaryPoints);
+                var intersections = boundary.FindLineIntersections(startPt, endPt);
 
                 var nodes = new List<Point3d> { start3d };
                 foreach (var p in intersections)
@@ -475,7 +479,7 @@ namespace ServiceACAD
                         continue;
 
                     var midPt = new CorePoint2D((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0);
-                    var isInside = this._cropGeometry.IsPointInPolygon(midPt, boundaryPoints);
+                    var isInside = boundary.IsPointInside(midPt);
                     if ((keepInside && isInside) || (!keepInside && !isInside))
                     {
                         var seg = new Line(a, b)
@@ -521,7 +525,7 @@ namespace ServiceACAD
         }
 
         private bool SplitGenericCurve(Curve curve, ITransactionService serviceTrans, CropResult result,
-            bool keepInside, IReadOnlyList<CorePoint2D> boundaryPoints)
+            bool keepInside, ICropBoundary boundary)
         {
             try
             {
@@ -536,7 +540,7 @@ namespace ServiceACAD
                     var midPt = new CorePoint2D(
                         (seg.StartPoint.X + seg.EndPoint.X) / 2.0,
                         (seg.StartPoint.Y + seg.EndPoint.Y) / 2.0);
-                    var isInside = this._cropGeometry.IsPointInPolygon(midPt, boundaryPoints);
+                    var isInside = boundary.IsPointInside(midPt);
                     if ((keepInside && isInside) || (!keepInside && !isInside))
                         allSegmentsToKeep.Add(seg);
                     else

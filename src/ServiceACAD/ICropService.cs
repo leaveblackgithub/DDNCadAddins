@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
+using DDNCadAddins.Core.Interfaces;
 using DDNCadAddins.Core.Models;
+using DDNCadAddins.Core.Services;
 
 namespace ServiceACAD
 {
@@ -11,8 +13,15 @@ namespace ServiceACAD
     {
         /// <summary>
         ///     WCS 裁剪边界顶点列表（闭合多边形）.
+        ///     <para>兼容字段：当 <see cref="Boundary"/> 为 null 时使用.</para>
         /// </summary>
         public IReadOnlyList<Point2D> BoundaryPoints { get; set; }
+
+        /// <summary>
+        ///     裁剪边界抽象（优先使用，支持圆/椭圆精确边界）.
+        ///     <para>如果设置了此字段，将优先于 <see cref="BoundaryPoints"/> 使用.</para>
+        /// </summary>
+        public ICropBoundary Boundary { get; set; }
 
         /// <summary>
         ///     待裁剪的实体 ID 集合.
@@ -23,6 +32,19 @@ namespace ServiceACAD
         ///     事务服务引用.
         /// </summary>
         public ITransactionService TransactionService { get; set; }
+
+        /// <summary>
+        ///     获取有效的裁剪边界：优先返回 <see cref="Boundary"/>，
+        ///     否则用 <see cref="BoundaryPoints"/> 构造 <see cref="PolygonCropBoundary"/>.
+        /// </summary>
+        public ICropBoundary GetEffectiveBoundary()
+        {
+            if (this.Boundary != null)
+                return this.Boundary;
+            if (this.BoundaryPoints != null && this.BoundaryPoints.Count >= 3)
+                return new PolygonCropBoundary(this.BoundaryPoints);
+            return null;
+        }
     }
 
     /// <summary>

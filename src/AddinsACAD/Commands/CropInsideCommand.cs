@@ -47,8 +47,9 @@ namespace AddinsACAD.Commands
                     .MdiActiveDocument;
                 var ed = doc.Editor;
 
-                var boundaryPoints = this.SelectBoundaryPolyline(ed, out var boundaryId);
-                if (boundaryPoints == null || boundaryPoints.Count < 3)
+                // ★ 使用 CropBoundaryFactory 创建精确边界（圆/椭圆解析，不再采样为多义线）
+                var (boundary, boundaryPoints, boundaryId) = this.SelectBoundaryCurve(ed);
+                if (boundary == null || boundaryPoints == null || boundaryPoints.Count < 3)
                 {
                     return;
                 }
@@ -81,7 +82,8 @@ namespace AddinsACAD.Commands
                         var cropService = new CropService(geoService);
                         var input = new CropInput
                         {
-                            BoundaryPoints = boundaryPoints.AsReadOnly(),
+                            Boundary = boundary,                                    // ★ 精确边界
+                            BoundaryPoints = boundaryPoints.AsReadOnly(),            // 兼容快照
                             EntityIds = entityIds,
                             TransactionService = serviceTrans,
                         };
@@ -147,13 +149,14 @@ namespace AddinsACAD.Commands
         }
 
         /// <summary>
-        ///     选择闭合曲线作为裁剪边界（圆、椭圆、闭合多段线、闭合样条线等）.
-        ///     委托给 <see cref="CurveToPolygonConverter.ConvertCurveToPolygon"/> 自动选择精确/拟合策略.
+        ///     选择闭合曲线作为裁剪边界，并创建对应的 ICropBoundary.
+        ///     <para>圆/椭圆使用精确解析边界；多段线使用多边形边界；样条线使用采样代理.</para>
         /// </summary>
-        /// <returns>边界顶点列表（WCS），如果取消或选择无效则返回 null.</returns>
-        private List<DDNCadAddins.Core.Models.Point2D> SelectBoundaryPolyline(Editor ed, out ObjectId boundaryId)
+        /// <returns>(ICropBoundary, 多边形顶点列表, 边界ObjectId)；取消或无效返回 (null, null, ObjectId.Null).</returns>
+        private (DDNCadAddins.Core.Interfaces.ICropBoundary, List<DDNCadAddins.Core.Models.Point2D>, ObjectId)
+            SelectBoundaryCurve(Editor ed)
         {
-            boundaryId = ObjectId.Null;
+            var boundaryId = ObjectId.Null;
             try
             {
                 // 单选边界（GetEntity 天然单选，选中即确认，不需额外提示）
@@ -165,11 +168,12 @@ namespace AddinsACAD.Commands
                 if (res.Status != PromptStatus.OK)
                 {
                     ed.WriteMessage("\n*取消*");
-                    return null;
+                    return (null, null, ObjectId.Null);
                 }
 
                 boundaryId = res.ObjectId;
                 var capturedId = boundaryId;
+                DDNCadAddins.Core.Interfaces.ICropBoundary boundary = null;
                 var points = new List<DDNCadAddins.Core.Models.Point2D>();
 
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
@@ -186,29 +190,33 @@ namespace AddinsACAD.Commands
                         return;
                     }
 
-                    // 使用 CurveToPolygonConverter 自动选择精确/拟合策略
-                    var generator = new ServiceACAD.CurveToPolygonConverter();
-                    var polygon = generator.ConvertCurveToPolygon(curve);
-                    if (polygon != null && polygon.Count >= 3)
+                    // ★ 使用 CropBoundaryFactory 创建精确边界
+                    boundary = ServiceACAD.CropBoundaryFactory.CreateFromCurve(curve);
+
+                    // 同时获取近似多边形（用于 TestRecorder 快照兼容）
+                    if (boundary != null)
                     {
-                        points.AddRange(polygon);
+                        var polygon = boundary.GetApproximatePolygon();
+                        if (polygon != null && polygon.Count >= 3)
+                        {
+                            points.AddRange(polygon);
+                        }
                     }
                 });
 
-                if (points.Count < 3)
+                if (boundary == null || points.Count < 3)
                 {
-                    ed.WriteMessage("\n边界曲线顶点不足，请选择更大的闭合曲线。");
-                    return null;
+                    ed.WriteMessage("\n边界曲线无效或顶点不足，请选择更大的闭合曲线。");
+                    return (null, null, ObjectId.Null);
                 }
 
-                return points;
+                return (boundary, points, boundaryId);
             }
             catch (System.Exception ex)
             {
                 Logger._.Error($"选择边界曲线失败: {ex.Message}", ex);
                 ed.WriteMessage($"\n选择边界曲线失败: {ex.Message}");
-                boundaryId = ObjectId.Null;
-                return null;
+                return (null, null, ObjectId.Null);
             }
         }
 

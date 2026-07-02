@@ -23,6 +23,7 @@
     <Compile Include="Interfaces\ILayerRepository.cs" />
     <Compile Include="Interfaces\IStyleValidationService.cs" />
     <Compile Include="Interfaces\ICropGeometryService.cs" />
+    <Compile Include="Interfaces\ICropBoundary.cs" />
     <Compile Include="Interfaces\IPolygonClipperService.cs" />
     <Compile Include="Interfaces\IXClipBoundaryGeometryService.cs" />
     <Compile Include="Interfaces\ICurveSampler.cs" />
@@ -49,6 +50,9 @@
     <Compile Include="Services\PropertyUtils.cs" />
     <Compile Include="Services\StyleValidationService.cs" />
     <Compile Include="Services\CropGeometryService.cs" />
+    <Compile Include="Services\PolygonCropBoundary.cs" />
+    <Compile Include="Services\CircleCropBoundary.cs" />
+    <Compile Include="Services\EllipseCropBoundary.cs" />
     <Compile Include="Services\PolygonClipperService.cs" />
     <Compile Include="Services\XClipBoundaryGeometryService.cs" />
     <Compile Include="Services\CurveSampler.cs" />

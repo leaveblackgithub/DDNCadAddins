@@ -31,6 +31,7 @@
     <Compile Include="Matrix3DTests.cs" />
     <Compile Include="CoreModelTests.cs" />
     <Compile Include="CropGeometryServiceTests.cs" />
+    <Compile Include="CropBoundaryTests.cs" />
     <Compile Include="PolygonClipperServiceTests.cs" />
     <Compile Include="CurveSamplerTests.cs" />
     <Compile Include="SubtractIntersectionTests.cs" />
