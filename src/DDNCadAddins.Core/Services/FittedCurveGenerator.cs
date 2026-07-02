@@ -149,11 +149,12 @@ namespace DDNCadAddins.Core.Services
 
                 // 退化曲线（起点≈终点，例如闭合样条线）：
                 // 不能只返回单点，必须评估 evaluator 全范围采样以获得曲线形状。
+                // ★ i < samples，不生成末点（与首点重合），避免零长度退化边
                 if (length < 1e-12)
                 {
                     samples = Math.Max(samples, 8);
                     var degenerateStep = 1.0 / samples;
-                    for (var i = 0; i <= samples; i++)
+                    for (var i = 0; i < samples; i++)
                     {
                         var t = degenerateStep * i;
                         var pt = evaluator(t);
@@ -163,6 +164,7 @@ namespace DDNCadAddins.Core.Services
                     return points;
                 }
 
+                // 非退化曲线：首尾点不同，保留末点
                 var step = 1.0 / samples;
                 for (var i = 0; i <= samples; i++)
                 {

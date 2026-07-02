@@ -83,10 +83,11 @@ namespace DDNCadAddins.Core.Services
             double radius,
             int samples = DefaultMaxArcSamples)
         {
-            var points = new List<Point2D>(samples + 1);
+            // ★ i < samples，不生成末点（与首点重合），避免零长度退化边
+            var points = new List<Point2D>(samples);
             var step = (2.0 * Math.PI) / samples;
 
-            for (var i = 0; i <= samples; i++)
+            for (var i = 0; i < samples; i++)
             {
                 var angle = step * i;
                 var x = center.X + (radius * Math.Cos(angle));

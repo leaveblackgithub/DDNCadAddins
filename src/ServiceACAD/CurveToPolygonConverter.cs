@@ -259,15 +259,27 @@ namespace ServiceACAD
         private List<CorePoint2D> ConvertEllipse(Ellipse e)
         {
             // 完整椭圆 → 密集采样（128点）确保裁剪精度
-            var minorRatio = e.MinorRadius / e.MajorRadius;
+            // ★ 必须使用 MajorAxis 方向向量，忽略旋转会导致边界多边形错误
+            // ★ 不生成重复首尾点（i < N 而非 i <= N），否则零长度退化边
+            //   会导致 IsPointInPolygon 的 IsPointOnSegment 对任意点误判"在边上"
             var center = new CorePoint2D(e.Center.X, e.Center.Y);
+            var majorAxis = e.MajorAxis;                     // Vector3d: 方向和长轴半长
+            var majorDir = majorAxis.GetNormal();            // 长轴单位方向
+            var minorDir = new Vector3d(-majorDir.Y, majorDir.X, 0); // XY 平面内垂直长轴
+            var majorLen = majorAxis.Length;
+            var minorLen = e.MinorRadius;
+
             var result = new List<CorePoint2D>();
             const int ellipseSamples = 128;
-            for (int i = 0; i <= ellipseSamples; i++)
+            for (int i = 0; i < ellipseSamples; i++)  // ★ i < N，不含末点（与首点重合）
             {
                 var angle = 2.0 * Math.PI * i / ellipseSamples;
-                var x = center.X + e.MajorRadius * Math.Cos(angle);
-                var y = center.Y + e.MajorRadius * Math.Sin(angle) * minorRatio;
+                var cosA = Math.Cos(angle);
+                var sinA = Math.Sin(angle);
+                var x = center.X + majorDir.X * majorLen * cosA
+                                    + minorDir.X * minorLen * sinA;
+                var y = center.Y + majorDir.Y * majorLen * cosA
+                                    + minorDir.Y * minorLen * sinA;
                 result.Add(new CorePoint2D(x, y));
             }
 

@@ -367,5 +367,96 @@ namespace DDNCadAddins.Core.Tests
             Assert.AreEqual(5, sorted[1].X, 1e-9);
             Assert.AreEqual(8, sorted[2].X, 1e-9);
         }
+
+        // ========== 椭圆采样边界测试（复现 CROPINSIDE 椭圆边界问题） ==========
+
+        /// <summary>
+        /// 用测试记录 crop_20260702-131652-4326.json 中的真实椭圆边界数据，
+        /// 验证 IsPointInPolygon 对椭圆内部点的判断正确性.
+        /// </summary>
+        [Test]
+        public void IsPointInPolygon_EllipseBoundary_CenterPoint_ReturnsTrue()
+        {
+            // 椭圆中心约 (38.77, -10.94)，应在椭圆内部
+            var ellipse = BuildEllipseBoundaryFromTestRecord();
+            var center = new Point2D(38.771, -10.943);
+            var result = this._service.IsPointInPolygon(center, ellipse);
+            Assert.IsTrue(result, "椭圆中心点应该在椭圆内部");
+        }
+
+        /// <summary>
+        /// 测试记录中的 Polyline 顶点 (38.699, -12.143) 应在椭圆内部.
+        /// </summary>
+        [Test]
+        public void IsPointInPolygon_EllipseBoundary_VertexInside_ReturnsTrue()
+        {
+            var ellipse = BuildEllipseBoundaryFromTestRecord();
+            var pt = new Point2D(38.699, -12.143);
+            var result = this._service.IsPointInPolygon(pt, ellipse);
+            Assert.IsTrue(result, "点 (38.699, -12.143) 应在椭圆内部");
+        }
+
+        /// <summary>
+        /// 测试记录中的 Polyline 顶点 (31.227, -4.390) 应在椭圆外部.
+        /// </summary>
+        [Test]
+        public void IsPointInPolygon_EllipseBoundary_VertexOutside_ReturnsFalse()
+        {
+            var ellipse = BuildEllipseBoundaryFromTestRecord();
+            var pt = new Point2D(31.227, -4.390);
+            var result = this._service.IsPointInPolygon(pt, ellipse);
+            Assert.IsFalse(result, "点 (31.227, -4.390) 应在椭圆外部");
+        }
+
+        /// <summary>
+        /// 线段从外部进入椭圆内部：起点 (31.227,-4.390) 在椭圆外，终点 (38.699,-12.143) 在椭圆内
+        /// 应有 1 个交点（仅进入，未穿出）.
+        /// </summary>
+        [Test]
+        public void FindLineSegmentIntersections_EllipseBoundary_CrossingSegment_ReturnsOneIntersection()
+        {
+            var ellipse = BuildEllipseBoundaryFromTestRecord();
+            var start = new Point2D(31.227, -4.390);
+            var end = new Point2D(38.699, -12.143);
+            var intersections = this._service.FindLineSegmentIntersections(start, end, ellipse);
+            Assert.AreEqual(1, intersections.Count, "从外部进入椭圆内部的线段应有 1 个交点");
+        }
+
+        /// <summary>
+        /// 线段完全穿越椭圆：起点和终点都在椭圆外部，线段穿过椭圆
+        /// 应有 2 个交点.
+        /// </summary>
+        [Test]
+        public void FindLineSegmentIntersections_EllipseBoundary_ThroughSegment_ReturnsTwoIntersections()
+        {
+            var ellipse = BuildEllipseBoundaryFromTestRecord();
+            // 两个外部点，连线穿过椭圆中心
+            var start = new Point2D(31.0, -10.943);   // 椭圆左侧外部
+            var end = new Point2D(46.0, -10.943);     // 椭圆右侧外部
+            var intersections = this._service.FindLineSegmentIntersections(start, end, ellipse);
+            Assert.AreEqual(2, intersections.Count, "完全穿越椭圆的线段应有 2 个交点");
+        }
+
+        /// <summary>
+        /// 构建测试记录 crop_20260702-131652-4326.json 中的椭圆边界多边形（129点采样）.
+        /// </summary>
+        private static List<Point2D> BuildEllipseBoundaryFromTestRecord()
+        {
+            // 椭圆中心 (38.771, -10.943)，长轴半径 3.797，短轴半径 3.229
+            // 用 128 段采样（128个点，不重复首尾）
+            var cx = 38.771;
+            var cy = -10.943;
+            var majorR = 3.797;
+            var minorR = 3.229;
+            var pts = new List<Point2D>(128);
+            for (int i = 0; i < 128; i++)
+            {
+                var angle = 2.0 * System.Math.PI * i / 128;
+                var x = cx + majorR * System.Math.Cos(angle);
+                var y = cy + minorR * System.Math.Sin(angle);
+                pts.Add(new Point2D(x, y));
+            }
+            return pts;
+        }
     }
 }

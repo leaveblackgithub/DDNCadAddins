@@ -235,6 +235,13 @@ namespace DDNCadAddins.Core.Services
         /// </summary>
         private static bool IsPointOnSegment(Point2D point, Point2D segStart, Point2D segEnd)
         {
+            // ★ 零长度退化边（首尾点重合）：任何点都不"在"这条边上
+            var segLenSq = DistanceSquared(segStart, segEnd);
+            if (segLenSq < Tolerance * Tolerance)
+            {
+                return false;
+            }
+
             // 叉积=0 表示共线
             var cross = (point.Y - segStart.Y) * (segEnd.X - segStart.X) -
                         (point.X - segStart.X) * (segEnd.Y - segStart.Y);
@@ -252,8 +259,7 @@ namespace DDNCadAddins.Core.Services
                 return false;
             }
 
-            var squaredLength = DistanceSquared(segStart, segEnd);
-            if (dotProduct > squaredLength)
+            if (dotProduct > segLenSq)
             {
                 return false;
             }
