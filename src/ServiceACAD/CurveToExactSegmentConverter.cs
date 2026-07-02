@@ -286,8 +286,9 @@ namespace ServiceACAD
                 int vertexIdx = 0;
                 int totalVertices = 0;
 
-                foreach (var seg in loop)
+                for (int segIdx = 0; segIdx < loop.Count; segIdx++)
                 {
+                    var seg = loop[segIdx];
                     double bulge = 0.0;
 
                     if (seg.SegmentType == ExactSegmentType.Arc)
@@ -295,10 +296,15 @@ namespace ServiceACAD
                         // 从圆弧参数计算凸度
                         bulge = CalcBulgeFromArc(
                             seg.ArcStartAngle, seg.ArcEndAngle, seg.ArcIsClockwise);
+                        pline.AddVertexAt(vertexIdx,
+                            new Point2d(seg.Start.X, seg.Start.Y),
+                            bulge, 0.0, 0.0);
+                        vertexIdx++;
+                        totalVertices++;
                     }
                     else if (seg.SegmentType == ExactSegmentType.Ellipse)
                     {
-                        // 椭圆弧采样为多段直线
+                        // 椭圆弧采样为多段直线（含起点，不含终点）
                         var pts = seg.ToPolylinePoints();
                         for (int i = 0; i < pts.Count - 1; i++)
                         {
@@ -308,25 +314,24 @@ namespace ServiceACAD
                             vertexIdx++;
                             totalVertices++;
                         }
-                        continue;
                     }
-
-                    pline.AddVertexAt(vertexIdx,
-                        new Point2d(seg.Start.X, seg.Start.Y),
-                        bulge, 0.0, 0.0);
-                    vertexIdx++;
-                    totalVertices++;
+                    else
+                    {
+                        // 直线段：添加起点
+                        pline.AddVertexAt(vertexIdx,
+                            new Point2d(seg.Start.X, seg.Start.Y),
+                            bulge, 0.0, 0.0);
+                        vertexIdx++;
+                        totalVertices++;
+                    }
                 }
 
-                // 添加最后一段的终点（如果还没有添加）
+                // 添加最后一段的终点（闭合环的最后顶点）
                 var lastSeg = loop[loop.Count - 1];
-                if (lastSeg.SegmentType != ExactSegmentType.Ellipse)
-                {
-                    pline.AddVertexAt(vertexIdx,
-                        new Point2d(lastSeg.End.X, lastSeg.End.Y),
-                        0.0, 0.0, 0.0);
-                    totalVertices++;
-                }
+                pline.AddVertexAt(vertexIdx,
+                    new Point2d(lastSeg.End.X, lastSeg.End.Y),
+                    0.0, 0.0, 0.0);
+                totalVertices++;
 
                 pline.Closed = true;
 

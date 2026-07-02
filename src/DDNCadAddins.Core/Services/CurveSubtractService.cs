@@ -21,7 +21,7 @@ namespace DDNCadAddins.Core.Services
     public class CurveSubtractService
     {
         private const double Tol = 1e-9;
-        private const double MatchTol = 1e-6;
+        private const double MatchTol = 5e-4;
 
         /// <summary>
         ///     计算精确差集 A \ B.
@@ -114,17 +114,29 @@ namespace DDNCadAddins.Core.Services
         /// <summary>
         ///     将一条原子边按与 clip 边界的交点切分为子线段.
         ///     返回所有子线段（含交点端点），保留/丢弃由调用方决定.
+        ///     <para>
+        ///         对于椭圆弧段，使用精确角度参数求交，避免采样折线
+        ///         参数与角度参数不一致导致的切割错误。
+        ///         所有子段的端点直接使用交点坐标，确保不同边切割
+        ///         产生的子段在连接点处坐标完全一致。
+        ///     </para>
         /// </summary>
         private List<ExactSegment> SplitEdgeByBoundary(
             ExactSegment edge, ICropBoundary boundary)
         {
+            // 对于椭圆弧段，使用精确角度参数求交
+            if (edge.SegmentType == ExactSegmentType.Ellipse)
+            {
+                return SplitEllipseEdgeByBoundary(edge, boundary);
+            }
+
             // 获取边的采样点（用于求交的直线段近似）
             var edgePoints = edge.ToPolylinePoints();
             if (edgePoints.Count < 2)
                 return new List<ExactSegment> { edge };
 
-            // 收集所有交点参数（沿边方向的归一化参数 t ∈ [0,1]）
-            var cutParams = new List<double>();
+            // 收集交点：按参数 t 排序的 (t, 交点坐标) 对
+            var cutPoints = new List<KeyValuePair<double, Point2D>>();
 
             for (int i = 0; i < edgePoints.Count - 1; i++)
             {
@@ -136,38 +148,174 @@ namespace DDNCadAddins.Core.Services
                 {
                     double t = ParamAlongEdge(edge, edgePoints, i, ix, p1, p2);
                     if (t > Tol && t < 1.0 - Tol)
-                        cutParams.Add(t);
+                        cutPoints.Add(new KeyValuePair<double, Point2D>(t, ix));
                 }
             }
 
-            // 去重并排序
-            cutParams.Sort();
-            var uniqueParams = new List<double>();
-            foreach (var t in cutParams)
+            // 按 t 排序
+            cutPoints.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+            // 去重
+            var uniqueCutPoints = new List<KeyValuePair<double, Point2D>>();
+            foreach (var cp in cutPoints)
             {
-                if (uniqueParams.Count == 0 || t - uniqueParams[uniqueParams.Count - 1] > Tol)
-                    uniqueParams.Add(t);
+                if (uniqueCutPoints.Count == 0 ||
+                    cp.Key - uniqueCutPoints[uniqueCutPoints.Count - 1].Key > Tol)
+                    uniqueCutPoints.Add(cp);
             }
 
-            // 构建切分节点列表：0, t1, t2, ..., 1
-            var nodes = new List<double> { 0.0 };
-            nodes.AddRange(uniqueParams);
-            nodes.Add(1.0);
+            // 构建切分节点列表：起点, 交点1, 交点2, ..., 终点
+            var nodes = new List<(double t, Point2D pt)>();
+            nodes.Add((0.0, edge.Start));
+            foreach (var cp in uniqueCutPoints)
+                nodes.Add((cp.Key, cp.Value));
+            nodes.Add((1.0, edge.End));
 
-            // 逐子段生成 ExactSegment
+            // 逐子段生成 ExactSegment，使用精确交点坐标作为端点
             var result = new List<ExactSegment>();
             for (int i = 0; i < nodes.Count - 1; i++)
             {
-                double tStart = nodes[i];
-                double tEnd = nodes[i + 1];
+                double tStart = nodes[i].t;
+                double tEnd = nodes[i + 1].t;
                 if (tEnd - tStart < Tol) continue;
 
-                var subSegment = CreateSubSegment(edge, tStart, tEnd);
+                var subSegment = CreateSubSegmentWithEndpoints(
+                    edge, tStart, tEnd, nodes[i].pt, nodes[i + 1].pt);
                 if (subSegment != null)
                     result.Add(subSegment);
             }
 
             return result;
+        }
+
+        /// <summary>
+        ///     椭圆弧段的专用切分方法 — 使用精确角度参数求交.
+        ///     <para>
+        ///         椭圆弧的弧长与角度参数不是线性关系，因此不能使用
+        ///         采样折线的线性参数来切割椭圆弧。此方法对每个交点
+        ///         直接计算其在椭圆弧上的精确角度参数，并直接使用
+        ///         交点坐标作为子段端点，确保与直线段子段的端点一致。
+        ///     </para>
+        /// </summary>
+        private List<ExactSegment> SplitEllipseEdgeByBoundary(
+            ExactSegment edge, ICropBoundary boundary)
+        {
+            // 计算椭圆弧的角度范围
+            double fullSpan = edge.EllipseIsClockwise
+                ? edge.EllipseStartAngle - edge.EllipseEndAngle
+                : edge.EllipseEndAngle - edge.EllipseStartAngle;
+            if (fullSpan < 0) fullSpan += 2.0 * Math.PI;
+
+            double dir = edge.EllipseIsClockwise ? -1.0 : 1.0;
+
+            double cosRot = Math.Cos(edge.EllipseRotation);
+            double sinRot = Math.Sin(edge.EllipseRotation);
+
+            // 在角度空间均匀采样，用于求交
+            const int angleSamples = 128;
+            var edgePoints = new List<Point2D>(angleSamples + 1);
+
+            for (int i = 0; i <= angleSamples; i++)
+            {
+                double t = (double)i / angleSamples;
+                double angle = edge.EllipseStartAngle + dir * fullSpan * t;
+                double lx = edge.EllipseMajorRadius * Math.Cos(angle);
+                double ly = edge.EllipseMinorRadius * Math.Sin(angle);
+                edgePoints.Add(new Point2D(
+                    edge.EllipseCenter.X + lx * cosRot - ly * sinRot,
+                    edge.EllipseCenter.Y + lx * sinRot + ly * cosRot));
+            }
+
+            // 收集交点：按角度参数 t 排序的 (t, 交点坐标) 对
+            var cutPoints = new List<KeyValuePair<double, Point2D>>();
+
+            for (int i = 0; i < angleSamples; i++)
+            {
+                var p1 = edgePoints[i];
+                var p2 = edgePoints[i + 1];
+                var intersections = boundary.FindLineIntersections(p1, p2);
+
+                foreach (var ix in intersections)
+                {
+                    // 直接计算交点在椭圆弧上的精确角度参数
+                    double angleT = ComputeEllipseIntersectionParam(
+                        edge, ix, cosRot, sinRot, dir, fullSpan);
+                    if (angleT > Tol && angleT < 1.0 - Tol)
+                        cutPoints.Add(new KeyValuePair<double, Point2D>(angleT, ix));
+                }
+            }
+
+            // 按 t 排序
+            cutPoints.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+            // 去重
+            var uniqueCutPoints = new List<KeyValuePair<double, Point2D>>();
+            foreach (var cp in cutPoints)
+            {
+                if (uniqueCutPoints.Count == 0 ||
+                    cp.Key - uniqueCutPoints[uniqueCutPoints.Count - 1].Key > Tol)
+                    uniqueCutPoints.Add(cp);
+            }
+
+            // 构建切分节点列表：起点, 交点1, 交点2, ..., 终点
+            var nodes = new List<(double t, Point2D pt)>();
+            nodes.Add((0.0, edge.Start));
+            foreach (var cp in uniqueCutPoints)
+                nodes.Add((cp.Key, cp.Value));
+            nodes.Add((1.0, edge.End));
+
+            // 逐子段生成 ExactSegment，使用精确交点坐标作为端点
+            var result = new List<ExactSegment>();
+            for (int i = 0; i < nodes.Count - 1; i++)
+            {
+                double tStart = nodes[i].t;
+                double tEnd = nodes[i + 1].t;
+                if (tEnd - tStart < Tol) continue;
+
+                var subSegment = CreateSubSegmentWithEndpoints(
+                    edge, tStart, tEnd, nodes[i].pt, nodes[i + 1].pt);
+                if (subSegment != null)
+                    result.Add(subSegment);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        ///     计算交点在椭圆弧上的精确角度参数 t ∈ [0,1].
+        ///     <para>
+        ///         将交点从 WCS 变换到椭圆局部坐标系，然后使用 Atan2
+        ///         计算精确角度，再映射到弧段参数空间。
+        ///     </para>
+        /// </summary>
+        private static double ComputeEllipseIntersectionParam(
+            ExactSegment edge, Point2D intersection,
+            double cosRot, double sinRot, double dir, double fullSpan)
+        {
+            // 将交点变换到椭圆局部坐标系
+            double dx = intersection.X - edge.EllipseCenter.X;
+            double dy = intersection.Y - edge.EllipseCenter.Y;
+            double localX = dx * cosRot + dy * sinRot;
+            double localY = -dx * sinRot + dy * cosRot;
+
+            // 在局部坐标系中计算精确角度（使用 Atan2，处理所有象限）
+            double angle = Math.Atan2(localY / edge.EllipseMinorRadius,
+                                      localX / edge.EllipseMajorRadius);
+
+            // 将角度映射到弧段参数空间 t ∈ [0,1]
+            double angleOffset = angle - edge.EllipseStartAngle;
+            // 处理角度环绕
+            if (dir > 0) // CCW
+            {
+                if (angleOffset < 0) angleOffset += 2.0 * Math.PI;
+            }
+            else // CW
+            {
+                if (angleOffset > 0) angleOffset -= 2.0 * Math.PI;
+            }
+
+            double t = angleOffset / (dir * fullSpan);
+            return Math.Max(0.0, Math.Min(1.0, t));
         }
 
         /// <summary>
@@ -192,6 +340,32 @@ namespace DDNCadAddins.Core.Services
             int totalSegs = edgePoints.Count - 1;
             double globalT = (segIndex + localT) / totalSegs;
             return Math.Max(0.0, Math.Min(1.0, globalT));
+        }
+
+        /// <summary>
+        ///     根据参数范围 [tStart, tEnd] 从原始边创建子线段.
+        ///     使用精确的端点坐标，确保不同边切割产生的子段
+        ///     在连接点处坐标完全一致。
+        /// </summary>
+        private static ExactSegment CreateSubSegmentWithEndpoints(
+            ExactSegment edge, double tStart, double tEnd,
+            Point2D exactStart, Point2D exactEnd)
+        {
+            switch (edge.SegmentType)
+            {
+                case ExactSegmentType.Line:
+                    return CreateSubLine(edge, tStart, tEnd);
+
+                case ExactSegmentType.Arc:
+                    return CreateSubArc(edge, tStart, tEnd);
+
+                case ExactSegmentType.Ellipse:
+                    return CreateSubEllipseWithEndpoints(
+                        edge, tStart, tEnd, exactStart, exactEnd);
+
+                default:
+                    return null;
+            }
         }
 
         /// <summary>
@@ -265,6 +439,36 @@ namespace DDNCadAddins.Core.Services
                 ArcStartAngle = subStartAngle,
                 ArcEndAngle = subEndAngle,
                 ArcIsClockwise = edge.ArcIsClockwise
+            };
+        }
+
+        /// <summary>创建椭圆弧子段（使用精确端点坐标）.</summary>
+        private static ExactSegment CreateSubEllipseWithEndpoints(
+            ExactSegment edge, double tStart, double tEnd,
+            Point2D exactStart, Point2D exactEnd)
+        {
+            double fullSpan = edge.EllipseIsClockwise
+                ? edge.EllipseStartAngle - edge.EllipseEndAngle
+                : edge.EllipseEndAngle - edge.EllipseStartAngle;
+            if (fullSpan < 0) fullSpan += 2.0 * Math.PI;
+
+            double dir = edge.EllipseIsClockwise ? -1.0 : 1.0;
+            double subStartAngle = edge.EllipseStartAngle + dir * fullSpan * tStart;
+            double subEndAngle = edge.EllipseStartAngle + dir * fullSpan * tEnd;
+
+            return new ExactSegment
+            {
+                Source = edge.Source,
+                SegmentType = ExactSegmentType.Ellipse,
+                Start = exactStart,
+                End = exactEnd,
+                EllipseCenter = edge.EllipseCenter,
+                EllipseMajorRadius = edge.EllipseMajorRadius,
+                EllipseMinorRadius = edge.EllipseMinorRadius,
+                EllipseRotation = edge.EllipseRotation,
+                EllipseStartAngle = subStartAngle,
+                EllipseEndAngle = subEndAngle,
+                EllipseIsClockwise = edge.EllipseIsClockwise
             };
         }
 

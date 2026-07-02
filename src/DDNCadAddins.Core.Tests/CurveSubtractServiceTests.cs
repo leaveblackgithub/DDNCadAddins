@@ -329,6 +329,166 @@ namespace DDNCadAddins.Core.Tests
         }
 
         // ════════════════════════════════════════════════════════════════
+        // 椭圆-椭圆差集：两个相交椭圆
+        // ════════════════════════════════════════════════════════════════
+
+        [Test]
+        public void EllipseMinusEllipse_ReturnsResult()
+        {
+            // A = 椭圆，中心(0,0)，长轴50沿X轴，短轴30
+            var ellipseAEdges = MakeEllipseEdges(
+                new Point2D(0, 0), 50, 30, 0);
+            var ellipseABnd = new EllipseCropBoundary(
+                new Point2D(0, 0), 50, 30, 0);
+
+            // B = 椭圆，中心(20,0)，长轴30沿X轴，短轴20（与A部分重叠）
+            var ellipseBEdges = MakeEllipseEdges(
+                new Point2D(20, 0), 30, 20, 0);
+            var ellipseBBnd = new EllipseCropBoundary(
+                new Point2D(20, 0), 30, 20, 0);
+
+            var result = _service.Subtract(
+                ellipseAEdges, ellipseABnd,
+                ellipseBEdges, ellipseBBnd);
+
+            Assert.IsTrue(result.IsSuccess, "椭圆差集应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "相交椭圆差集应有结果");
+        }
+
+        [Test]
+        public void EllipseMinusEllipse_Rotated_ReturnsResult()
+        {
+            // A = 椭圆，中心(0,0)，长轴50，短轴30，旋转45°
+            double rot = Math.PI / 4.0;
+            var ellipseAEdges = MakeEllipseEdges(
+                new Point2D(0, 0), 50, 30, rot);
+            var ellipseABnd = new EllipseCropBoundary(
+                new Point2D(0, 0), 50, 30, rot);
+
+            // B = 椭圆，中心(10,10)，长轴30，短轴20，旋转-30°
+            var ellipseBEdges = MakeEllipseEdges(
+                new Point2D(10, 10), 30, 20, -Math.PI / 6.0);
+            var ellipseBBnd = new EllipseCropBoundary(
+                new Point2D(10, 10), 30, 20, -Math.PI / 6.0);
+
+            var result = _service.Subtract(
+                ellipseAEdges, ellipseABnd,
+                ellipseBEdges, ellipseBBnd);
+
+            Assert.IsTrue(result.IsSuccess, "旋转椭圆差集应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "相交旋转椭圆差集应有结果");
+        }
+
+        // ════════════════════════════════════════════════════════════════
+        // 椭圆-矩形差集
+        // ════════════════════════════════════════════════════════════════
+
+        [Test]
+        public void EllipseMinusRect_ReturnsResult()
+        {
+            // A = 椭圆，中心(0,0)，长轴60，短轴40
+            var ellipseAEdges = MakeEllipseEdges(
+                new Point2D(0, 0), 60, 40, 0);
+            var ellipseABnd = new EllipseCropBoundary(
+                new Point2D(0, 0), 60, 40, 0);
+
+            // B = 矩形 (-20,-20)~(20,20)，位于椭圆内部
+            var rectEdges = MakeRectEdges(-20, -20, 20, 20);
+            var rectBnd = MakeRectBoundary(-20, -20, 20, 20);
+
+            var result = _service.Subtract(
+                ellipseAEdges, ellipseABnd,
+                rectEdges, rectBnd);
+
+            Assert.IsTrue(result.IsSuccess, "椭圆减矩形应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "椭圆包含矩形时差集应有结果");
+
+            // 验证有 Clip 来源的段（矩形在椭圆内部的部分）
+            var allSegs = result.Data.Loops.SelectMany(l => l).ToList();
+            bool hasClipSeg = allSegs.Any(s => s.Source == SegmentSource.Clip);
+            Assert.IsTrue(hasClipSeg, "椭圆包含矩形时应有 Clip 来源的段");
+        }
+
+        [Test]
+        public void RectMinusEllipse_ReturnsResult()
+        {
+            // A = 矩形 (-50,-50)~(50,50)
+            var rectEdges = MakeRectEdges(-50, -50, 50, 50);
+            var rectBnd = MakeRectBoundary(-50, -50, 50, 50);
+
+            // B = 椭圆，中心(0,0)，长轴30，短轴20（在矩形内部）
+            var ellipseBEdges = MakeEllipseEdges(
+                new Point2D(0, 0), 30, 20, 0);
+            var ellipseBBnd = new EllipseCropBoundary(
+                new Point2D(0, 0), 30, 20, 0);
+
+            var result = _service.Subtract(
+                rectEdges, rectBnd,
+                ellipseBEdges, ellipseBBnd);
+
+            Assert.IsTrue(result.IsSuccess, "矩形减椭圆应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "矩形包含椭圆时差集应有结果");
+
+            // 验证有 Clip 来源的椭圆弧段
+            var allSegs = result.Data.Loops.SelectMany(l => l).ToList();
+            bool hasClipEllipseSeg = allSegs.Any(s =>
+                s.Source == SegmentSource.Clip && s.SegmentType == ExactSegmentType.Ellipse);
+            Assert.IsTrue(hasClipEllipseSeg, "矩形包含椭圆时应有 Clip 来源的椭圆弧段");
+        }
+
+        // ════════════════════════════════════════════════════════════════
+        // 椭圆-圆差集
+        // ════════════════════════════════════════════════════════════════
+
+        [Test]
+        public void EllipseMinusCircle_ReturnsResult()
+        {
+            // A = 椭圆，中心(0,0)，长轴50，短轴30
+            var ellipseAEdges = MakeEllipseEdges(
+                new Point2D(0, 0), 50, 30, 0);
+            var ellipseABnd = new EllipseCropBoundary(
+                new Point2D(0, 0), 50, 30, 0);
+
+            // B = 圆，圆心(0,0)，半径15（在椭圆内部）
+            var circleEdges = MakeCircleEdges(new Point2D(0, 0), 15);
+            var circleBnd = new CircleCropBoundary(new Point2D(0, 0), 15);
+
+            var result = _service.Subtract(
+                ellipseAEdges, ellipseABnd,
+                circleEdges, circleBnd);
+
+            Assert.IsTrue(result.IsSuccess, "椭圆减圆应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "椭圆包含圆时差集应有结果");
+        }
+
+        // ════════════════════════════════════════════════════════════════
+        // 椭圆不相交 → 返回原椭圆
+        // ════════════════════════════════════════════════════════════════
+
+        [Test]
+        public void DisjointEllipses_ReturnsSubjectAsIs()
+        {
+            // A = 椭圆，中心(0,0)，长轴30，短轴20
+            var ellipseAEdges = MakeEllipseEdges(
+                new Point2D(0, 0), 30, 20, 0);
+            var ellipseABnd = new EllipseCropBoundary(
+                new Point2D(0, 0), 30, 20, 0);
+
+            // B = 椭圆，中心(200,200)，长轴30，短轴20（远离A）
+            var ellipseBEdges = MakeEllipseEdges(
+                new Point2D(200, 200), 30, 20, 0);
+            var ellipseBBnd = new EllipseCropBoundary(
+                new Point2D(200, 200), 30, 20, 0);
+
+            var result = _service.Subtract(
+                ellipseAEdges, ellipseABnd,
+                ellipseBEdges, ellipseBBnd);
+
+            Assert.IsTrue(result.IsSuccess, "不相交椭圆差集应成功");
+            Assert.AreEqual(1, result.Data.Loops.Count, "不相交应返回 1 个环");
+        }
+
+        // ════════════════════════════════════════════════════════════════
         // 辅助方法
         // ════════════════════════════════════════════════════════════════
 
@@ -366,6 +526,49 @@ namespace DDNCadAddins.Core.Tests
                 double ea = (i + 1) * Math.PI / 2.0;
                 segments.Add(ArcSeg(center, radius, sa, ea, false));
             }
+            return segments;
+        }
+
+        /// <summary>
+        ///     创建完整椭圆的 4 条 90° 椭圆弧段（CCW）.
+        /// </summary>
+        private static List<ExactSegment> MakeEllipseEdges(
+            Point2D center, double majorR, double minorR, double rotation)
+        {
+            var segments = new List<ExactSegment>(4);
+            double cosRot = Math.Cos(rotation);
+            double sinRot = Math.Sin(rotation);
+
+            for (int i = 0; i < 4; i++)
+            {
+                double sa = i * Math.PI / 2.0;
+                double ea = (i + 1) * Math.PI / 2.0;
+
+                double sxLocal = majorR * Math.Cos(sa);
+                double syLocal = minorR * Math.Sin(sa);
+                double exLocal = majorR * Math.Cos(ea);
+                double eyLocal = minorR * Math.Sin(ea);
+
+                segments.Add(new ExactSegment
+                {
+                    Source = SegmentSource.Subject,
+                    SegmentType = ExactSegmentType.Ellipse,
+                    Start = new Point2D(
+                        center.X + sxLocal * cosRot - syLocal * sinRot,
+                        center.Y + sxLocal * sinRot + syLocal * cosRot),
+                    End = new Point2D(
+                        center.X + exLocal * cosRot - eyLocal * sinRot,
+                        center.Y + exLocal * sinRot + eyLocal * cosRot),
+                    EllipseCenter = center,
+                    EllipseMajorRadius = majorR,
+                    EllipseMinorRadius = minorR,
+                    EllipseRotation = rotation,
+                    EllipseStartAngle = sa,
+                    EllipseEndAngle = ea,
+                    EllipseIsClockwise = false
+                });
+            }
+
             return segments;
         }
     }
