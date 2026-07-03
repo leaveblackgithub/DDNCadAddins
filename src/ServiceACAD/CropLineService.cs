@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using DDNCadAddins.Core.Interfaces;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 using OpResult = ServiceACAD.OpResult;
@@ -39,6 +40,7 @@ namespace ServiceACAD
     /// <summary>
     ///     直线裁剪服务 - 专门处理 Line 类型的裁剪操作.
     ///     支持保留边界内部或外部的直线，自动拆分跨越边界的直线.
+    ///     <para>支持精确边界（ICropBoundary）和折线边界（IReadOnlyList<CorePoint2D>）两种模式.</para>
     /// </summary>
     public class CropLineService
     {
@@ -53,42 +55,69 @@ namespace ServiceACAD
             this._cropGeometry = cropGeometry ?? new CropGeometryService();
         }
 
+        // ──────────────────────────────────────────────────────────────
+        //  新签名：精确边界（ICropBoundary）— 主方法
+        // ──────────────────────────────────────────────────────────────
+
         /// <summary>
-        ///     裁剪直线：保留边界内部的直线.
+        ///     裁剪直线：保留边界内部的直线（精确边界）.
         /// </summary>
-        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
+        /// <param name="boundary">精确裁剪边界.</param>
         /// <param name="lineIds">待裁剪直线的 ObjectId 列表.</param>
         /// <param name="transactionService">事务服务.</param>
-        /// <returns>裁剪结果，包含删除/拆分/保留/跳过的数量.</returns>
+        /// <returns>裁剪结果.</returns>
+        public OpResultOfCropLineResult CropLinesInside(
+            ICropBoundary boundary,
+            List<ObjectId> lineIds,
+            ITransactionService transactionService)
+        {
+            return this.CropLines(boundary, lineIds, transactionService, keepInside: true);
+        }
+
+        /// <summary>
+        ///     裁剪直线：保留边界外部的直线（精确边界）.
+        /// </summary>
+        /// <param name="boundary">精确裁剪边界.</param>
+        /// <param name="lineIds">待裁剪直线的 ObjectId 列表.</param>
+        /// <param name="transactionService">事务服务.</param>
+        /// <returns>裁剪结果.</returns>
+        public OpResultOfCropLineResult CropLinesOutside(
+            ICropBoundary boundary,
+            List<ObjectId> lineIds,
+            ITransactionService transactionService)
+        {
+            return this.CropLines(boundary, lineIds, transactionService, keepInside: false);
+        }
+
+        // ──────────────────────────────────────────────────────────────
+        //  旧签名：折线边界（IReadOnlyList<CorePoint2D>）— 兼容包装
+        // ──────────────────────────────────────────────────────────────
+
+        /// <summary>
+        ///     裁剪直线：保留边界内部的直线（折线边界，兼容旧接口）.
+        /// </summary>
         public OpResultOfCropLineResult CropLinesInside(
             IReadOnlyList<CorePoint2D> boundaryPoints,
             List<ObjectId> lineIds,
             ITransactionService transactionService)
         {
-            return this.CropLines(boundaryPoints, lineIds, transactionService, keepInside: true);
+            return this.CropLinesInside(new PolygonCropBoundary(boundaryPoints), lineIds, transactionService);
         }
 
         /// <summary>
-        ///     裁剪直线：保留边界外部的直线.
+        ///     裁剪直线：保留边界外部的直线（折线边界，兼容旧接口）.
         /// </summary>
-        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
-        /// <param name="lineIds">待裁剪直线的 ObjectId 列表.</param>
-        /// <param name="transactionService">事务服务.</param>
-        /// <returns>裁剪结果，包含删除/拆分/保留/跳过的数量.</returns>
         public OpResultOfCropLineResult CropLinesOutside(
             IReadOnlyList<CorePoint2D> boundaryPoints,
             List<ObjectId> lineIds,
             ITransactionService transactionService)
         {
-            return this.CropLines(boundaryPoints, lineIds, transactionService, keepInside: false);
+            return this.CropLinesOutside(new PolygonCropBoundary(boundaryPoints), lineIds, transactionService);
         }
 
         /// <summary>
         ///     裁剪所有直线：保留边界内部的直线，自动选择图纸中所有 LINE 对象.
         /// </summary>
-        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
-        /// <param name="transactionService">事务服务.</param>
-        /// <returns>裁剪结果，包含删除/拆分/保留/跳过的数量.</returns>
         public OpResultOfCropLineResult CropAllLinesInside(
             IReadOnlyList<CorePoint2D> boundaryPoints,
             ITransactionService transactionService)
@@ -99,9 +128,6 @@ namespace ServiceACAD
         /// <summary>
         ///     裁剪所有直线：保留边界外部的直线，自动选择图纸中所有 LINE 对象.
         /// </summary>
-        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
-        /// <param name="transactionService">事务服务.</param>
-        /// <returns>裁剪结果，包含删除/拆分/保留/跳过的数量.</returns>
         public OpResultOfCropLineResult CropAllLinesOutside(
             IReadOnlyList<CorePoint2D> boundaryPoints,
             ITransactionService transactionService)
@@ -109,61 +135,24 @@ namespace ServiceACAD
             return this.CropAllLines(boundaryPoints, transactionService, keepInside: false);
         }
 
-        /// <summary>
-        ///     自动选择图纸中所有 LINE 对象进行裁剪.
-        /// </summary>
-        /// <param name="boundaryPoints">边界多边形顶点列表（WCS，至少3个点）.</param>
-        /// <param name="transactionService">事务服务.</param>
-        /// <param name="keepInside">true 保留内部直线，false 保留外部直线.</param>
-        /// <returns>裁剪结果，包含删除/拆分/保留/跳过的数量.</returns>
-        private OpResultOfCropLineResult CropAllLines(
-            IReadOnlyList<CorePoint2D> boundaryPoints,
-            ITransactionService transactionService,
-            bool keepInside)
-        {
-            try
-            {
-                if (boundaryPoints == null || boundaryPoints.Count < 3)
-                {
-                    return OpResultOfCropLineResult.Fail("裁剪边界顶点不足（至少需要3个点）");
-                }
-
-                if (transactionService == null)
-                {
-                    return OpResultOfCropLineResult.Fail("事务服务引用为空");
-                }
-
-                // 通过事务服务的查询接口获取模型空间中所有 LINE 对象
-                var allLineIds = transactionService.GetChildObjectsFromModelspace<Line>();
-
-                if (allLineIds == null || allLineIds.Count == 0)
-                {
-                    return OpResultOfCropLineResult.Fail("图纸中没有找到任何直线");
-                }
-
-                return this.CropLines(boundaryPoints, allLineIds, transactionService, keepInside);
-            }
-            catch (System.Exception ex)
-            {
-                Logger._.Error($"CropAllLines 操作失败: {ex.Message}", ex);
-                return OpResultOfCropLineResult.Fail($"自动裁剪直线失败: {ex.Message}");
-            }
-        }
+        // ──────────────────────────────────────────────────────────────
+        //  私有核心逻辑
+        // ──────────────────────────────────────────────────────────────
 
         /// <summary>
-        ///     核心直线裁剪逻辑.
+        ///     核心直线裁剪逻辑（精确边界）.
         /// </summary>
         private OpResultOfCropLineResult CropLines(
-            IReadOnlyList<CorePoint2D> boundaryPoints,
+            ICropBoundary boundary,
             List<ObjectId> lineIds,
             ITransactionService transactionService,
             bool keepInside)
         {
             try
             {
-                if (boundaryPoints == null || boundaryPoints.Count < 3)
+                if (boundary == null)
                 {
-                    return OpResultOfCropLineResult.Fail("裁剪边界顶点不足（至少需要3个点）");
+                    return OpResultOfCropLineResult.Fail("裁剪边界为空");
                 }
 
                 if (lineIds == null || lineIds.Count == 0)
@@ -201,7 +190,7 @@ namespace ServiceACAD
                             continue;
                         }
 
-                        this.ProcessLine(line, boundaryPoints, keepInside, transactionService, result);
+                        this.ProcessLine(line, boundary, keepInside, transactionService, result);
                     }
                     catch (System.Exception ex)
                     {
@@ -227,11 +216,51 @@ namespace ServiceACAD
         }
 
         /// <summary>
-        ///     处理单条直线的裁剪：判断端点位置，决定保留、删除或拆分.
+        ///     自动选择图纸中所有 LINE 对象进行裁剪（折线边界，兼容旧接口）.
+        /// </summary>
+        private OpResultOfCropLineResult CropAllLines(
+            IReadOnlyList<CorePoint2D> boundaryPoints,
+            ITransactionService transactionService,
+            bool keepInside)
+        {
+            try
+            {
+                if (boundaryPoints == null || boundaryPoints.Count < 3)
+                {
+                    return OpResultOfCropLineResult.Fail("裁剪边界顶点不足（至少需要3个点）");
+                }
+
+                if (transactionService == null)
+                {
+                    return OpResultOfCropLineResult.Fail("事务服务引用为空");
+                }
+
+                var allLineIds = transactionService.GetChildObjectsFromModelspace<Line>();
+
+                if (allLineIds == null || allLineIds.Count == 0)
+                {
+                    return OpResultOfCropLineResult.Fail("图纸中没有找到任何直线");
+                }
+
+                return this.CropLinesInside(new PolygonCropBoundary(boundaryPoints), allLineIds, transactionService);
+            }
+            catch (System.Exception ex)
+            {
+                Logger._.Error($"CropAllLines 操作失败: {ex.Message}", ex);
+                return OpResultOfCropLineResult.Fail($"自动裁剪直线失败: {ex.Message}");
+            }
+        }
+
+        // ──────────────────────────────────────────────────────────────
+        //  精确边界：ProcessLine + SplitLineAndKeep
+        // ──────────────────────────────────────────────────────────────
+
+        /// <summary>
+        ///     处理单条直线的裁剪（精确边界）：判断端点位置，决定保留、删除或拆分.
         /// </summary>
         private void ProcessLine(
             Line line,
-            IReadOnlyList<CorePoint2D> boundaryPoints,
+            ICropBoundary boundary,
             bool keepInside,
             ITransactionService transactionService,
             CropLineResult result)
@@ -239,17 +268,16 @@ namespace ServiceACAD
             var startPt = new CorePoint2D(line.StartPoint.X, line.StartPoint.Y);
             var endPt = new CorePoint2D(line.EndPoint.X, line.EndPoint.Y);
 
-            // 先求直线与边界的全部交点（已沿线排序）
-            var intersections = this._cropGeometry.FindLineSegmentIntersections(startPt, endPt, boundaryPoints);
+            // ★ 用 ICropBoundary.FindLineIntersections() 替代 CropGeometryService.FindLineSegmentIntersections()
+            var intersections = boundary.FindLineIntersections(startPt, endPt);
 
             // 无交点：整条直线在边界一侧，用中点判断保留或删除
-            // （两端点可能都在内或都在外，对凹多边形不能仅凭端点同侧就误删穿越线）
             if (intersections.Count == 0)
             {
                 var midPt = new CorePoint2D(
                     (line.StartPoint.X + line.EndPoint.X) / 2.0,
                     (line.StartPoint.Y + line.EndPoint.Y) / 2.0);
-                var midInside = this._cropGeometry.IsPointInPolygon(midPt, boundaryPoints);
+                var midInside = boundary.IsPointInside(midPt);
 
                 if ((keepInside && midInside) || (!keepInside && !midInside))
                 {
@@ -263,25 +291,17 @@ namespace ServiceACAD
                 return;
             }
 
-            // 有交点：无论端点是否同侧，都按交点拆分并逐段判断
-            this.SplitLineAndKeep(line, intersections, boundaryPoints, keepInside, transactionService, result);
+            // 有交点：按交点拆分并逐段判断
+            this.SplitLineAndKeep(line, intersections, boundary, keepInside, transactionService, result);
         }
 
-
         /// <summary>
-        ///     按交点拆分直线，保留符合条件的段，删除其余段.
-        ///     先判断所有段是否在同侧（全部保留或全部删除），避免不必要拆分.
+        ///     按交点拆分直线（精确边界），保留符合条件的段，删除其余段.
         /// </summary>
-        /// <param name="line">待拆分的直线.</param>
-        /// <param name="intersections">直线与边界的交点列表.</param>
-        /// <param name="boundaryPoints">边界多边形顶点，用于判断拆分段是否在内部.</param>
-        /// <param name="keepInside">true 保留内部段，false 保留外部段.</param>
-        /// <param name="transactionService">事务服务.</param>
-        /// <param name="result">统计结果.</param>
         private void SplitLineAndKeep(
             Line line,
             List<CorePoint2D> intersections,
-            IReadOnlyList<CorePoint2D> boundaryPoints,
+            ICropBoundary boundary,
             bool keepInside,
             ITransactionService transactionService,
             CropLineResult result)
@@ -291,16 +311,15 @@ namespace ServiceACAD
                 var start3d = line.StartPoint;
                 var end3d = line.EndPoint;
 
-                // 构造沿线节点序列：起点 + 已排序交点 + 终点，相邻节点构成一段
+                // 构造沿线节点序列：起点 + 已排序交点 + 终点
                 var nodes = new List<Point3d> { start3d };
                 foreach (var p in intersections)
                 {
                     nodes.Add(new Point3d(p.X, p.Y, InterpolateZ(start3d, end3d, p)));
                 }
-
                 nodes.Add(end3d);
 
-                // 第一步：检查所有段的中点是否在同侧，决定保留/删除/拆分
+                // 第一步：检查所有段的中点是否在同侧
                 var allInside = true;
                 var allOutside = true;
                 var segmentChecks = new bool[nodes.Count - 1];
@@ -315,20 +334,15 @@ namespace ServiceACAD
                     }
 
                     var midPt = new CorePoint2D((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0);
-                    var isInside = this._cropGeometry.IsPointInPolygon(midPt, boundaryPoints);
+                    // ★ 用 ICropBoundary.IsPointInside() 替代 CropGeometryService.IsPointInPolygon()
+                    var isInside = boundary.IsPointInside(midPt);
                     segmentChecks[i] = isInside;
 
-                    if (isInside)
-                    {
-                        allOutside = false;
-                    }
-                    else
-                    {
-                        allInside = false;
-                    }
+                    if (isInside) allOutside = false;
+                    else allInside = false;
                 }
 
-                // 所有段都在目标侧：整条直线保留，无需拆分
+                // 所有段都在目标侧：整条直线保留
                 if ((keepInside && allInside) || (!keepInside && allOutside))
                 {
                     result.KeptCount++;
@@ -348,13 +362,9 @@ namespace ServiceACAD
                 {
                     var a = nodes[i];
                     var b = nodes[i + 1];
-                    if (a.DistanceTo(b) < 1e-9)
-                    {
-                        continue;
-                    }
+                    if (a.DistanceTo(b) < 1e-9) continue;
 
-                    var isInside = segmentChecks[i];
-                    if ((keepInside && isInside) || (!keepInside && !isInside))
+                    if ((keepInside && segmentChecks[i]) || (!keepInside && !segmentChecks[i]))
                     {
                         segmentsToKeep.Add(new Line(a, b)
                         {
@@ -371,11 +381,7 @@ namespace ServiceACAD
                     return;
                 }
 
-                if (!line.IsWriteEnabled)
-                {
-                    line.UpgradeOpen();
-                }
-
+                if (!line.IsWriteEnabled) line.UpgradeOpen();
                 line.Erase();
 
                 foreach (var segment in segmentsToKeep)
@@ -392,27 +398,23 @@ namespace ServiceACAD
             }
         }
 
+        // ──────────────────────────────────────────────────────────────
+        //  辅助方法
+        // ──────────────────────────────────────────────────────────────
+
         /// <summary>
         ///     按 2D 投影参数在直线起止点之间线性插值出交点的 Z 值.
         /// </summary>
-        /// <param name="start">直线起点（含 Z）.</param>
-        /// <param name="end">直线终点（含 Z）.</param>
-        /// <param name="p">交点的 2D 坐标.</param>
-        /// <returns>插值得到的 Z 值.</returns>
         private static double InterpolateZ(Point3d start, Point3d end, CorePoint2D p)
         {
             var dx = end.X - start.X;
             var dy = end.Y - start.Y;
             var lenSq = (dx * dx) + (dy * dy);
-            if (lenSq < 1e-12)
-            {
-                return start.Z;
-            }
+            if (lenSq < 1e-12) return start.Z;
 
             var t = (((p.X - start.X) * dx) + ((p.Y - start.Y) * dy)) / lenSq;
             return start.Z + (t * (end.Z - start.Z));
         }
-
 
         /// <summary>
         ///     删除直线并更新统计.
@@ -421,11 +423,7 @@ namespace ServiceACAD
         {
             try
             {
-                if (!line.IsWriteEnabled)
-                {
-                    line.UpgradeOpen();
-                }
-
+                if (!line.IsWriteEnabled) line.UpgradeOpen();
                 line.Erase();
                 result.DeletedCount++;
             }

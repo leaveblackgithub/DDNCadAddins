@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using DDNCadAddins.Core.Interfaces;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 using OpResult = ServiceACAD.OpResult;
@@ -19,7 +20,8 @@ namespace ServiceACAD
     }
 
     /// <summary>
-    ///     圆裁剪服务 — 求圆与边界多边形的精确交点，按交点拆分为 Arc，逐弧段中点判断保留/删除.
+    ///     圆裁剪服务 — 求圆与边界的精确交点，按交点拆分为 Arc，逐弧段中点判断保留/删除.
+    ///     <para>支持精确边界（ICropBoundary）和折线边界（IReadOnlyList<CorePoint2D>）两种模式.</para>
     /// </summary>
     public class CropCircleService
     {
@@ -30,37 +32,57 @@ namespace ServiceACAD
             this._cropGeometry = cropGeometry ?? new CropGeometryService();
         }
 
+        // ──────────────────────────────────────────────────────────────
+        //  新签名：精确边界（ICropBoundary）— 主方法
+        // ──────────────────────────────────────────────────────────────
+
         public OpResultOfCropCircleResult CropCirclesInside(
-            IReadOnlyList<CorePoint2D> boundaryPoints, List<ObjectId> circleIds, ITransactionService transactionService)
-            => this.CropCircles(boundaryPoints, circleIds, transactionService, keepInside: true);
+            ICropBoundary boundary, List<ObjectId> circleIds, ITransactionService ts)
+            => this.CropCircles(boundary, circleIds, ts, keepInside: true);
 
         public OpResultOfCropCircleResult CropCirclesOutside(
-            IReadOnlyList<CorePoint2D> boundaryPoints, List<ObjectId> circleIds, ITransactionService transactionService)
-            => this.CropCircles(boundaryPoints, circleIds, transactionService, keepInside: false);
+            ICropBoundary boundary, List<ObjectId> circleIds, ITransactionService ts)
+            => this.CropCircles(boundary, circleIds, ts, keepInside: false);
+
+        // ──────────────────────────────────────────────────────────────
+        //  旧签名：折线边界（IReadOnlyList<CorePoint2D>）— 兼容包装
+        // ──────────────────────────────────────────────────────────────
+
+        public OpResultOfCropCircleResult CropCirclesInside(
+            IReadOnlyList<CorePoint2D> boundaryPoints, List<ObjectId> circleIds, ITransactionService ts)
+            => this.CropCirclesInside(new PolygonCropBoundary(boundaryPoints), circleIds, ts);
+
+        public OpResultOfCropCircleResult CropCirclesOutside(
+            IReadOnlyList<CorePoint2D> boundaryPoints, List<ObjectId> circleIds, ITransactionService ts)
+            => this.CropCirclesOutside(new PolygonCropBoundary(boundaryPoints), circleIds, ts);
 
         public OpResultOfCropCircleResult CropAllCirclesInside(
-            IReadOnlyList<CorePoint2D> boundaryPoints, ITransactionService transactionService)
-            => this.CropAllCircles(boundaryPoints, transactionService, keepInside: true);
+            IReadOnlyList<CorePoint2D> boundaryPoints, ITransactionService ts)
+            => this.CropAllCircles(boundaryPoints, ts, keepInside: true);
 
         public OpResultOfCropCircleResult CropAllCirclesOutside(
-            IReadOnlyList<CorePoint2D> boundaryPoints, ITransactionService transactionService)
-            => this.CropAllCircles(boundaryPoints, transactionService, keepInside: false);
+            IReadOnlyList<CorePoint2D> boundaryPoints, ITransactionService ts)
+            => this.CropAllCircles(boundaryPoints, ts, keepInside: false);
+
+        // ──────────────────────────────────────────────────────────────
+        //  私有核心逻辑
+        // ──────────────────────────────────────────────────────────────
 
         private OpResultOfCropCircleResult CropAllCircles(
-            IReadOnlyList<CorePoint2D> boundaryPoints, ITransactionService transactionService, bool keepInside)
+            IReadOnlyList<CorePoint2D> boundaryPoints, ITransactionService ts, bool keepInside)
         {
             try
             {
                 if (boundaryPoints == null || boundaryPoints.Count < 3)
                     return OpResultOfCropCircleResult.Fail("裁剪边界顶点不足");
-                if (transactionService == null)
+                if (ts == null)
                     return OpResultOfCropCircleResult.Fail("事务服务引用为空");
 
-                var allIds = transactionService.GetChildObjectsFromModelspace<Circle>();
+                var allIds = ts.GetChildObjectsFromModelspace<Circle>();
                 if (allIds == null || allIds.Count == 0)
                     return OpResultOfCropCircleResult.Fail("图纸中没有找到任何圆");
 
-                return this.CropCircles(boundaryPoints, allIds, transactionService, keepInside);
+                return this.CropCirclesInside(new PolygonCropBoundary(boundaryPoints), allIds, ts);
             }
             catch (System.Exception ex)
             {
@@ -70,15 +92,15 @@ namespace ServiceACAD
         }
 
         private OpResultOfCropCircleResult CropCircles(
-            IReadOnlyList<CorePoint2D> boundaryPoints, List<ObjectId> circleIds, ITransactionService transactionService, bool keepInside)
+            ICropBoundary boundary, List<ObjectId> circleIds, ITransactionService ts, bool keepInside)
         {
             try
             {
-                if (boundaryPoints == null || boundaryPoints.Count < 3)
-                    return OpResultOfCropCircleResult.Fail("裁剪边界顶点不足");
+                if (boundary == null)
+                    return OpResultOfCropCircleResult.Fail("裁剪边界为空");
                 if (circleIds == null || circleIds.Count == 0)
                     return OpResultOfCropCircleResult.Fail("待裁剪的圆列表为空");
-                if (transactionService == null)
+                if (ts == null)
                     return OpResultOfCropCircleResult.Fail("事务服务引用为空");
 
                 var result = new CropCircleResult();
@@ -87,10 +109,10 @@ namespace ServiceACAD
                     try
                     {
                         if (!circleId.IsValid || circleId.IsErased) { result.SkippedCount++; continue; }
-                        var entity = transactionService.GetObject<Entity>(circleId);
+                        var entity = ts.GetObject<Entity>(circleId);
                         if (entity == null || entity.IsErased) { result.SkippedCount++; continue; }
                         if (!(entity is Circle circle)) { result.SkippedCount++; continue; }
-                        this.ProcessCircle(circle, boundaryPoints, keepInside, transactionService, result);
+                        this.ProcessCircle(circle, boundary, keepInside, ts, result);
                     }
                     catch (System.Exception ex)
                     {
@@ -116,33 +138,34 @@ namespace ServiceACAD
         }
 
         private void ProcessCircle(
-            Circle circle, IReadOnlyList<CorePoint2D> boundaryPoints, bool keepInside,
-            ITransactionService transactionService, CropCircleResult result)
+            Circle circle, ICropBoundary boundary, bool keepInside,
+            ITransactionService ts, CropCircleResult result)
         {
             var extents = circle.GeometricExtents;
             if (extents.MinPoint.DistanceTo(extents.MaxPoint) < 1e-9) return;
 
+            // ★ 用 ICropBoundary.ClassifyBoundingBox() 替代 CropGeometryService.ClassifyBoundingBox()
             var minPt = new CorePoint2D(extents.MinPoint.X, extents.MinPoint.Y);
             var maxPt = new CorePoint2D(extents.MaxPoint.X, extents.MaxPoint.Y);
-            var containment = this._cropGeometry.ClassifyBoundingBox(minPt, maxPt, boundaryPoints);
+            var containment = boundary.ClassifyBoundingBox(minPt, maxPt);
 
             bool shouldDelete = keepInside
-                ? containment == DDNCadAddins.Core.Models.ContainmentResult.Outside
-                : (containment == DDNCadAddins.Core.Models.ContainmentResult.Inside ||
-                   containment == DDNCadAddins.Core.Models.ContainmentResult.OnBoundary);
+                ? containment == ContainmentResult.Outside
+                : (containment == ContainmentResult.Inside || containment == ContainmentResult.OnBoundary);
 
             if (shouldDelete) { this.DeleteCircle(circle, result); return; }
-            if (containment != DDNCadAddins.Core.Models.ContainmentResult.Intersects) { result.KeptCount++; return; }
+            if (containment != ContainmentResult.Intersects) { result.KeptCount++; return; }
 
-            this.SplitCircleAndKeep(circle, boundaryPoints, keepInside, transactionService, result);
+            this.SplitCircleAndKeep(circle, boundary, keepInside, ts, result);
         }
 
         /// <summary>
-        ///     圆与边界多边形各边求精确交点，交点转角度排序，逐弧段中点判断保留/删除.
+        ///     圆与边界求精确交点 — 弧段采样为弦段序列，对每条弦调用 boundary.FindLineIntersections().
+        ///     当边界为 Circle/Ellipse 时使用解析解.
         /// </summary>
         private void SplitCircleAndKeep(
-            Circle circle, IReadOnlyList<CorePoint2D> boundaryPoints, bool keepInside,
-            ITransactionService transactionService, CropCircleResult result)
+            Circle circle, ICropBoundary boundary, bool keepInside,
+            ITransactionService ts, CropCircleResult result)
         {
             try
             {
@@ -151,22 +174,21 @@ namespace ServiceACAD
                 var radius = circle.Radius;
                 var normal = circle.Normal;
 
-                // 1. 求圆与多边形各边的精确交点
+                // ★ 圆采样为弦段序列，对每条弦调用 boundary.FindLineIntersections()
+                const int circleSamples = 64;
                 var allIx = new List<CorePoint2D>();
-                for (int i = 0, j = boundaryPoints.Count - 1; i < boundaryPoints.Count; j = i++)
+                for (int i = 0; i < circleSamples; i++)
                 {
-                    var p1 = boundaryPoints[j];
-                    var p2 = boundaryPoints[i];
-                    var segInters = this.LineCircleIntersection(
-                        p1.X, p1.Y, p2.X, p2.Y, centerX, centerY, radius);
-                    foreach (var pt in segInters)
-                    {
-                        if (this.PointOnSegment(pt, p1, p2))
-                            allIx.Add(pt);
-                    }
+                    double a1 = 2.0 * Math.PI * i / circleSamples;
+                    double a2 = 2.0 * Math.PI * (i + 1) / circleSamples;
+                    var p1 = new CorePoint2D(centerX + radius * Math.Cos(a1), centerY + radius * Math.Sin(a1));
+                    var p2 = new CorePoint2D(centerX + radius * Math.Cos(a2), centerY + radius * Math.Sin(a2));
+
+                    var intersections = boundary.FindLineIntersections(p1, p2);
+                    allIx.AddRange(intersections);
                 }
 
-                // 2. 脱重（距离 < 1e-6 的点合并为一个）
+                // 脱重（距离 < 1e-6 的点合并为一个）
                 var deduped = new List<CorePoint2D>();
                 foreach (var pt in allIx)
                 {
@@ -180,7 +202,7 @@ namespace ServiceACAD
                     if (!isDup) deduped.Add(pt);
                 }
 
-                // 3. 交点转为角度 [0, 2π)
+                // 交点转为角度 [0, 2π)
                 var intersectionAngles = new List<double>();
                 foreach (var pt in deduped)
                 {
@@ -188,16 +210,14 @@ namespace ServiceACAD
                     if (angle < 0) angle += 2.0 * Math.PI;
                     intersectionAngles.Add(angle);
                 }
-
-                // 4. 排序交点角度
                 intersectionAngles.Sort();
 
-                // 5. 构造节点序列: 0 → 交点 → 2π
+                // 构造节点序列: 0 → 交点 → 2π
                 var angleNodes = new List<double> { 0.0 };
                 angleNodes.AddRange(intersectionAngles);
                 angleNodes.Add(2.0 * Math.PI);
 
-                // 6. 逐弧段中点判断保留/删除
+                // 逐弧段中点判断保留/删除
                 var arcsToKeep = new List<Tuple<double, double>>();
                 for (var i = 0; i < angleNodes.Count - 1; i++)
                 {
@@ -208,19 +228,16 @@ namespace ServiceACAD
                     var midAngle = (a + b) / 2.0;
                     var midX = centerX + radius * Math.Cos(midAngle);
                     var midY = centerY + radius * Math.Sin(midAngle);
-                    var inside = this._cropGeometry.IsPointInPolygon(new CorePoint2D(midX, midY), boundaryPoints);
+                    // ★ 用 ICropBoundary.IsPointInside() 替代 CropGeometryService.IsPointInPolygon()
+                    var inside = boundary.IsPointInside(new CorePoint2D(midX, midY));
 
                     if ((keepInside && inside) || (!keepInside && !inside))
                         arcsToKeep.Add(Tuple.Create(a, b));
                 }
 
-                // 7. 无保留弧段则删除
                 if (arcsToKeep.Count == 0) { this.DeleteCircle(circle, result); return; }
-
-                // 无交点且全部保留 → 保留原圆
                 if (intersectionAngles.Count == 0 && arcsToKeep.Count == 1) { result.KeptCount++; return; }
 
-                // 8. 删除原圆，创建保留的 Arc
                 if (!circle.IsWriteEnabled) circle.UpgradeOpen();
                 circle.Erase();
 
@@ -228,7 +245,6 @@ namespace ServiceACAD
                 {
                     var startA = seg.Item1;
                     var endA = seg.Item2;
-                    // 避免 0 长度弧段
                     if (Math.Abs(endA - startA) < 1e-9) continue;
 
                     var newArc = new Arc(circle.Center, normal, radius, startA, endA);
@@ -236,7 +252,7 @@ namespace ServiceACAD
                     newArc.Color = circle.Color;
                     newArc.Linetype = circle.Linetype;
                     newArc.LineWeight = circle.LineWeight;
-                    transactionService.AppendEntityToCurrentSpace(newArc);
+                    ts.AppendEntityToCurrentSpace(newArc);
                 }
 
                 result.SplitCount++;
@@ -247,55 +263,6 @@ namespace ServiceACAD
                 Logger._.Warn($"拆分圆失败 (ID={circle.ObjectId}): {ex.Message}");
                 this.DeleteCircle(circle, result);
             }
-        }
-
-        // ── 辅助: 圆与直线的交点 ──
-
-        /// <summary>
-        ///     计算圆 (cx, cy, r) 与线段两端所在直线的交点（不检查线段范围）.
-        /// </summary>
-        private List<CorePoint2D> LineCircleIntersection(
-            double x1, double y1, double x2, double y2,
-            double cx, double cy, double r)
-        {
-            var result = new List<CorePoint2D>();
-            var dx = x2 - x1;
-            var dy = y2 - y1;
-            var fx = x1 - cx;
-            var fy = y1 - cy;
-
-            var a = dx * dx + dy * dy;
-            var b = 2.0 * (dx * fx + dy * fy);
-            var c = fx * fx + fy * fy - r * r;
-
-            if (Math.Abs(a) < 1e-12) return result; // 退化线段
-
-            var discriminant = b * b - 4.0 * a * c;
-            if (discriminant < 0) return result;
-
-            var sqrtD = Math.Sqrt(discriminant);
-            var t1 = (-b - sqrtD) / (2.0 * a);
-            var t2 = (-b + sqrtD) / (2.0 * a);
-
-            result.Add(new CorePoint2D(x1 + t1 * dx, y1 + t1 * dy));
-            if (Math.Abs(discriminant) > 1e-12)
-                result.Add(new CorePoint2D(x1 + t2 * dx, y1 + t2 * dy));
-
-            return result;
-        }
-
-        /// <summary>
-        ///     判断点是否在线段上（含端点）.
-        /// </summary>
-        private bool PointOnSegment(CorePoint2D pt, CorePoint2D a, CorePoint2D b)
-        {
-            var dx = b.X - a.X;
-            var dy = b.Y - a.Y;
-            var lenSq = dx * dx + dy * dy;
-            if (lenSq < 1e-12) return false;
-
-            var t = ((pt.X - a.X) * dx + (pt.Y - a.Y) * dy) / lenSq;
-            return t >= -1e-10 && t <= 1.0 + 1e-10;
         }
 
         private void DeleteCircle(Circle circle, CropCircleResult result)

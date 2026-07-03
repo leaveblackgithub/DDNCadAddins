@@ -232,8 +232,8 @@ namespace ServiceACAD
         {
             var ids = new List<ObjectId> { pline.ObjectId };
             var result = ki
-                ? this._polylineService.CropPolylinesInside(bp.GetApproximatePolygon(), ids, ts)
-                : this._polylineService.CropPolylinesOutside(bp.GetApproximatePolygon(), ids, ts);
+                ? this._polylineService.CropPolylinesInside(bp, ids, ts)
+                : this._polylineService.CropPolylinesOutside(bp, ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(pline, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
@@ -247,8 +247,8 @@ namespace ServiceACAD
         {
             var ids = new List<ObjectId> { circle.ObjectId };
             var result = ki
-                ? this._circleService.CropCirclesInside(bp.GetApproximatePolygon(), ids, ts)
-                : this._circleService.CropCirclesOutside(bp.GetApproximatePolygon(), ids, ts);
+                ? this._circleService.CropCirclesInside(bp, ids, ts)
+                : this._circleService.CropCirclesOutside(bp, ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(circle, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
@@ -262,8 +262,8 @@ namespace ServiceACAD
         {
             var ids = new List<ObjectId> { arc.ObjectId };
             var result = ki
-                ? this._arcService.CropArcsInside(bp.GetApproximatePolygon(), ids, ts)
-                : this._arcService.CropArcsOutside(bp.GetApproximatePolygon(), ids, ts);
+                ? this._arcService.CropArcsInside(bp, ids, ts)
+                : this._arcService.CropArcsOutside(bp, ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(arc, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;
@@ -277,8 +277,8 @@ namespace ServiceACAD
         {
             var ids = new List<ObjectId> { line.ObjectId };
             var result = ki
-                ? this._lineService.CropLinesInside(bp.GetApproximatePolygon(), ids, ts)
-                : this._lineService.CropLinesOutside(bp.GetApproximatePolygon(), ids, ts);
+                ? this._lineService.CropLinesInside(bp, ids, ts)
+                : this._lineService.CropLinesOutside(bp, ids, ts);
             if (!result.IsSuccess) return this.TryDeleteEntity(line, r);
             r.DeletedCount += result.Data.DeletedCount;
             r.SplitCount += result.Data.SplitCount;

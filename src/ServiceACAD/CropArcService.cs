@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using DDNCadAddins.Core.Interfaces;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 using OpResult = ServiceACAD.OpResult;
@@ -19,7 +20,8 @@ namespace ServiceACAD
     }
 
     /// <summary>
-    ///     圆弧裁剪服务 — 精确交点拆分（几何法，无采样）.
+    ///     圆弧裁剪服务 — 精确交点拆分.
+    ///     <para>支持精确边界（ICropBoundary）和折线边界（IReadOnlyList<CorePoint2D>）两种模式.</para>
     /// </summary>
     public class CropArcService
     {
@@ -30,13 +32,29 @@ namespace ServiceACAD
             this._cropGeometry = cropGeometry ?? new CropGeometryService();
         }
 
+        // ──────────────────────────────────────────────────────────────
+        //  新签名：精确边界（ICropBoundary）— 主方法
+        // ──────────────────────────────────────────────────────────────
+
+        public OpResultOfCropArcResult CropArcsInside(
+            ICropBoundary boundary, List<ObjectId> arcIds, ITransactionService ts)
+            => this.CropArcs(boundary, arcIds, ts, keepInside: true);
+
+        public OpResultOfCropArcResult CropArcsOutside(
+            ICropBoundary boundary, List<ObjectId> arcIds, ITransactionService ts)
+            => this.CropArcs(boundary, arcIds, ts, keepInside: false);
+
+        // ──────────────────────────────────────────────────────────────
+        //  旧签名：折线边界（IReadOnlyList<CorePoint2D>）— 兼容包装
+        // ──────────────────────────────────────────────────────────────
+
         public OpResultOfCropArcResult CropArcsInside(
             IReadOnlyList<CorePoint2D> bpts, List<ObjectId> arcIds, ITransactionService ts)
-            => this.CropArcs(bpts, arcIds, ts, keepInside: true);
+            => this.CropArcsInside(new PolygonCropBoundary(bpts), arcIds, ts);
 
         public OpResultOfCropArcResult CropArcsOutside(
             IReadOnlyList<CorePoint2D> bpts, List<ObjectId> arcIds, ITransactionService ts)
-            => this.CropArcs(bpts, arcIds, ts, keepInside: false);
+            => this.CropArcsOutside(new PolygonCropBoundary(bpts), arcIds, ts);
 
         public OpResultOfCropArcResult CropAllArcsInside(
             IReadOnlyList<CorePoint2D> bpts, ITransactionService ts)
@@ -45,6 +63,10 @@ namespace ServiceACAD
         public OpResultOfCropArcResult CropAllArcsOutside(
             IReadOnlyList<CorePoint2D> bpts, ITransactionService ts)
             => this.CropAllArcs(bpts, ts, keepInside: false);
+
+        // ──────────────────────────────────────────────────────────────
+        //  私有核心逻辑
+        // ──────────────────────────────────────────────────────────────
 
         private OpResultOfCropArcResult CropAllArcs(
             IReadOnlyList<CorePoint2D> bpts, ITransactionService ts, bool keepInside)
@@ -55,7 +77,7 @@ namespace ServiceACAD
                 if (ts == null) return OpResultOfCropArcResult.Fail("事务服务引用为空");
                 var all = ts.GetChildObjectsFromModelspace<Arc>();
                 if (all == null || all.Count == 0) return OpResultOfCropArcResult.Fail("没有圆弧");
-                return this.CropArcs(bpts, all, ts, keepInside);
+                return this.CropArcsInside(new PolygonCropBoundary(bpts), all, ts);
             }
             catch (System.Exception ex)
             {
@@ -65,11 +87,11 @@ namespace ServiceACAD
         }
 
         private OpResultOfCropArcResult CropArcs(
-            IReadOnlyList<CorePoint2D> bpts, List<ObjectId> arcIds, ITransactionService ts, bool keepInside)
+            ICropBoundary boundary, List<ObjectId> arcIds, ITransactionService ts, bool keepInside)
         {
             try
             {
-                if (bpts == null || bpts.Count < 3) return OpResultOfCropArcResult.Fail("裁剪边界顶点不足");
+                if (boundary == null) return OpResultOfCropArcResult.Fail("裁剪边界为空");
                 if (arcIds == null || arcIds.Count == 0) return OpResultOfCropArcResult.Fail("待裁剪圆弧列表为空");
                 if (ts == null) return OpResultOfCropArcResult.Fail("事务服务引用为空");
 
@@ -82,7 +104,7 @@ namespace ServiceACAD
                         var ent = ts.GetObject<Entity>(id);
                         if (ent == null || ent.IsErased) { result.SkippedCount++; continue; }
                         if (!(ent is Arc arc)) { result.SkippedCount++; continue; }
-                        this.ProcessArc(arc, bpts, keepInside, ts, result);
+                        this.ProcessArc(arc, boundary, keepInside, ts, result);
                     }
                     catch (System.Exception ex)
                     {
@@ -101,12 +123,13 @@ namespace ServiceACAD
             }
         }
 
-        private void ProcessArc(Arc arc, IReadOnlyList<CorePoint2D> bpts, bool keepInside, ITransactionService ts, CropArcResult result)
+        private void ProcessArc(Arc arc, ICropBoundary boundary, bool keepInside, ITransactionService ts, CropArcResult result)
         {
             var ext = arc.GeometricExtents;
             if (ext.MinPoint.DistanceTo(ext.MaxPoint) < 1e-9) { result.SkippedCount++; return; }
-            var containment = this._cropGeometry.ClassifyBoundingBox(
-                new CorePoint2D(ext.MinPoint.X, ext.MinPoint.Y), new CorePoint2D(ext.MaxPoint.X, ext.MaxPoint.Y), bpts);
+            // ★ 用 ICropBoundary.ClassifyBoundingBox() 替代 CropGeometryService.ClassifyBoundingBox()
+            var containment = boundary.ClassifyBoundingBox(
+                new CorePoint2D(ext.MinPoint.X, ext.MinPoint.Y), new CorePoint2D(ext.MaxPoint.X, ext.MaxPoint.Y));
 
             bool del = keepInside
                 ? containment == DDNCadAddins.Core.Models.ContainmentResult.Outside
@@ -114,10 +137,14 @@ namespace ServiceACAD
                    containment == DDNCadAddins.Core.Models.ContainmentResult.OnBoundary);
             if (del) { DeleteArc(arc, result); return; }
             if (containment != DDNCadAddins.Core.Models.ContainmentResult.Intersects) { result.KeptCount++; return; }
-            SplitArcAndKeep(arc, bpts, keepInside, ts, result);
+            SplitArcAndKeep(arc, boundary, keepInside, ts, result);
         }
 
-        private void SplitArcAndKeep(Arc arc, IReadOnlyList<CorePoint2D> bpts, bool keepInside, ITransactionService ts, CropArcResult result)
+        /// <summary>
+        ///     圆弧拆分 — 弧段采样为弦段序列，对每条弦调用 boundary.FindLineIntersections().
+        ///     当边界为 Circle/Ellipse 时使用解析解，精度远高于折线化边界.
+        /// </summary>
+        private void SplitArcAndKeep(Arc arc, ICropBoundary boundary, bool keepInside, ITransactionService ts, CropArcResult result)
         {
             try
             {
@@ -127,14 +154,21 @@ namespace ServiceACAD
                 var sa = arc.StartAngle;
                 var ea = arc.EndAngle;
 
-                // 精确求圆与多边形各边的交点，过滤在弧段范围内的
+                // ★ 弧段采样为弦段序列，对每条弦调用 boundary.FindLineIntersections()
+                const int arcSamples = 64;
                 var angles = new List<double>();
-                for (int i = 0, j = bpts.Count - 1; i < bpts.Count; j = i++)
+                for (int i = 0; i < arcSamples; i++)
                 {
-                    var segIx = GeometryHelper.LineCircleIntersection(bpts[j].X, bpts[j].Y, bpts[i].X, bpts[i].Y, cx, cy, r);
-                    foreach (var pt in segIx)
+                    double t1 = (double)i / arcSamples;
+                    double t2 = (double)(i + 1) / arcSamples;
+                    double a1 = sa + (ea - sa) * t1;
+                    double a2 = sa + (ea - sa) * t2;
+                    var p1 = new CorePoint2D(cx + r * Math.Cos(a1), cy + r * Math.Sin(a1));
+                    var p2 = new CorePoint2D(cx + r * Math.Cos(a2), cy + r * Math.Sin(a2));
+
+                    var intersections = boundary.FindLineIntersections(p1, p2);
+                    foreach (var pt in intersections)
                     {
-                        if (!GeometryHelper.PointOnSegment(pt, bpts[j], bpts[i])) continue;
                         var ang = Math.Atan2(pt.Y - cy, pt.X - cx);
                         if (GeometryHelper.AngleInRange(ang, sa, ea))
                             angles.Add(GeometryHelper.NormalizeAngle(ang, sa, ea));
@@ -157,7 +191,8 @@ namespace ServiceACAD
                     var midAng = (a + b) / 2.0;
                     var midX = cx + r * Math.Cos(midAng);
                     var midY = cy + r * Math.Sin(midAng);
-                    var inside = this._cropGeometry.IsPointInPolygon(new CorePoint2D(midX, midY), bpts);
+                    // ★ 用 ICropBoundary.IsPointInside() 替代 CropGeometryService.IsPointInPolygon()
+                    var inside = boundary.IsPointInside(new CorePoint2D(midX, midY));
                     if ((keepInside && inside) || (!keepInside && !inside))
                         kept.Add(Tuple.Create(a, b));
                 }

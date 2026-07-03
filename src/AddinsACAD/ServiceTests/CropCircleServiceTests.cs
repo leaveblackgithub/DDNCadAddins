@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
+using DDNCadAddins.Core.Interfaces;
 using NUnit.Framework;
 using ServiceACAD;
 
@@ -65,7 +66,7 @@ namespace AddinsACAD.ServiceTests
         // 3. 边界/异常 (3)
         protected override void NullBoundary_Fail() => SideDb(tr =>
         {
-            var op = new CropCircleService().CropCirclesInside(null, new List<ObjectId>(), tr);
+            var op = new CropCircleService().CropCirclesInside((ICropBoundary)null, new List<ObjectId>(), tr);
             Assert.IsFalse(op.IsSuccess);
         });
         protected override void EmptyList_Fail() => SideDb(tr =>

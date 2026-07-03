@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using DDNCadAddins.Core.Interfaces;
+using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
 using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 using OpResult = ServiceACAD.OpResult;
@@ -19,7 +20,8 @@ namespace ServiceACAD
     }
 
     /// <summary>
-    ///     多段线裁剪服务 — 直线段用精确线段交点，弧线段用精确圆-线段交点.
+    ///     多段线裁剪服务 — 直线段和弧段精确交点拆分.
+    ///     <para>支持精确边界（ICropBoundary）和折线边界（IReadOnlyList<CorePoint2D>）两种模式.</para>
     /// </summary>
     public struct PolySegment
     {
@@ -39,13 +41,29 @@ namespace ServiceACAD
             this._cropGeometry = cropGeometry ?? new CropGeometryService();
         }
 
+        // ──────────────────────────────────────────────────────────────
+        //  新签名：精确边界（ICropBoundary）— 主方法
+        // ──────────────────────────────────────────────────────────────
+
+        public OpResultOfCropPolylineResult CropPolylinesInside(
+            ICropBoundary boundary, List<ObjectId> ids, ITransactionService ts)
+            => this.CropPolylines(boundary, ids, ts, keepInside: true);
+
+        public OpResultOfCropPolylineResult CropPolylinesOutside(
+            ICropBoundary boundary, List<ObjectId> ids, ITransactionService ts)
+            => this.CropPolylines(boundary, ids, ts, keepInside: false);
+
+        // ──────────────────────────────────────────────────────────────
+        //  旧签名：折线边界（IReadOnlyList<CorePoint2D>）— 兼容包装
+        // ──────────────────────────────────────────────────────────────
+
         public OpResultOfCropPolylineResult CropPolylinesInside(
             IReadOnlyList<CorePoint2D> bpts, List<ObjectId> ids, ITransactionService ts)
-            => this.CropPolylines(bpts, ids, ts, keepInside: true);
+            => this.CropPolylinesInside(new PolygonCropBoundary(bpts), ids, ts);
 
         public OpResultOfCropPolylineResult CropPolylinesOutside(
             IReadOnlyList<CorePoint2D> bpts, List<ObjectId> ids, ITransactionService ts)
-            => this.CropPolylines(bpts, ids, ts, keepInside: false);
+            => this.CropPolylinesOutside(new PolygonCropBoundary(bpts), ids, ts);
 
         public OpResultOfCropPolylineResult CropAllPolylinesInside(
             IReadOnlyList<CorePoint2D> bpts, ITransactionService ts)
@@ -54,6 +72,10 @@ namespace ServiceACAD
         public OpResultOfCropPolylineResult CropAllPolylinesOutside(
             IReadOnlyList<CorePoint2D> bpts, ITransactionService ts)
             => this.CropAllPolylines(bpts, ts, keepInside: false);
+
+        // ──────────────────────────────────────────────────────────────
+        //  私有核心逻辑
+        // ──────────────────────────────────────────────────────────────
 
         private OpResultOfCropPolylineResult CropAllPolylines(
             IReadOnlyList<CorePoint2D> bpts, ITransactionService ts, bool keepInside)
@@ -64,7 +86,7 @@ namespace ServiceACAD
                 if (ts == null) return OpResultOfCropPolylineResult.Fail("事务服务引用为空");
                 var all = ts.GetChildObjectsFromModelspace<Polyline>();
                 if (all == null || all.Count == 0) return OpResultOfCropPolylineResult.Fail("没有多段线");
-                return this.CropPolylines(bpts, all, ts, keepInside);
+                return this.CropPolylinesInside(new PolygonCropBoundary(bpts), all, ts);
             }
             catch (System.Exception ex)
             {
@@ -74,11 +96,11 @@ namespace ServiceACAD
         }
 
         private OpResultOfCropPolylineResult CropPolylines(
-            IReadOnlyList<CorePoint2D> bpts, List<ObjectId> ids, ITransactionService ts, bool keepInside)
+            ICropBoundary boundary, List<ObjectId> ids, ITransactionService ts, bool keepInside)
         {
             try
             {
-                if (bpts == null || bpts.Count < 3) return OpResultOfCropPolylineResult.Fail("裁剪边界顶点不足");
+                if (boundary == null) return OpResultOfCropPolylineResult.Fail("裁剪边界为空");
                 if (ids == null || ids.Count == 0) return OpResultOfCropPolylineResult.Fail("待裁剪多段线列表为空");
                 if (ts == null) return OpResultOfCropPolylineResult.Fail("事务服务引用为空");
 
@@ -91,7 +113,7 @@ namespace ServiceACAD
                         var ent = ts.GetObject<Entity>(id);
                         if (ent == null || ent.IsErased) { result.SkippedCount++; continue; }
                         if (!(ent is Polyline poly)) { result.SkippedCount++; continue; }
-                        this.ProcessPolyline(poly, bpts, keepInside, ts, result);
+                        this.ProcessPolyline(poly, boundary, keepInside, ts, result);
                     }
                     catch (System.Exception ex)
                     {
@@ -111,36 +133,35 @@ namespace ServiceACAD
         }
 
         private void ProcessPolyline(
-            Polyline poly, IReadOnlyList<CorePoint2D> bpts, bool keepInside, ITransactionService ts, CropPolylineResult result)
+            Polyline poly, ICropBoundary boundary, bool keepInside, ITransactionService ts, CropPolylineResult result)
         {
             if (!poly.Closed)
             {
-                ProcessOpenPolyline(poly, bpts, keepInside, ts, result);
+                ProcessOpenPolyline(poly, boundary, keepInside, ts, result);
                 return;
             }
 
             var ext = poly.GeometricExtents;
-            var containment = this._cropGeometry.ClassifyBoundingBox(
-                new CorePoint2D(ext.MinPoint.X, ext.MinPoint.Y), new CorePoint2D(ext.MaxPoint.X, ext.MaxPoint.Y), bpts);
+            // ★ 用 ICropBoundary.ClassifyBoundingBox() 替代 CropGeometryService.ClassifyBoundingBox()
+            var containment = boundary.ClassifyBoundingBox(
+                new CorePoint2D(ext.MinPoint.X, ext.MinPoint.Y), new CorePoint2D(ext.MaxPoint.X, ext.MaxPoint.Y));
 
             bool del = keepInside
-                ? containment == DDNCadAddins.Core.Models.ContainmentResult.Outside
-                : (containment == DDNCadAddins.Core.Models.ContainmentResult.Inside ||
-                   containment == DDNCadAddins.Core.Models.ContainmentResult.OnBoundary);
+                ? containment == ContainmentResult.Outside
+                : (containment == ContainmentResult.Inside || containment == ContainmentResult.OnBoundary);
             if (del) { DeletePoly(poly, result); return; }
-            if (containment != DDNCadAddins.Core.Models.ContainmentResult.Intersects) { result.KeptCount++; return; }
-            ProcessOpenPolyline(poly, bpts, keepInside, ts, result);
+            if (containment != ContainmentResult.Intersects) { result.KeptCount++; return; }
+            ProcessOpenPolyline(poly, boundary, keepInside, ts, result);
         }
 
         private void ProcessOpenPolyline(
-            Polyline poly, IReadOnlyList<CorePoint2D> bpts, bool keepInside, ITransactionService ts, CropPolylineResult result)
+            Polyline poly, ICropBoundary boundary, bool keepInside, ITransactionService ts, CropPolylineResult result)
         {
             try
             {
                 var n = poly.NumberOfVertices;
                 if (n < 2) { DeletePoly(poly, result); return; }
 
-                // 拆每条线段（含弧段）为原子子段，标记保留/丢弃
                 var keptSubs = new List<PolySegment>();
                 var totalSegCount = poly.Closed ? n : n - 1;
 
@@ -152,20 +173,20 @@ namespace ServiceACAD
                         var ls = poly.GetLineSegment2dAt(i);
                         var startP = new CorePoint2D(ls.StartPoint.X, ls.StartPoint.Y);
                         var endP = new CorePoint2D(ls.EndPoint.X, ls.EndPoint.Y);
-                        var ix = this._cropGeometry.FindLineSegmentIntersections(startP, endP, bpts);
-                        CollectKeptSubSegments(startP, endP, 0.0, ix, keepInside, bpts, keptSubs, -1);
+                        // ★ 用 ICropBoundary.FindLineIntersections() 替代 CropGeometryService.FindLineSegmentIntersections()
+                        var ix = boundary.FindLineIntersections(startP, endP);
+                        CollectKeptSubSegments(startP, endP, 0.0, ix, keepInside, boundary, keptSubs, -1);
                     }
                     else if (segType == SegmentType.Arc)
                     {
                         var arcSeg = poly.GetArcSegment2dAt(i);
                         var bulge = poly.GetBulgeAt(i);
-                        ProcessArcSegmentExact(arcSeg, bulge, keepInside, bpts, keptSubs);
+                        ProcessArcSegmentExact(arcSeg, bulge, keepInside, boundary, keptSubs);
                     }
                 }
 
                 if (keptSubs.Count == 0) { DeletePoly(poly, result); return; }
 
-                // 合并相邻子段为链
                 var chains = ChainSubSegments(keptSubs);
 
                 if (!poly.IsWriteEnabled) poly.UpgradeOpen();
@@ -184,7 +205,6 @@ namespace ServiceACAD
                     for (var j = 0; j < chain.Count; j++)
                     {
                         var vIdx = j + 1;
-                        // 如果是链的最后一段且原来闭合的段被拆分 — 不闭合，保持开放
                         var bulge = chain[j].Item3;
                         np.AddVertexAt(vIdx, chain[j].Item2, bulge, 0, 0);
                     }
@@ -201,9 +221,12 @@ namespace ServiceACAD
             }
         }
 
+        /// <summary>
+        ///     弧段精确拆分 — 弧段采样为弦段序列，对每条弦调用 boundary.FindLineIntersections().
+        /// </summary>
         private void ProcessArcSegmentExact(
             CircularArc2d arc, double bulge, bool keepInside,
-            IReadOnlyList<CorePoint2D> bpts, List<PolySegment> segments)
+            ICropBoundary boundary, List<PolySegment> segments)
         {
             var cx = arc.Center.X;
             var cy = arc.Center.Y;
@@ -211,14 +234,21 @@ namespace ServiceACAD
             var sa = arc.StartAngle;
             var ea = arc.EndAngle;
 
-            // 精确求圆与多边形各边的交点
+            // ★ 弧段采样为弦段序列，对每条弦调用 boundary.FindLineIntersections()
+            const int arcSamples = 64;
             var angles = new List<double>();
-            for (int i = 0, j = bpts.Count - 1; i < bpts.Count; j = i++)
+            for (int i = 0; i < arcSamples; i++)
             {
-                var segIx = GeometryHelper.LineCircleIntersection(bpts[j].X, bpts[j].Y, bpts[i].X, bpts[i].Y, cx, cy, r);
-                foreach (var pt in segIx)
+                double t1 = (double)i / arcSamples;
+                double t2 = (double)(i + 1) / arcSamples;
+                double a1 = sa + (ea - sa) * t1;
+                double a2 = sa + (ea - sa) * t2;
+                var p1 = new CorePoint2D(cx + r * Math.Cos(a1), cy + r * Math.Sin(a1));
+                var p2 = new CorePoint2D(cx + r * Math.Cos(a2), cy + r * Math.Sin(a2));
+
+                var intersections = boundary.FindLineIntersections(p1, p2);
+                foreach (var pt in intersections)
                 {
-                    if (!GeometryHelper.PointOnSegment(pt, bpts[j], bpts[i])) continue;
                     var ang = Math.Atan2(pt.Y - cy, pt.X - cx);
                     if (GeometryHelper.AngleInRange(ang, sa, ea))
                         angles.Add(GeometryHelper.NormalizeAngle(ang, sa, ea));
@@ -241,13 +271,13 @@ namespace ServiceACAD
                 var midAng = (a + b) / 2.0;
                 var mx = cx + r * Math.Cos(midAng);
                 var my = cy + r * Math.Sin(midAng);
-                var inside = this._cropGeometry.IsPointInPolygon(new CorePoint2D(mx, my), bpts);
+                // ★ 用 ICropBoundary.IsPointInside() 替代 CropGeometryService.IsPointInPolygon()
+                var inside = boundary.IsPointInside(new CorePoint2D(mx, my));
 
                 if ((keepInside && inside) || (!keepInside && !inside))
                 {
                     var sPt = new Point2d(cx + r * Math.Cos(a), cy + r * Math.Sin(a));
                     var ePt = new Point2d(cx + r * Math.Cos(b), cy + r * Math.Sin(b));
-                    // 子弧段凸度：总凸度 / 子段占比
                     var subBulge = bulge * (b - a) / (ea - sa);
                     segments.Add(new PolySegment
                     {
@@ -260,7 +290,7 @@ namespace ServiceACAD
         private void CollectKeptSubSegments(
             CorePoint2D start, CorePoint2D end, double bulge,
             List<CorePoint2D> intersections, bool keepInside,
-            IReadOnlyList<CorePoint2D> bpts,
+            ICropBoundary boundary,
             List<PolySegment> segments, int sourceIndex)
         {
             var nodes = new List<CorePoint2D> { start };
@@ -275,7 +305,8 @@ namespace ServiceACAD
                 if (d < 1e-12) continue;
 
                 var midPt = new CorePoint2D((a.X + b.X) / 2.0, (a.Y + b.Y) / 2.0);
-                var inside = this._cropGeometry.IsPointInPolygon(midPt, bpts);
+                // ★ 用 ICropBoundary.IsPointInside() 替代 CropGeometryService.IsPointInPolygon()
+                var inside = boundary.IsPointInside(midPt);
                 if ((keepInside && inside) || (!keepInside && !inside))
                 {
                     segments.Add(new PolySegment
