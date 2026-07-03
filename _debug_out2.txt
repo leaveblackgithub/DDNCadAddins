@@ -1,0 +1,12 @@
+Loop count: 1
+  Loop[0]: 10 segments
+    Seg[0] Source=Subject Start=(31.227442,-4.390386) End=(28.872951,-7.942884)
+    Seg[1] Source=Subject Start=(28.872951,-7.942884) End=(31.515747,-13.703691)
+    Seg[2] Source=Subject Start=(31.515747,-13.703691) End=(34.903332,-11.159335)
+    Seg[3] Source=Subject Start=(34.903332,-11.159335) End=(38.699349,-12.143473)
+    Seg[4] Source=Subject Start=(38.699349,-12.143473) End=(40.885663,-6.862732)
+    Seg[5] Source=Subject Start=(40.885663,-6.862732) End=(38.660346,-6.293087)
+    Seg[6] Source=Clip Start=(38.660346,-6.293087) End=(38.268152,-7.379684)
+    Seg[7] Source=Clip Start=(38.268152,-7.379684) End=(36.169005,-6.610639)
+    Seg[8] Source=Clip Start=(36.169005,-6.610639) End=(36.143670,-5.648860)
+    Seg[9] Source=Subject Start=(36.143670,-5.648860) End=(31.227442,-4.390386)

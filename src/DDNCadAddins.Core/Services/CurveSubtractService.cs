@@ -64,7 +64,8 @@ namespace DDNCadAddins.Core.Services
                     }
                 }
 
-                // ── 2. 拆分 B 的边，保留在 A 内部的子段（反向，标记 Clip） ──
+                // ── 2. 拆分 B 的边，保留在 A 内部（非边界上）的子段（反向，标记 Clip） ──
+                //    共线子段（在 A 边界上）不保留，避免差集结果中出现多余的共边
                 var keptFromB = new List<ExactSegment>();
 
                 foreach (var edge in clipEdges)
@@ -72,7 +73,8 @@ namespace DDNCadAddins.Core.Services
                     var subSegments = SplitEdgeByBoundary(edge, subjectBoundary);
                     foreach (var sub in subSegments)
                     {
-                        if (IsSegmentInsideBoundary(sub, subjectBoundary))
+                        if (IsSegmentInsideBoundary(sub, subjectBoundary) &&
+                            !IsSegmentOnBoundaryEdge(sub, subjectEdges))
                         {
                             var reversed = ReverseSegment(sub);
                             reversed.Source = SegmentSource.Clip;
@@ -128,6 +130,12 @@ namespace DDNCadAddins.Core.Services
             if (edge.SegmentType == ExactSegmentType.Ellipse)
             {
                 return SplitEllipseEdgeByBoundary(edge, boundary);
+            }
+
+            // 对于圆弧段，使用精确角度参数求交（避免弦近似误差）
+            if (edge.SegmentType == ExactSegmentType.Arc)
+            {
+                return SplitArcEdgeByBoundary(edge, boundary);
             }
 
             // 获取边的采样点（用于求交的直线段近似）
@@ -186,6 +194,123 @@ namespace DDNCadAddins.Core.Services
             }
 
             return result;
+        }
+
+        /// <summary>
+        ///     圆弧段的专用切分方法 — 使用精确角度参数求交.
+        ///     <para>
+        ///         圆弧的弧长与角度参数是线性关系，但采样弦与圆弧之间存在偏差。
+        ///         此方法对每个交点直接计算其在圆弧上的精确角度参数，
+        ///         并直接使用交点坐标作为子段端点，确保与直线段子段的端点一致。
+        ///     </para>
+        /// </summary>
+        private List<ExactSegment> SplitArcEdgeByBoundary(
+            ExactSegment edge, ICropBoundary boundary)
+        {
+            // 计算圆弧的角度范围
+            double fullSpan = edge.ArcIsClockwise
+                ? edge.ArcStartAngle - edge.ArcEndAngle
+                : edge.ArcEndAngle - edge.ArcStartAngle;
+            if (fullSpan < 0) fullSpan += 2.0 * Math.PI;
+
+            double dir = edge.ArcIsClockwise ? -1.0 : 1.0;
+
+            // 在角度空间均匀采样，用于求交
+            const int angleSamples = 64;
+            var edgePoints = new List<Point2D>(angleSamples + 1);
+
+            for (int i = 0; i <= angleSamples; i++)
+            {
+                double t = (double)i / angleSamples;
+                double angle = edge.ArcStartAngle + dir * fullSpan * t;
+                edgePoints.Add(new Point2D(
+                    edge.ArcCenter.X + edge.ArcRadius * Math.Cos(angle),
+                    edge.ArcCenter.Y + edge.ArcRadius * Math.Sin(angle)));
+            }
+
+            // 收集交点：按角度参数 t 排序的 (t, 交点坐标) 对
+            var cutPoints = new List<KeyValuePair<double, Point2D>>();
+
+            for (int i = 0; i < angleSamples; i++)
+            {
+                var p1 = edgePoints[i];
+                var p2 = edgePoints[i + 1];
+                var intersections = boundary.FindLineIntersections(p1, p2);
+
+                foreach (var ix in intersections)
+                {
+                    // 直接计算交点在圆弧上的精确角度参数
+                    double angleT = ComputeArcIntersectionParam(
+                        edge, ix, dir, fullSpan);
+                    if (angleT > Tol && angleT < 1.0 - Tol)
+                        cutPoints.Add(new KeyValuePair<double, Point2D>(angleT, ix));
+                }
+            }
+
+            // 按 t 排序
+            cutPoints.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+            // 去重
+            var uniqueCutPoints = new List<KeyValuePair<double, Point2D>>();
+            foreach (var cp in cutPoints)
+            {
+                if (uniqueCutPoints.Count == 0 ||
+                    cp.Key - uniqueCutPoints[uniqueCutPoints.Count - 1].Key > Tol)
+                    uniqueCutPoints.Add(cp);
+            }
+
+            // 构建切分节点列表：起点, 交点1, 交点2, ..., 终点
+            var nodes = new List<(double t, Point2D pt)>();
+            nodes.Add((0.0, edge.Start));
+            foreach (var cp in uniqueCutPoints)
+                nodes.Add((cp.Key, cp.Value));
+            nodes.Add((1.0, edge.End));
+
+            // 逐子段生成 ExactSegment，使用精确交点坐标作为端点
+            var result = new List<ExactSegment>();
+            for (int i = 0; i < nodes.Count - 1; i++)
+            {
+                double tStart = nodes[i].t;
+                double tEnd = nodes[i + 1].t;
+                if (tEnd - tStart < Tol) continue;
+
+                var subSegment = CreateSubSegmentWithEndpoints(
+                    edge, tStart, tEnd, nodes[i].pt, nodes[i + 1].pt);
+                if (subSegment != null)
+                    result.Add(subSegment);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        ///     计算交点在圆弧上的精确角度参数 t ∈ [0,1].
+        ///     将交点从 WCS 变换到圆弧的极坐标系，使用 Atan2 计算精确角度，
+        ///     再映射到弧段参数空间。
+        /// </summary>
+        private static double ComputeArcIntersectionParam(
+            ExactSegment edge, Point2D intersection,
+            double dir, double fullSpan)
+        {
+            // 计算交点相对于圆心的角度
+            double angle = Math.Atan2(
+                intersection.Y - edge.ArcCenter.Y,
+                intersection.X - edge.ArcCenter.X);
+
+            // 将角度映射到弧段参数空间 t ∈ [0,1]
+            double angleOffset = angle - edge.ArcStartAngle;
+            // 处理角度环绕
+            if (dir > 0) // CCW
+            {
+                if (angleOffset < 0) angleOffset += 2.0 * Math.PI;
+            }
+            else // CW
+            {
+                if (angleOffset > 0) angleOffset -= 2.0 * Math.PI;
+            }
+
+            double t = angleOffset / (dir * fullSpan);
+            return Math.Max(0.0, Math.Min(1.0, t));
         }
 
         /// <summary>
@@ -528,6 +653,47 @@ namespace DDNCadAddins.Core.Services
         }
 
         /// <summary>
+        ///     判断子线段是否与给定的边列表中的某条边共线重叠.
+        ///     用于排除 B 的子段中与 A 的边共线的部分，避免差集结果出现多余共边.
+        ///     仅对直线段有效（弧/椭圆弧不适用共线检测）.
+        /// </summary>
+        private static bool IsSegmentOnBoundaryEdge(
+            ExactSegment segment, IReadOnlyList<ExactSegment> boundaryEdges)
+        {
+            if (segment.SegmentType != ExactSegmentType.Line)
+                return false;
+
+            // 取子段中点，检查是否在任意一条边界直线段上
+            var midPt = GetSegmentMidpoint(segment);
+            const double collinearTol = 1e-6;
+
+            foreach (var edge in boundaryEdges)
+            {
+                if (edge.SegmentType != ExactSegmentType.Line)
+                    continue;
+
+                // 检查中点是否在 edge 上（共线 + 在线段范围内）
+                double dx = edge.End.X - edge.Start.X;
+                double dy = edge.End.Y - edge.Start.Y;
+                double lenSq = dx * dx + dy * dy;
+                if (lenSq < Tol * Tol) continue;
+
+                // 共线性检查：叉积 ≈ 0
+                double cross = (midPt.Y - edge.Start.Y) * dx -
+                               (midPt.X - edge.Start.X) * dy;
+                if (Math.Abs(cross) > collinearTol) continue;
+
+                // 在线段范围内
+                double dot = (midPt.X - edge.Start.X) * dx +
+                             (midPt.Y - edge.Start.Y) * dy;
+                if (dot >= -collinearTol && dot <= lenSq + collinearTol)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         ///     获取子线段的中点（参数化曲线的中参数点）.
         /// </summary>
         private static Point2D GetSegmentMidpoint(ExactSegment segment)
@@ -640,8 +806,10 @@ namespace DDNCadAddins.Core.Services
                         break;
 
                     // 先尝试正向匹配（seg.Start == currentEnd）
+                    // 优先匹配不同 Source 类型的段（Subject ↔ Clip 交替），
+                    // 确保差集边界正确连通而非形成多个独立小环
                     int nextIdx = FindMatchingSegment(
-                        keptSegments, used, currentEnd, false);
+                        keptSegments, used, currentEnd, false, current.Source);
 
                     if (nextIdx >= 0)
                     {
@@ -654,7 +822,7 @@ namespace DDNCadAddins.Core.Services
                     {
                         // 尝试反向匹配（seg.End == currentEnd → 反转后使用）
                         nextIdx = FindMatchingSegment(
-                            keptSegments, used, currentEnd, true);
+                            keptSegments, used, currentEnd, true, current.Source);
 
                         if (nextIdx >= 0)
                         {
@@ -679,13 +847,23 @@ namespace DDNCadAddins.Core.Services
 
         /// <summary>
         ///     在未使用的子段中查找端点与 currentEnd 匹配的段.
+        ///     优先匹配与当前段不同 Source 类型的段（Subject ↔ Clip 交替），
+        ///     确保差集边界在交点处正确交替连接，避免形成多个独立小环.
         /// </summary>
         /// <param name="reverse">false=正向匹配(Start)，true=反向匹配(End).</param>
+        /// <param name="currentSource">当前段的 Source 类型，用于优先匹配不同 Source 的段.</param>
         private static int FindMatchingSegment(
             List<ExactSegment> segments, bool[] used,
-            Point2D currentEnd, bool reverse)
+            Point2D currentEnd, bool reverse,
+            SegmentSource currentSource = SegmentSource.Subject)
         {
             double tolSq = MatchTol * MatchTol;
+
+            // 第一遍：优先匹配同 Source 类型的段（继续走同一条曲线的边界）
+            // 在交点处，Subject 应继续走 Subject，Clip 应继续走 Clip，
+            // 只有在两条曲线的交界点（切分交点）才切换 Source。
+            // 这样 B 完全在 A 内部时，B 的所有反向段会被正确连入内孔环。
+            int fallback = -1;
             for (int i = 0; i < segments.Count; i++)
             {
                 if (used[i]) continue;
@@ -694,9 +872,16 @@ namespace DDNCadAddins.Core.Services
                 double dx = checkPt.X - currentEnd.X;
                 double dy = checkPt.Y - currentEnd.Y;
                 if (dx * dx + dy * dy < tolSq)
-                    return i;
+                {
+                    if (seg.Source == currentSource)
+                        return i;
+                    if (fallback < 0)
+                        fallback = i;
+                }
             }
-            return -1;
+
+            // 第二遍：如果没有同 Source 的匹配，切换到不同 Source 的匹配
+            return fallback;
         }
 
         // ──────────────────────────────────────────────────────────────

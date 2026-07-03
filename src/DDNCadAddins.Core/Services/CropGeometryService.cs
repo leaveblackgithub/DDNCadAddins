@@ -349,14 +349,31 @@ namespace DDNCadAddins.Core.Services
             var tMax = Math.Min(1, t4);
             if (tMax - tMin < Tolerance) return null;
 
-            // 始终返回重叠区间的两个端点作为交点，
-            // 如果端点恰好与 segStart/segEnd 重合也无妨——调用方 FindLineSegmentIntersections 会做去重
-            var result = new List<Point2D>
-            {
-                new Point2D(p1.X + tMin * d1x, p1.Y + tMin * d1y),
-                new Point2D(p1.X + tMax * d1x, p1.Y + tMax * d1y),
-            };
+            // 计算重叠端点（使用投影公式），但吸附到最近的多边形顶点以避免浮点误差
+            var ptMin = SnapToNearestVertex(
+                new Point2D(p1.X + tMin * d1x, p1.Y + tMin * d1y), p3, p4);
+            var ptMax = SnapToNearestVertex(
+                new Point2D(p1.X + tMax * d1x, p1.Y + tMax * d1y), p3, p4);
+
+            var result = new List<Point2D> { ptMin, ptMax };
             return result;
+        }
+
+        /// <summary>
+        ///     将投影计算出的重叠端点吸附到最近的多边形顶点.
+        ///     避免投影公式的浮点误差导致 ChainSegmentsIntoLoops 端点匹配失败.
+        /// </summary>
+        private static Point2D SnapToNearestVertex(Point2D projected, Point2D v1, Point2D v2)
+        {
+            double d1Sq = (projected.X - v1.X) * (projected.X - v1.X) +
+                          (projected.Y - v1.Y) * (projected.Y - v1.Y);
+            double d2Sq = (projected.X - v2.X) * (projected.X - v2.X) +
+                          (projected.Y - v2.Y) * (projected.Y - v2.Y);
+            // 吸附阈值：与 MatchTol(5e-4) 一致，确保投影误差在此范围内的点被纠正
+            const double snapThresholdSq = 5e-4 * 5e-4;
+            if (d1Sq < snapThresholdSq) return v1;
+            if (d2Sq < snapThresholdSq) return v2;
+            return projected;
         }
     }
 }

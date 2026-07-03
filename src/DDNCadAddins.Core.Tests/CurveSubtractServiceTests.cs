@@ -571,5 +571,107 @@ namespace DDNCadAddins.Core.Tests
 
             return segments;
         }
+
+        // ════════════════════════════════════════════════════════════════
+        // 实际数据复现：A(6顶点Polyline) 包含 B(4顶点Polyline)，B边与A边部分共线
+        // 期望：1 个连通环（A外边界 + B反向内边界）
+        // ════════════════════════════════════════════════════════════════
+
+        [Test]
+        public void PolyAContainsPolyB_WithCollinearEdge_ReturnsSingleLoop()
+        {
+            // A 的顶点（来自 TestRecords/crop_20260703-121027-2b4c.json）
+            var a0 = new Point2D(31.227442, -4.390386);
+            var a1 = new Point2D(28.872951, -7.942884);
+            var a2 = new Point2D(31.515747, -13.703691);
+            var a3 = new Point2D(34.903332, -11.159335);
+            var a4 = new Point2D(38.699349, -12.143473);
+            var a5 = new Point2D(40.885663, -6.862732);
+
+            var edgesA = new List<ExactSegment>
+            {
+                LineSeg(a0, a1), LineSeg(a1, a2), LineSeg(a2, a3),
+                LineSeg(a3, a4), LineSeg(a4, a5), LineSeg(a5, a0),
+            };
+            var bndA = new PolygonCropBoundary(new List<Point2D> { a0, a1, a2, a3, a4, a5 });
+
+            // B 的顶点（完全在 A 内部）
+            var b0 = new Point2D(36.143670, -5.648859);
+            var b1 = new Point2D(38.660346, -6.293087);
+            var b2 = new Point2D(38.268152, -7.379684);
+            var b3 = new Point2D(36.169005, -6.610639);
+
+            var edgesB = new List<ExactSegment>
+            {
+                LineSeg(b0, b1), LineSeg(b1, b2), LineSeg(b2, b3), LineSeg(b3, b0),
+            };
+            var bndB = new PolygonCropBoundary(new List<Point2D> { b0, b1, b2, b3 });
+
+            var result = _service.Subtract(edgesA, bndA, edgesB, bndB);
+
+            Assert.IsTrue(result.IsSuccess, "差集应成功");
+
+            // 调试输出：每个环的段信息
+            System.Console.WriteLine($"Loop count: {result.Data.Loops.Count}");
+            for (int li = 0; li < result.Data.Loops.Count; li++)
+            {
+                var loop = result.Data.Loops[li];
+                System.Console.WriteLine($"  Loop[{li}]: {loop.Count} segments");
+                for (int si = 0; si < loop.Count; si++)
+                {
+                    var seg = loop[si];
+                    System.Console.WriteLine($"    Seg[{si}] Source={seg.Source} " +
+                        $"Start=({seg.Start.X:F6},{seg.Start.Y:F6}) " +
+                        $"End=({seg.End.X:F6},{seg.End.Y:F6})");
+                }
+            }
+
+            // 期望：1 个连通环（A 包含 B → 带洞环）
+            Assert.AreEqual(1, result.Data.Loops.Count,
+                "A 包含 B 应返回 1 个连通环，实际返回 " + result.Data.Loops.Count);
+        }
+
+        [Test]
+        public void PolyAContainsPolyB_CollinearSplit_Debug()
+        {
+            // 单独测试 A[5] 被 B 边界切分的结果
+            var a5 = new Point2D(40.885663, -6.862732);
+            var a0 = new Point2D(31.227442, -4.390386);
+
+            var edge = LineSeg(a5, a0);
+
+            var b0 = new Point2D(36.143670, -5.648859);
+            var b1 = new Point2D(38.660346, -6.293087);
+            var b2 = new Point2D(38.268152, -7.379684);
+            var b3 = new Point2D(36.169005, -6.610639);
+            var bndB = new PolygonCropBoundary(new List<Point2D> { b0, b1, b2, b3 });
+
+            // 获取 A[5] 的采样点
+            var edgePoints = edge.ToPolylinePoints();
+            System.Console.WriteLine($"A[5] edge points: {edgePoints.Count}");
+            foreach (var pt in edgePoints)
+                System.Console.WriteLine($"  ({pt.X:F6},{pt.Y:F6})");
+
+            // 测试每个采样段与 B 边界的交点
+            for (int i = 0; i < edgePoints.Count - 1; i++)
+            {
+                var p1 = edgePoints[i];
+                var p2 = edgePoints[i + 1];
+                var intersections = bndB.FindLineIntersections(p1, p2);
+                if (intersections.Count > 0)
+                {
+                    System.Console.WriteLine($"  Segment[{i}] ({p1.X:F6},{p1.Y:F6})->({p2.X:F6},{p2.Y:F6}) -> {intersections.Count} intersections:");
+                    foreach (var ix in intersections)
+                        System.Console.WriteLine($"    IX=({ix.X:F6},{ix.Y:F6})");
+                }
+            }
+
+            // 测试共线段中点是否在 B 内部
+            var midCollinear = new Point2D((b0.X + b1.X) / 2.0, (b0.Y + b1.Y) / 2.0);
+            bool midInside = bndB.IsPointInside(midCollinear);
+            System.Console.WriteLine($"  Collinear mid=({midCollinear.X:F6},{midCollinear.Y:F6}) inside B={midInside}");
+
+            Assert.Pass("调试测试，查看输出");
+        }
     }
 }

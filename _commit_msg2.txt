@@ -1,0 +1,13 @@
+fix(CurveSubtractService): 圆弧段使用精确角度参数求交，排除共线Clip段
+
+修复1：SplitEdgeByBoundary 对 Arc 类型新增 SplitArcEdgeByBoundary
+方法，使用精确角度参数求交而非弦近似，消除弦高误差导致的
+切分不精确问题。
+
+修复2：新增 IsSegmentOnBoundaryEdge 排除与 Subject 边共线的
+Clip 子段，避免差集结果中出现多余共边。
+
+修复3：FindMatchingSegment 优先匹配同 Source 类型的段，
+确保差集边界在交点处正确连通。
+
+验证：20/20 CurveSubtractServiceTests 全部通过
