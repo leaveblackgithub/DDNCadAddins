@@ -52,8 +52,9 @@ namespace AddinsACAD.Commands
                 ed.WriteMessage($"\n   CROPTESTS 开始 — 裁剪方向: {directionLabel}");
                 ed.WriteMessage($"\n═══════════════════════════════════════════");
 
-                // 3. 收集所有可裁剪实体（排除边界自身）
+                // 3. 收集所有可裁剪实体（排除边界自身），Hatch 单独处理
                 var allEntities = new List<ObjectId>();
+                var hatchIds = new List<ObjectId>();
 
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
                 {
@@ -77,24 +78,80 @@ namespace AddinsACAD.Commands
                     Collect<DBText>();
                     Collect<MText>();
                     Collect<Dimension>();
-                    Collect<Hatch>();
                     Collect<BlockReference>();
                     Collect<DBPoint>();
                     Collect<Solid>();
                     Collect<Leader>();
                     Collect<Polyline3d>();
                     Collect<Mline>();
+
+                    // Hatch 单独收集（排除边界自身）
+                    var hIds = serviceTrans.GetChildObjectsFromModelspace<Hatch>();
+                    if (hIds != null)
+                    {
+                        hIds.RemoveAll(id => id == boundaryId);
+                        hatchIds.AddRange(hIds);
+                    }
                 });
 
-                if (allEntities.Count == 0)
+                if (allEntities.Count == 0 && hatchIds.Count == 0)
                 {
                     ed.WriteMessage("\n图纸中未找到任何可裁剪的实体。");
                     return;
                 }
 
-                ed.WriteMessage($"\n找到 {allEntities.Count} 个待处理实体，正在批量裁剪...\n");
+                ed.WriteMessage($"\n找到 {allEntities.Count} 个非 Hatch 实体 + {hatchIds.Count} 个 Hatch，正在批量裁剪...\n");
 
-                // 4. 使用统一的 CropService 执行裁剪
+                // 3.5 ★ 预处理 Hatch：调用 GenerateHatchBoundary 生成边界实体
+                int hatchBoundaryGenerated = 0;
+                int hatchBoundaryFailed = 0;
+                if (hatchIds.Count > 0)
+                {
+                    ed.WriteMessage($"\n── Hatch 边界生成 ──");
+                    CadServiceManager._.ExecuteInCommandTransaction(serviceTrans =>
+                    {
+                        try
+                        {
+                            foreach (var hatchId in hatchIds)
+                            {
+                                if (!hatchId.IsValid || hatchId.IsErased)
+                                    continue;
+
+                                var genResult = GenerateHatchBoundaryCommand.GenerateHatchBoundary(hatchId);
+                                if (genResult.IsSuccess)
+                                {
+                                    hatchBoundaryGenerated++;
+                                    ed.WriteMessage(
+                                        $"\n  Hatch {hatchId}: {genResult.EntityCount} 个边界实体 [{genResult.TypeLog}]");
+                                }
+                                else
+                                {
+                                    hatchBoundaryFailed++;
+                                    ed.WriteMessage($"\n  Hatch {hatchId}: 失败 — {genResult.Message}");
+                                }
+                            }
+
+                            return ServiceACAD.OpResult.Success();
+                        }
+                        catch (System.Exception genEx)
+                        {
+                            Logger._.Error($"Hatch 边界生成失败: {genEx.Message}", genEx);
+                            return ServiceACAD.OpResult.Fail(genEx.Message);
+                        }
+                    });
+                    ed.WriteMessage(
+                        $"\nHatch 边界生成完成: 成功 {hatchBoundaryGenerated}, 失败 {hatchBoundaryFailed}");
+                }
+
+                if (allEntities.Count == 0)
+                {
+                    ed.WriteMessage($"\n═══════════════════════════════════════════");
+                    ed.WriteMessage($"\n   CROPTESTS 完成（仅处理了 Hatch 边界生成）");
+                    ed.WriteMessage($"\n═══════════════════════════════════════════");
+                    return;
+                }
+
+                // 4. 使用统一的 CropService 执行裁剪（仅非 Hatch 实体）
                 var geoService = new CropGeometryService();
                 var cropService = new CropService(geoService);
 
@@ -199,6 +256,12 @@ namespace AddinsACAD.Commands
 
                 ed.WriteMessage($"\n═══════════════════════════════════════════");
                 ed.WriteMessage($"\n   CROPTESTS 完成");
+                if (hatchIds.Count > 0)
+                {
+                    ed.WriteMessage(
+                        $"\n  Hatch 边界生成: 成功 {hatchBoundaryGenerated}, 失败 {hatchBoundaryFailed}");
+                    ed.WriteMessage($"\n  (Hatch 后续裁剪逻辑待确认)");
+                }
                 ed.WriteMessage($"\n═══════════════════════════════════════════");
             }
             catch (System.Exception ex)

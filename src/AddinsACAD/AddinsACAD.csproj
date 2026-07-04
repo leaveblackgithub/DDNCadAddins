@@ -35,6 +35,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="Commands\CloneHatchCommand.cs" />
     <Compile Include="Commands\CommandTestsCommand.cs" />
     <Compile Include="Commands\CropTestsCommand.cs" />
+    <Compile Include="Commands\CropHatchCommand.cs" />
     <Compile Include="Commands\GenerateHatchBoundaryCommand.cs" />
     <Compile Include="Commands\SubtractClosedCurveCommand.cs" />
     <Compile Include="TestCommands\CreateTestBlockForExplodeCommand.cs" />
