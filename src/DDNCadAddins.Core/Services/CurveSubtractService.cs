@@ -169,6 +169,153 @@ namespace DDNCadAddins.Core.Services
             }
         }
 
+        /// <summary>
+        ///     计算精确交集 A ∩ B.
+        ///     <para>
+        ///         与 <see cref="Subtract"/> 的区别：
+        ///         Subtract 保留 A 中不在 B 内部的子段 + B 中在 A 内部的子段（反向标记 Clip）；
+        ///         Intersect 保留 A 中在 B 内部的子段 + B 中在 A 内部的子段（不反向标记 Clip）。
+        ///     </para>
+        /// </summary>
+        /// <param name="subjectEdges">曲线 A 的原子边列表.</param>
+        /// <param name="subjectBoundary">曲线 A 的精确裁剪边界.</param>
+        /// <param name="clipEdges">曲线 B 的原子边列表.</param>
+        /// <param name="clipBoundary">曲线 B 的精确裁剪边界.</param>
+        /// <returns>交集结果（0 个或多个闭合环）.</returns>
+        public OpResult<ExactSubtractResult> Intersect(
+            IReadOnlyList<ExactSegment> subjectEdges,
+            ICropBoundary subjectBoundary,
+            IReadOnlyList<ExactSegment> clipEdges,
+            ICropBoundary clipBoundary)
+        {
+            try
+            {
+                if (subjectEdges == null || subjectEdges.Count == 0)
+                    return OpResult<ExactSubtractResult>.Fail("Subject 边列表为空");
+                if (subjectBoundary == null)
+                    return OpResult<ExactSubtractResult>.Fail("Subject 边界为空");
+                if (clipEdges == null || clipEdges.Count == 0)
+                    return OpResult<ExactSubtractResult>.Fail("Clip 边列表为空");
+                if (clipBoundary == null)
+                    return OpResult<ExactSubtractResult>.Fail("Clip 边界为空");
+
+                // ── 1. 拆分 A 的边，保留在 B 内部的子段 ──────────────
+                var keptFromA = new List<ExactSegment>();
+
+                foreach (var edge in subjectEdges)
+                {
+                    var subSegments = SplitEdgeByBoundary(edge, clipBoundary);
+                    foreach (var sub in subSegments)
+                    {
+                        if (IsSegmentInsideBoundary(sub, clipBoundary))
+                            keptFromA.Add(sub);
+                    }
+                }
+
+                // ── 2. 拆分 B 的边，保留在 A 内部的子段（不反向，标记 Clip） ──
+                //    与 Subtract 不同：不反向，因为交集边界直接沿 B 的原始方向
+                var keptFromB = new List<ExactSegment>();
+
+                foreach (var edge in clipEdges)
+                {
+                    var subSegments = SplitEdgeByBoundary(edge, subjectBoundary);
+                    foreach (var sub in subSegments)
+                    {
+                        if (IsSegmentInsideBoundary(sub, subjectBoundary) &&
+                            !IsSegmentOnBoundaryEdge(sub, subjectEdges))
+                        {
+                            sub.Source = SegmentSource.Clip;
+                            keptFromB.Add(sub);
+                        }
+                    }
+                }
+
+                // ── 3. 合并并连接成闭合环 ──────────────────────────────
+                var allKept = new List<ExactSegment>(keptFromA.Count + keptFromB.Count);
+                allKept.AddRange(keptFromA);
+                allKept.AddRange(keptFromB);
+
+                if (allKept.Count == 0)
+                    return OpResult<ExactSubtractResult>.Success(new ExactSubtractResult());
+
+                var loops = ChainSegmentsIntoLoops(allKept);
+
+                var finalResult = new ExactSubtractResult();
+                foreach (var loop in loops)
+                {
+                    if (loop.Count >= 1)
+                        finalResult.Loops.Add(loop);
+                }
+
+                return OpResult<ExactSubtractResult>.Success(finalResult);
+            }
+            catch (Exception ex)
+            {
+                return OpResult<ExactSubtractResult>.Fail(
+                    $"精确交集计算失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        ///     计算多个 Subject 与同一个 Clip 的交集：(A₁ ∩ B) ∪ (A₂ ∩ B) ∪ ...
+        ///     <para>
+        ///         对每个 Subject Aᵢ 独立执行 Aᵢ ∩ B 交集运算，
+        ///         汇总所有结果环。各 Subject 结果互不影响。
+        ///     </para>
+        /// </summary>
+        /// <param name="subjects">Subject 列表（每条包含边列表和边界）.</param>
+        /// <param name="clipEdges">Clip 曲线 B 的原子边列表.</param>
+        /// <param name="clipBoundary">Clip 曲线 B 的精确裁剪边界.</param>
+        /// <returns>交集结果（0 个或多个闭合环）.</returns>
+        public OpResult<ExactSubtractResult> IntersectMultiSubject(
+            IReadOnlyList<(IReadOnlyList<ExactSegment> Edges, ICropBoundary Boundary)> subjects,
+            IReadOnlyList<ExactSegment> clipEdges,
+            ICropBoundary clipBoundary)
+        {
+            try
+            {
+                if (subjects == null || subjects.Count == 0)
+                    return OpResult<ExactSubtractResult>.Fail("Subject 列表为空");
+                if (clipEdges == null || clipEdges.Count == 0)
+                    return OpResult<ExactSubtractResult>.Fail("Clip 边列表为空");
+                if (clipBoundary == null)
+                    return OpResult<ExactSubtractResult>.Fail("Clip 边界为空");
+
+                var allLoops = new List<List<ExactSegment>>();
+
+                foreach (var subject in subjects)
+                {
+                    if (subject.Edges == null || subject.Edges.Count == 0)
+                        continue;
+                    if (subject.Boundary == null)
+                        continue;
+
+                    var result = this.Intersect(
+                        subject.Edges, subject.Boundary,
+                        clipEdges, clipBoundary);
+
+                    if (result.IsSuccess && !result.Data.IsEmpty)
+                    {
+                        allLoops.AddRange(result.Data.Loops);
+                    }
+                }
+
+                var finalResult = new ExactSubtractResult();
+                foreach (var loop in allLoops)
+                {
+                    if (loop.Count >= 1)
+                        finalResult.Loops.Add(loop);
+                }
+
+                return OpResult<ExactSubtractResult>.Success(finalResult);
+            }
+            catch (Exception ex)
+            {
+                return OpResult<ExactSubtractResult>.Fail(
+                    $"多 Subject 交集计算失败: {ex.Message}");
+            }
+        }
+
         // ──────────────────────────────────────────────────────────────
         //  逐边求交与切分
         // ──────────────────────────────────────────────────────────────
