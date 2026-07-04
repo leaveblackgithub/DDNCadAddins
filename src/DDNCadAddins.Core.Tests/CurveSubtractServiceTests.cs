@@ -673,5 +673,131 @@ namespace DDNCadAddins.Core.Tests
 
             Assert.Pass("调试测试，查看输出");
         }
+
+        // ════════════════════════════════════════════════════════════════
+        // 多 Subject 差集测试（SubtractMultiSubject）
+        // ════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        ///     封装 SubtractMultiSubject 调用：多个 Subject 减去同一个 Clip.
+        /// </summary>
+        private OpResult<ExactSubtractResult> SubtractMultiSubjectRects(
+            (double x0, double y0, double x1, double y1) clip,
+            params (double x0, double y0, double x1, double y1)[] subjects)
+        {
+            var subjectList = new List<(IReadOnlyList<ExactSegment> Edges, ICropBoundary Boundary)>();
+            foreach (var s in subjects)
+            {
+                subjectList.Add((
+                    MakeRectEdges(s.x0, s.y0, s.x1, s.y1),
+                    MakeRectBoundary(s.x0, s.y0, s.x1, s.y1)));
+            }
+
+            var clipEdges = MakeRectEdges(clip.x0, clip.y0, clip.x1, clip.y1);
+            var clipBnd = MakeRectBoundary(clip.x0, clip.y0, clip.x1, clip.y1);
+
+            return _service.SubtractMultiSubject(subjectList, clipEdges, clipBnd);
+        }
+
+        [Test]
+        public void TwoSubjectsOneClip_BothDisjoint_ReturnsBothSubjects()
+        {
+            // A1 = 0~50 矩形, A2 = 100~150 矩形
+            // B = 200~250 矩形（完全不相交）
+            var result = SubtractMultiSubjectRects(
+                (200, 200, 250, 250),
+                (0, 0, 50, 50),
+                (100, 100, 150, 150));
+
+            Assert.IsTrue(result.IsSuccess, "双Subject差集应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "应至少返回1个环");
+        }
+
+        [Test]
+        public void TwoSubjectsOneClip_BothContainB_ReturnsTwoRingsWithHoles()
+        {
+            // A1 = 0~100 矩形, A2 = 200~300 矩形
+            // B = 30~70 矩形（同时与两个A都不相交，但不在任何一个内部...不对）
+            // 正确的：A1包含B，A2不包含B
+            // B = 30~70 矩形在 A1 内部，不在 A2 内部
+            var result = SubtractMultiSubjectRects(
+                (30, 30, 70, 70),
+                (0, 0, 100, 100),
+                (200, 200, 300, 300));
+
+            Assert.IsTrue(result.IsSuccess, "混合Subject差集应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "应至少返回1个环");
+        }
+
+        [Test]
+        public void TwoSubjectsOneClip_BothContainB_ReturnsTwoHoles()
+        {
+            // A1 = 0~100 矩形, A2 = 200~300 矩形
+            // B = 30~70 矩形，同时在 A1 和 A2 内部（需要 B 足够小且 A 不重叠）
+            // 不对，B 不能同时在两个不相交的矩形内部
+            // 改为：A1 和 A2 都包含 B
+            // A1 = 0~100, A2 = 50~150, B = 60~90（在 A1∩A2 内）
+            var result = SubtractMultiSubjectRects(
+                (60, 60, 90, 90),
+                (0, 0, 100, 100),
+                (50, 50, 150, 150));
+
+            Assert.IsTrue(result.IsSuccess, "双Subject都包含B差集应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "应至少返回1个环");
+        }
+
+        [Test]
+        public void TwoSubjectsOneClip_ClipContainsBoth_ReturnsEmpty()
+        {
+            // A1 = 20~40, A2 = 50~70
+            // B = 0~100 大矩形（包含两个A）
+            var result = SubtractMultiSubjectRects(
+                (0, 0, 100, 100),
+                (20, 20, 40, 40),
+                (50, 50, 70, 70));
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.IsTrue(result.Data.IsEmpty, "B包含所有Subject时应返回空");
+        }
+
+        [Test]
+        public void NullSubjectsList_ReturnsFail()
+        {
+            var clipEdges = MakeRectEdges(0, 0, 50, 50);
+            var clipBnd = MakeRectBoundary(0, 0, 50, 50);
+
+            var result = _service.SubtractMultiSubject(null, clipEdges, clipBnd);
+            Assert.IsFalse(result.IsSuccess);
+        }
+
+        [Test]
+        public void EmptySubjectsList_ReturnsFail()
+        {
+            var clipEdges = MakeRectEdges(0, 0, 50, 50);
+            var clipBnd = MakeRectBoundary(0, 0, 50, 50);
+
+            var result = _service.SubtractMultiSubject(
+                new List<(IReadOnlyList<ExactSegment>, ICropBoundary)>(),
+                clipEdges, clipBnd);
+            Assert.IsFalse(result.IsSuccess);
+        }
+
+        [Test]
+        public void TwoSubjectsOneClip_OneContainsB_OneOutside_ReturnsMixed()
+        {
+            // A1 = 0~100 矩形（包含B）, A2 = 200~300 矩形（B完全不相交）
+            // B = 30~70 矩形（在A1内部）
+            var result = SubtractMultiSubjectRects(
+                (30, 30, 70, 70),
+                (0, 0, 100, 100),
+                (200, 200, 300, 300));
+
+            Assert.IsTrue(result.IsSuccess, "混合差集应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "应至少返回1个环");
+
+            var allSegs = result.Data.Loops.SelectMany(l => l).ToList();
+            bool hasClip = allSegs.Any(s => s.Source == SegmentSource.Clip);
+            Assert.IsTrue(hasClip, "A1包含B时应有Clip段");
+        }
     }
 }

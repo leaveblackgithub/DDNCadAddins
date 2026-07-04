@@ -109,6 +109,66 @@ namespace DDNCadAddins.Core.Services
             }
         }
 
+        /// <summary>
+        ///     计算多个 Subject 减去同一个 Clip 的差集：(A₁ ∪ A₂ ∪ ...) \ B.
+        ///     <para>
+        ///         对每个 Subject Aᵢ 独立执行 Aᵢ \ B 差集运算，
+        ///         汇总所有结果环。各 Subject 结果互不影响。
+        ///     </para>
+        /// </summary>
+        /// <param name="subjects">Subject 列表（每条包含边列表和边界）.</param>
+        /// <param name="clipEdges">Clip 曲线 B 的原子边列表.</param>
+        /// <param name="clipBoundary">Clip 曲线 B 的精确裁剪边界.</param>
+        /// <returns>差集结果（0 个或多个闭合环）.</returns>
+        public OpResult<ExactSubtractResult> SubtractMultiSubject(
+            IReadOnlyList<(IReadOnlyList<ExactSegment> Edges, ICropBoundary Boundary)> subjects,
+            IReadOnlyList<ExactSegment> clipEdges,
+            ICropBoundary clipBoundary)
+        {
+            try
+            {
+                if (subjects == null || subjects.Count == 0)
+                    return OpResult<ExactSubtractResult>.Fail("Subject 列表为空");
+                if (clipEdges == null || clipEdges.Count == 0)
+                    return OpResult<ExactSubtractResult>.Fail("Clip 边列表为空");
+                if (clipBoundary == null)
+                    return OpResult<ExactSubtractResult>.Fail("Clip 边界为空");
+
+                var allLoops = new List<List<ExactSegment>>();
+
+                foreach (var subject in subjects)
+                {
+                    if (subject.Edges == null || subject.Edges.Count == 0)
+                        continue;
+                    if (subject.Boundary == null)
+                        continue;
+
+                    var result = this.Subtract(
+                        subject.Edges, subject.Boundary,
+                        clipEdges, clipBoundary);
+
+                    if (result.IsSuccess && !result.Data.IsEmpty)
+                    {
+                        allLoops.AddRange(result.Data.Loops);
+                    }
+                }
+
+                var finalResult = new ExactSubtractResult();
+                foreach (var loop in allLoops)
+                {
+                    if (loop.Count >= 1)
+                        finalResult.Loops.Add(loop);
+                }
+
+                return OpResult<ExactSubtractResult>.Success(finalResult);
+            }
+            catch (Exception ex)
+            {
+                return OpResult<ExactSubtractResult>.Fail(
+                    $"多 Subject 差集计算失败: {ex.Message}");
+            }
+        }
+
         // ──────────────────────────────────────────────────────────────
         //  逐边求交与切分
         // ──────────────────────────────────────────────────────────────
