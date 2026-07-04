@@ -44,7 +44,7 @@ namespace AddinsACAD.Commands
                     return;
 
                 bool captureInside = keepInside.Value;
-                string directionLabel = captureInside ? "内部" : "外部";
+                string directionLabel = captureInside ? "减掉外部-保留内部" : "减掉内部-保留外部";
 
                 ServiceACAD.TestRecorder.CaptureUcs(out var ucsOrigin, out var ucsX, out var ucsY);
 
@@ -279,10 +279,11 @@ namespace AddinsACAD.Commands
         {
             try
             {
-                var options = new PromptKeywordOptions("\n请选择裁剪方向 [内部(N)/外部(W)]: ", "内部 外部");
-                options.Keywords.Add("内部", "内部(N)", "保留边界内部的实体");
-                options.Keywords.Add("外部", "外部(W)", "保留边界外部的实体");
-                options.Keywords.Default = "内部";
+                var options = new PromptKeywordOptions(
+                    "\n请选择裁剪方向 [减掉外部-保留内部(O)/减掉内部-保留外部(I)]: ", "减掉外部 减掉内部");
+                options.Keywords.Add("减掉外部", "减掉外部-保留内部(O)", "减掉边界外部的实体，保留内部");
+                options.Keywords.Add("减掉内部", "减掉内部-保留外部(I)", "减掉边界内部的实体，保留外部");
+                options.Keywords.Default = "减掉外部";
                 options.AllowNone = true;
 
                 var result = ed.GetKeywords(options);
@@ -291,7 +292,16 @@ namespace AddinsACAD.Commands
                     ed.WriteMessage("\n取消裁剪方向选择。");
                     return null;
                 }
-                return result.StringResult == "内部" || string.IsNullOrEmpty(result.StringResult);
+
+                // 减掉外部 = 保留内部 = keepInside = true
+                // 减掉内部 = 保留外部 = keepInside = false
+                if (result.StringResult == "减掉外部")
+                    return true;
+                if (result.StringResult == "减掉内部")
+                    return false;
+
+                // 默认 = 减掉外部（保留内部）
+                return true;
             }
             catch (System.Exception ex)
             {

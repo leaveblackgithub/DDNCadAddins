@@ -133,16 +133,19 @@ namespace AddinsACAD.Commands
         {
             try
             {
-                var options = new PromptKeywordOptions("\n请选择裁剪方向 [内部(N)/外部(W)]: ", "内部 外部");
-                options.Keywords.Add("内部", "内部(N)", "保留边界内部的圆");
-                options.Keywords.Add("外部", "外部(W)", "保留边界外部的圆");
-                options.Keywords.Default = "内部";
+                var options = new PromptKeywordOptions(
+                    "\n请选择裁剪方向 [裁剪内部-保留外部(I)/裁剪外部-保留内部(O)]: ", "裁剪内部 裁剪外部");
+                options.Keywords.Add("裁剪内部", "裁剪内部-保留外部(I)", "裁剪掉边界内部的实体，保留外部");
+                options.Keywords.Add("裁剪外部", "裁剪外部-保留内部(O)", "裁剪掉边界外部的实体，保留内部");
+                options.Keywords.Default = "裁剪外部";
                 options.AllowNone = true;
                 var result = ed.GetKeywords(options);
                 if (result.Status != PromptStatus.OK && result.Status != PromptStatus.Keyword)
                 { ed.WriteMessage("\n取消裁剪方向选择。"); return null; }
-                if (result.StringResult == "内部") return true;
-                if (result.StringResult == "外部") return false;
+                // 裁剪内部 = 保留外部 = keepInside = false
+                // 裁剪外部 = 保留内部 = keepInside = true
+                if (result.StringResult == "裁剪内部") return false;
+                if (result.StringResult == "裁剪外部") return true;
                 return true;
             }
             catch (System.Exception ex)

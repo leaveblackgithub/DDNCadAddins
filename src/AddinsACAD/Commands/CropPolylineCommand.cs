@@ -182,15 +182,16 @@ namespace AddinsACAD.Commands
         /// <summary>
         ///     询问裁剪方向：保留边界内部还是外部.
         /// </summary>
-        /// <returns>true 保留内部，false 保留外部，null 表示取消.</returns>
+        /// <returns>true=裁剪外部（保留内部），false=裁剪内部（保留外部），null=取消.</returns>
         private bool? AskCropDirection(Editor ed)
         {
             try
             {
-                var options = new PromptKeywordOptions("\n请选择裁剪方向 [内部(N)/外部(W)]: ", "内部 外部");
-                options.Keywords.Add("内部", "内部(N)", "保留边界内部的多段线部分");
-                options.Keywords.Add("外部", "外部(W)", "保留边界外部的多段线部分");
-                options.Keywords.Default = "内部";
+                var options = new PromptKeywordOptions(
+                    "\n请选择裁剪方向 [裁剪内部-保留外部(I)/裁剪外部-保留内部(O)]: ", "裁剪内部 裁剪外部");
+                options.Keywords.Add("裁剪内部", "裁剪内部-保留外部(I)", "裁剪掉边界内部的实体，保留外部");
+                options.Keywords.Add("裁剪外部", "裁剪外部-保留内部(O)", "裁剪掉边界外部的实体，保留内部");
+                options.Keywords.Default = "裁剪外部";
                 options.AllowNone = true;
 
                 var result = ed.GetKeywords(options);
@@ -200,16 +201,14 @@ namespace AddinsACAD.Commands
                     return null;
                 }
 
-                if (result.StringResult == "内部")
-                {
-                    return true;
-                }
-                else if (result.StringResult == "外部")
-                {
+                // 裁剪内部 = 保留外部 = keepInside = false
+                // 裁剪外部 = 保留内部 = keepInside = true
+                if (result.StringResult == "裁剪内部")
                     return false;
-                }
+                if (result.StringResult == "裁剪外部")
+                    return true;
 
-                // 默认使用"内部"
+                // 默认 = 裁剪外部（保留内部）
                 return true;
             }
             catch (System.Exception ex)

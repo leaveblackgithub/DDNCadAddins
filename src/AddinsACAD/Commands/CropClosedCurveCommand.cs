@@ -18,7 +18,7 @@ using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 namespace AddinsACAD.Commands
 {
     /// <summary>
-    ///     CROPCLOSEDCURVE — 选择一个或多个被减曲线 A₁...Aₙ（Subjects），再选择一条减去曲线 B（Clip），
+    ///     CROPCLOSEDCURVE — 先选择裁剪边界曲线 B（Clip，单选），再选择被剪曲线 A₁...Aₙ（Subjects，多选），
     ///     根据裁剪方向选择保留外部（差集）或保留内部（交集）.
     ///     支持 Polyline、Circle、Ellipse、Spline.
     ///     <para>
@@ -101,11 +101,11 @@ namespace AddinsACAD.Commands
         /// </summary>
         /// <param name="subjectCurves">Subject 曲线列表.</param>
         /// <param name="clipCurve">Clip 曲线 B.</param>
-        /// <param name="keepOutside">true=保留外部（差集 A\B），false=保留内部（交集 A∩B）.</param>
+        /// <param name="keepInside">true=保留内部（交集 A∩B），false=保留外部（差集 A\B）.</param>
         /// <returns>裁剪计算结果.</returns>
         public static CropResult CropClosedCurveMulti(
             IReadOnlyList<CurveSelection> subjectCurves, CurveSelection clipCurve,
-            bool keepOutside)
+            bool keepInside)
         {
             var result = new CropResult();
             try
@@ -132,17 +132,17 @@ namespace AddinsACAD.Commands
 
                 // 根据方向选择算法
                 ExactSubtractResult subtractResult;
-                if (keepOutside)
+                if (keepInside)
                 {
-                    // 差集 A \ B
-                    var serviceResult = subtractService.SubtractMultiSubject(
+                    // 保留内部 = 交集 A ∩ B
+                    var serviceResult = subtractService.IntersectMultiSubject(
                         subjects, clipCurve.ExactSegments, clipCurve.Boundary);
                     subtractResult = serviceResult.IsSuccess ? serviceResult.Data : null;
                 }
                 else
                 {
-                    // 交集 A ∩ B
-                    var serviceResult = subtractService.IntersectMultiSubject(
+                    // 保留外部 = 差集 A \ B
+                    var serviceResult = subtractService.SubtractMultiSubject(
                         subjects, clipCurve.ExactSegments, clipCurve.Boundary);
                     subtractResult = serviceResult.IsSuccess ? serviceResult.Data : null;
                 }
@@ -171,7 +171,7 @@ namespace AddinsACAD.Commands
                 result.IsSuccess = resultPolyCount > 0;
                 result.PolyCount = resultPolyCount;
                 result.TotalVertices = totalVertices;
-                string directionLabel = keepOutside ? "差集" : "交集";
+                string directionLabel = keepInside ? "减掉外部-保留内部" : "减掉内部-保留外部";
                 result.Message = resultPolyCount > 0
                     ? $"{directionLabel}: {resultPolyCount} 个封闭环，共 {totalVertices} 个顶点"
                     : noResult ? "无结果"
@@ -188,9 +188,9 @@ namespace AddinsACAD.Commands
         /// <summary>
         ///     执行两条闭合曲线的精确裁剪运算（单 Subject 兼容重载）.
         /// </summary>
-        public static CropResult CropClosedCurve(CurveSelection curveA, CurveSelection curveB, bool keepOutside)
+        public static CropResult CropClosedCurve(CurveSelection curveA, CurveSelection curveB, bool keepInside)
         {
-            return CropClosedCurveMulti(new[] { curveA }, curveB, keepOutside);
+            return CropClosedCurveMulti(new[] { curveA }, curveB, keepInside);
         }
 
         [CommandMethod("CROPCLOSEDCURVE")]
@@ -205,8 +205,14 @@ namespace AddinsACAD.Commands
 
                 TestRecorder.CaptureUcs(out var ucsO, out var ucsX, out var ucsY);
 
-                // ── 步骤 1: 选择被减曲线 A₁...Aₙ（Subjects，多选）───────────
-                var subjectIds = SelectClosedCurveEntities(ed, "被减曲线");
+                // ── 步骤 1: 选择裁剪边界曲线 B（Clip，单选）───────────────────
+                var idB = SelectClosedCurveEntity(ed, "B（裁剪边界）");
+                if (idB.IsNull) return;
+                var curveB = CreateCurveSelection(idB);
+                if (curveB == null) { ed.WriteMessage("\n边界曲线 B 转换失败。"); return; }
+
+                // ── 步骤 2: 选择被剪曲线 A₁...Aₙ（Subjects，多选）───────────
+                var subjectIds = SelectClosedCurveEntities(ed, "被剪曲线");
                 if (subjectIds == null || subjectIds.Count == 0) return;
 
                 var subjectCurves = new List<CurveSelection>();
@@ -219,27 +225,21 @@ namespace AddinsACAD.Commands
 
                 if (subjectCurves.Count == 0)
                 {
-                    ed.WriteMessage("\n没有有效的 Subject 曲线。");
+                    ed.WriteMessage("\n没有有效的被剪曲线。");
                     return;
                 }
 
-                ed.WriteMessage($"\n已选择 {subjectCurves.Count} 条被减曲线。");
-
-                // ── 步骤 2: 选择减去曲线 B（Clip，单选）──────────────────────
-                var idB = SelectClosedCurveEntity(ed, "B（裁剪曲线）");
-                if (idB.IsNull) return;
-                var curveB = CreateCurveSelection(idB);
-                if (curveB == null) { ed.WriteMessage("\n曲线 B 转换失败。"); return; }
+                ed.WriteMessage($"\n已选择 {subjectCurves.Count} 条被剪曲线。");
 
                 // ── 步骤 2.5: 询问裁剪方向 ────────────────────────────────
-                bool? keepOutside = this.AskCropMode(ed);
-                if (!keepOutside.HasValue)
+                bool? keepInside = this.AskCropDirection(ed);
+                if (!keepInside.HasValue)
                     return; // 用户取消
 
-                string directionLabel = keepOutside.Value ? "差集（保留外部）" : "交集（保留内部）";
+                string directionLabel = keepInside.Value ? "减掉外部-保留内部" : "减掉内部-保留外部";
 
                 // ── 步骤 3: 精确裁剪运算（调用核心方法）─────────────────────
-                var result = CropClosedCurveMulti(subjectCurves, curveB, keepOutside.Value);
+                var result = CropClosedCurveMulti(subjectCurves, curveB, keepInside.Value);
                 stopwatch.Stop();
 
                 // ── 步骤 4: 输出命令行信息 ──────────────────────────────────
@@ -288,7 +288,7 @@ namespace AddinsACAD.Commands
         }
 
         /// <summary>
-        ///     执行 CROPALLCLOSEDCURVES 命令：自动选择图纸中所有闭合曲线作为 Subject.
+        ///     执行 CROPALLCLOSEDCURVES 命令：先选边界 B，再自动选择所有闭合曲线作为 Subject.
         /// </summary>
         [CommandMethod("CROPALLCLOSEDCURVES")]
         public void ExecuteAll()
@@ -302,7 +302,13 @@ namespace AddinsACAD.Commands
 
                 TestRecorder.CaptureUcs(out var ucsO, out var ucsX, out var ucsY);
 
-                // ── 步骤 1: 自动选择所有闭合曲线（Subjects）─────────────────
+                // ── 步骤 1: 选择裁剪边界曲线 B（Clip，单选）───────────────────
+                var idB = SelectClosedCurveEntity(ed, "B（裁剪边界）");
+                if (idB.IsNull) return;
+                var curveB = CreateCurveSelection(idB);
+                if (curveB == null) { ed.WriteMessage("\n边界曲线 B 转换失败。"); return; }
+
+                // ── 步骤 2: 自动选择所有被剪闭合曲线（Subjects）───────────────
                 ed.WriteMessage("\n正在自动选择图纸中所有闭合曲线...");
                 List<ObjectId> allCurveIds = null;
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
@@ -343,23 +349,17 @@ namespace AddinsACAD.Commands
                     return;
                 }
 
-                ed.WriteMessage($"\n已自动选择 {subjectCurves.Count} 条闭合曲线。");
-
-                // ── 步骤 2: 选择减去曲线 B（Clip，单选）──────────────────────
-                var idB = SelectClosedCurveEntity(ed, "B（裁剪曲线）");
-                if (idB.IsNull) return;
-                var curveB = CreateCurveSelection(idB);
-                if (curveB == null) { ed.WriteMessage("\n曲线 B 转换失败。"); return; }
+                ed.WriteMessage($"\n已自动选择 {subjectCurves.Count} 条被剪曲线。");
 
                 // ── 步骤 2.5: 询问裁剪方向 ────────────────────────────────
-                bool? keepOutside = this.AskCropMode(ed);
-                if (!keepOutside.HasValue)
+                bool? keepInside = this.AskCropDirection(ed);
+                if (!keepInside.HasValue)
                     return;
 
-                string directionLabel = keepOutside.Value ? "差集（保留外部）" : "交集（保留内部）";
+                string directionLabel = keepInside.Value ? "减掉外部-保留内部" : "减掉内部-保留外部";
 
                 // ── 步骤 3: 精确裁剪运算 ───────────────────────────────────
-                var result = CropClosedCurveMulti(subjectCurves, curveB, keepOutside.Value);
+                var result = CropClosedCurveMulti(subjectCurves, curveB, keepInside.Value);
                 stopwatch.Stop();
 
                 // ── 步骤 4: 输出命令行信息 ──────────────────────────────────
@@ -408,39 +408,41 @@ namespace AddinsACAD.Commands
         }
 
         /// <summary>
-        ///     询问裁剪模式：保留外部（差集）还是保留内部（交集）.
+        ///     询问裁剪方向：减掉外部-保留内部，还是减掉内部-保留外部.
         /// </summary>
-        /// <returns>true=保留外部（差集），false=保留内部（交集），null=取消.</returns>
-        private bool? AskCropMode(Editor ed)
+        /// <returns>true=减掉外部（保留内部），false=减掉内部（保留外部），null=取消.</returns>
+        private bool? AskCropDirection(Editor ed)
         {
             try
             {
                 var options = new PromptKeywordOptions(
-                    "\n请选择裁剪模式 [保留外部-差集(N)/保留内部-交集(W)]: ", "差集 交集");
-                options.Keywords.Add("差集", "保留外部-差集(N)", "保留 Subject 中不在 Clip 内的部分");
-                options.Keywords.Add("交集", "保留内部-交集(W)", "保留 Subject 与 Clip 相交的部分");
-                options.Keywords.Default = "差集";
+                    "\n请选择裁剪方向 [减掉外部-保留内部(O)/减掉内部-保留外部(I)]: ", "减掉外部 减掉内部");
+                options.Keywords.Add("减掉外部", "减掉外部-保留内部(O)", "减掉边界外部的实体，保留内部");
+                options.Keywords.Add("减掉内部", "减掉内部-保留外部(I)", "减掉边界内部的实体，保留外部");
+                options.Keywords.Default = "减掉外部";
                 options.AllowNone = true;
 
                 var result = ed.GetKeywords(options);
                 if (result.Status != PromptStatus.OK && result.Status != PromptStatus.Keyword)
                 {
-                    ed.WriteMessage("\n取消裁剪模式选择。");
+                    ed.WriteMessage("\n取消裁剪方向选择。");
                     return null;
                 }
 
-                if (result.StringResult == "差集")
+                // 减掉外部 = 保留内部 = keepInside = true
+                // 减掉内部 = 保留外部 = keepInside = false
+                if (result.StringResult == "减掉外部")
                     return true;
-                if (result.StringResult == "交集")
+                if (result.StringResult == "减掉内部")
                     return false;
 
-                // 默认使用"差集"
+                // 默认 = 减掉外部（保留内部）
                 return true;
             }
             catch (System.Exception ex)
             {
-                Logger._.Error($"询问裁剪模式失败: {ex.Message}", ex);
-                ed.WriteMessage($"\n询问裁剪模式失败: {ex.Message}");
+                Logger._.Error($"询问裁剪方向失败: {ex.Message}", ex);
+                ed.WriteMessage($"\n询问裁剪方向失败: {ex.Message}");
                 return null;
             }
         }

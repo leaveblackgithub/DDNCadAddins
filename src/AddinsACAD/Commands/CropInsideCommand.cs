@@ -19,21 +19,21 @@ namespace AddinsACAD.Commands
     public class CropInsideCommand
     {
         /// <summary>
-        ///     执行 CROPINSIDE 命令：保留边界内部的实体.
+        ///     执行 CROPINSIDE 命令：减掉内部，保留外部.
         /// </summary>
         [CommandMethod("CROPINSIDE")]
         public void Execute()
         {
-            this.ExecuteCrop(keepInside: true);
+            this.ExecuteCrop(keepInside: false);
         }
 
         /// <summary>
-        ///     执行 CROPOUTSIDE 命令：保留边界外部的实体.
+        ///     执行 CROPOUTSIDE 命令：减掉外部，保留内部.
         /// </summary>
         [CommandMethod("CROPOUTSIDE")]
         public void ExecuteOutside()
         {
-            this.ExecuteCrop(keepInside: false);
+            this.ExecuteCrop(keepInside: true);
         }
 
         /// <summary>
