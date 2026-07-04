@@ -103,7 +103,7 @@ namespace AddinsACAD.Commands
                 var capturedBoundaryVerts = boundaryPoints;
                 var capturedHatchIds = hatchIds;
                 var capturedKeepInside = keepInside.Value;
-                string directionLabel = capturedKeepInside ? "内部" : "外部";
+                string directionLabel = capturedKeepInside ? "减掉外部-保留内部" : "减掉内部-保留外部";
 
                 ed.WriteMessage($"\n═══════════════════════════════════════════");
                 ed.WriteMessage($"\n   CROPHATCH 开始 — 裁剪方向: {directionLabel}");
@@ -112,82 +112,72 @@ namespace AddinsACAD.Commands
                 int totalBoundaryEntities = 0;
                 int totalHatchesProcessed = 0;
                 string commandName = selectAllHatches ? "CROPALLHATCHES" : "CROPHATCH";
+                var allGeneratedIds = new List<ObjectId>();
 
-                CadServiceManager._.ExecuteInCommandTransaction(serviceTrans =>
+                // ★ 第一步：调用 GENERATEHATCHBOUNDARY 完整方法生成边界实体
+                foreach (var hatchId in capturedHatchIds)
                 {
-                    try
+                    if (!hatchId.IsValid || hatchId.IsErased)
+                        continue;
+
+                    var genResult = GenerateHatchBoundaryCommand.GenerateHatchBoundary(hatchId);
+                    if (genResult.IsSuccess)
                     {
-                        foreach (var hatchId in capturedHatchIds)
-                        {
-                            if (!hatchId.IsValid || hatchId.IsErased)
-                                continue;
-
-                            // ★ 调用 GenerateHatchBoundary 生成边界实体
-                            var genResult = GenerateHatchBoundaryCommand.GenerateHatchBoundary(hatchId);
-                            if (genResult.IsSuccess)
-                            {
-                                totalBoundaryEntities += genResult.EntityCount;
-                                totalHatchesProcessed++;
-                                ed.WriteMessage($"\n  Hatch {hatchId}: 生成 {genResult.EntityCount} 个边界实体 [{genResult.TypeLog}]");
-                            }
-                            else
-                            {
-                                ed.WriteMessage($"\n  Hatch {hatchId}: 边界生成失败 — {genResult.Message}");
-                            }
-                        }
-
-                        // 构建 TestRecord
-                        var record = new CropTestRecord
-                        {
-                            Command = commandName,
-                            Direction = capturedKeepInside ? "Inside" : "Outside",
-                            IsSuccess = true,
-                            UcsOrigin = ucsOrigin,
-                            UcsXAxis = ucsX,
-                            UcsYAxis = ucsY,
-                            BoundaryVertices = capturedBoundaryVerts,
-                            BoundaryVertexCount = capturedBoundaryVerts.Count,
-                            TotalEntityCount = capturedHatchIds.Count,
-                            DeletedCount = 0,
-                            KeptCount = totalBoundaryEntities,
-                            SkippedCount = capturedHatchIds.Count - totalHatchesProcessed,
-                        };
-
-                        // 采集生成边界实体的快照（需要从模型空间获取所有 Curve）
-                        var generatedEntityIds = new List<ObjectId>();
-                        try
-                        {
-                            var allCurves = serviceTrans.GetChildObjectsFromModelspace<Curve>();
-                            if (allCurves != null)
-                            {
-                                // 排除原有实体，仅保留新生成的边界实体
-                                // 这里简化处理：采集所有 Curve 快照
-                                generatedEntityIds = allCurves;
-                            }
-                        }
-                        catch (System.Exception snapEx)
-                        {
-                            Logger._.Warn($"采集边界实体快照失败: {snapEx.Message}");
-                        }
-
-                        if (generatedEntityIds.Count > 0)
-                        {
-                            record.Entities = ServiceACAD.TestRecorder.CollectSnapshots(
-                                serviceTrans, generatedEntityIds, capturedBoundaryVerts, new CropGeometryService());
-                            record.TotalEntityCount = record.Entities?.Count ?? capturedHatchIds.Count;
-                        }
-
-                        var uid = ServiceACAD.TestRecorder.Record(record);
-                        ed.WriteMessage($"\n[TestRecorder] UID: {uid}");
-
-                        return ServiceACAD.OpResult.Success();
+                        totalBoundaryEntities += genResult.EntityCount;
+                        totalHatchesProcessed++;
+                        allGeneratedIds.AddRange(genResult.GeneratedEntityIds);
+                        ed.WriteMessage($"\n  Hatch {hatchId}: 生成 {genResult.EntityCount} 个边界实体 [{genResult.TypeLog}]");
                     }
-                    catch (System.Exception ex)
+                    else
                     {
-                        Logger._.Error($"ExecuteCropHatch 内部失败: {ex.Message}", ex);
-                        return ServiceACAD.OpResult.Fail($"Hatch 裁剪失败: {ex.Message}");
+                        ed.WriteMessage($"\n  Hatch {hatchId}: 边界生成失败 — {genResult.Message}");
                     }
-                });
+                }
+
+                ed.WriteMessage($"\n  共生成 {allGeneratedIds.Count} 条边界曲线，准备用裁剪边界 B 进行裁剪...");
+
+                // ★ 第二步：调用 CROPCLOSEDCURVE 完整方法执行裁剪
+                //   直接传 ObjectId，内部自动完成 CreateCurveSelection + 计算 + 绘制
+                if (allGeneratedIds.Count > 0)
+                {
+                    var cropResult = CropClosedCurveCommand.CropClosedCurveMulti(
+                        allGeneratedIds, boundaryId, capturedKeepInside);
+
+                    if (cropResult.IsSuccess)
+                        ed.WriteMessage($"\n  CROPCLOSEDCURVE 裁剪完成: {cropResult.Message}");
+                    else
+                        ed.WriteMessage($"\n  CROPCLOSEDCURVE 裁剪: {cropResult.Message}");
+                }
+                else
+                {
+                    ed.WriteMessage("\n  没有有效的边界曲线可供裁剪。");
+                }
+
+                // ── TestRecorder 记录 ──
+                try
+                {
+                    var record = new CropTestRecord
+                    {
+                        Command = commandName,
+                        Direction = capturedKeepInside ? "Inside" : "Outside",
+                        IsSuccess = true,
+                        UcsOrigin = ucsOrigin,
+                        UcsXAxis = ucsX,
+                        UcsYAxis = ucsY,
+                        BoundaryVertices = capturedBoundaryVerts,
+                        BoundaryVertexCount = capturedBoundaryVerts.Count,
+                        TotalEntityCount = capturedHatchIds.Count,
+                        DeletedCount = 0,
+                        KeptCount = totalBoundaryEntities,
+                        SkippedCount = capturedHatchIds.Count - totalHatchesProcessed,
+                    };
+                    var uid = ServiceACAD.TestRecorder.Record(record);
+                    ed.WriteMessage($"\n[TestRecorder] UID: {uid}");
+                }
+                catch (System.Exception recEx)
+                {
+                    Logger._.Warn($"TestRecorder 记录失败: {recEx.Message}");
+                }
 
                 ed.WriteMessage($"\n{'─',50}");
                 ed.WriteMessage($"\n  {commandName} 汇总:");
@@ -197,7 +187,7 @@ namespace AddinsACAD.Commands
                 ed.WriteMessage($"\n  跳过: {capturedHatchIds.Count - totalHatchesProcessed,6}");
                 ed.WriteMessage($"\n{'─',50}");
                 ed.WriteMessage($"\n═══════════════════════════════════════════");
-                ed.WriteMessage($"\n   {commandName} 完成（边界已生成，后续裁剪待确认）");
+                ed.WriteMessage($"\n   {commandName} 完成");
                 ed.WriteMessage($"\n═══════════════════════════════════════════");
             }
             catch (System.Exception ex)

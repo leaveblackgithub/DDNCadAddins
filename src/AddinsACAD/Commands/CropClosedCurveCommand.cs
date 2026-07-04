@@ -96,6 +96,32 @@ namespace AddinsACAD.Commands
         }
 
         /// <summary>
+        ///     执行多条闭合曲线 A₁...Aₙ 与一条闭合曲线 B 的裁剪运算（ObjectId 重载）.
+        ///     核心方法，不包含 UI 交互，可被其他命令或服务调用.
+        ///     内部自动完成 CreateCurveSelection + 计算 + 绘制.
+        /// </summary>
+        /// <param name="subjectCurveIds">Subject 曲线的 ObjectId 列表.</param>
+        /// <param name="clipCurveId">Clip 曲线 B 的 ObjectId.</param>
+        /// <param name="keepInside">true=保留内部（交集 A∩B），false=保留外部（差集 A\B）.</param>
+        /// <returns>裁剪计算结果.</returns>
+        public static CropResult CropClosedCurveMulti(
+            IReadOnlyList<ObjectId> subjectCurveIds, ObjectId clipCurveId,
+            bool keepInside)
+        {
+            // 内部完成 CreateCurveSelection
+            var subjectCurves = new List<CurveSelection>();
+            foreach (var id in subjectCurveIds)
+            {
+                var sel = CreateCurveSelection(id);
+                if (sel != null)
+                    subjectCurves.Add(sel);
+            }
+
+            var clipCurve = CreateCurveSelection(clipCurveId);
+            return CropClosedCurveMulti(subjectCurves, clipCurve, keepInside);
+        }
+
+        /// <summary>
         ///     执行多条闭合曲线 A₁...Aₙ 与一条闭合曲线 B 的裁剪运算.
         ///     核心方法，不包含 UI 交互，可被其他命令或服务调用.
         /// </summary>

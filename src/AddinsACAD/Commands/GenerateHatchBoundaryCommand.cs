@@ -57,6 +57,8 @@ namespace AddinsACAD.Commands
             public int EntityCount { get; set; }
             public string TypeLog { get; set; }
             public string Uid { get; set; }
+            /// <summary>生成的实体 ObjectId 列表.</summary>
+            public List<ObjectId> GeneratedEntityIds { get; set; } = new List<ObjectId>();
         }
 
         /// <summary>
@@ -81,6 +83,8 @@ namespace AddinsACAD.Commands
                 string typeLog = "";
                 string uid = "";
                 TestRecorder.CaptureUcs(out var ucsO, out var ucsX, out var ucsY);
+
+                var generatedIds = new List<ObjectId>();
 
                 CadServiceManager._.ExecuteInTransactions("", ts =>
                 {
@@ -119,6 +123,7 @@ namespace AddinsACAD.Commands
                         var objId = generator.CreateEntityFromLoop(loop, plane, color, hatch.Layer, ts);
                         if (!objId.IsNull)
                         {
+                            generatedIds.Add(objId);
                             entityCount++;
                             typeLog += $"Entity|";
                         }
@@ -144,6 +149,7 @@ namespace AddinsACAD.Commands
                 result.EntityCount = entityCount;
                 result.TypeLog = typeLog;
                 result.Uid = uid;
+                result.GeneratedEntityIds = generatedIds;
             }
             catch (System.Exception ex)
             {
