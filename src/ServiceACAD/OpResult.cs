@@ -1,62 +1,39 @@
-// 此文件已迁移到 DDNCadAddins.Core/Models/OpResult.cs
-// 保留此文件仅为向后兼容，所有新代码应使用 DDNCadAddins.Core.Models.OpResult
-
-using CoreOpResult = DDNCadAddins.Core.Models.OpResult;
-using CoreOpResultGeneric = DDNCadAddins.Core.Models.OpResult<object>;
+// 类型转发 — 所有 OpResult 引用已迁移到 DDNCadAddins.Core.Models.OpResult
+// 此文件仅保留向后兼容的类型别名，新代码应直接使用 Core 层类型
 
 namespace ServiceACAD
 {
-    /// <summary>
-    ///     操作结果（无数据） - 已迁移到 Core 层
-    ///     此类型别名用于向后兼容，所有实现已在 DDNCadAddins.Core.Models.OpResult
-    /// </summary>
-    public class OpResult : CoreOpResult
+    /// <summary>向后兼容类型别名，委托到 <see cref="DDNCadAddins.Core.Models.OpResult"/>.</summary>
+    public class OpResult : DDNCadAddins.Core.Models.OpResult
     {
-        public OpResult() : base()
-        {
-        }
-
-        public OpResult(bool isSuccess, string message) : base(isSuccess, message)
-        {
-        }
-
+        public OpResult() : base() { }
+        public OpResult(bool isSuccess, string message) : base(isSuccess, message) { }
         public new static OpResult Success(string message = "")
         {
-            var result = CoreOpResult.Success(message);
-            return new OpResult(result.IsSuccess, result.Message);
+            var r = DDNCadAddins.Core.Models.OpResult.Success(message);
+            return new OpResult(r.IsSuccess, r.Message);
         }
-
         public new static OpResult Fail(string message)
         {
-            var result = CoreOpResult.Fail(message);
-            return new OpResult(result.IsSuccess, result.Message);
+            var r = DDNCadAddins.Core.Models.OpResult.Fail(message);
+            return new OpResult(r.IsSuccess, r.Message);
         }
     }
 
-    /// <summary>
-    ///     操作结果（带数据） - 已迁移到 Core 层
-    ///     此类型别名用于向后兼容，所有实现已在 DDNCadAddins.Core.Models.OpResult&lt;T&gt;
-    /// </summary>
+    /// <summary>向后兼容类型别名，委托到 <see cref="DDNCadAddins.Core.Models.OpResult{T}"/>.</summary>
     public class OpResult<T> : DDNCadAddins.Core.Models.OpResult<T>
     {
-        public OpResult() : base()
-        {
-        }
-
-        public OpResult(bool isSuccess, string message, T data) : base(isSuccess, message, data)
-        {
-        }
-
+        public OpResult() : base() { }
+        public OpResult(bool isSuccess, string message, T data) : base(isSuccess, message, data) { }
         public new static OpResult<T> Success(T data, string message = "")
         {
-            var result = DDNCadAddins.Core.Models.OpResult<T>.Success(data, message);
-            return new OpResult<T>(result.IsSuccess, result.Message, result.Data);
+            var r = DDNCadAddins.Core.Models.OpResult<T>.Success(data, message);
+            return new OpResult<T>(r.IsSuccess, r.Message, r.Data);
         }
-
         public new static OpResult<T> Fail(string message)
         {
-            var result = DDNCadAddins.Core.Models.OpResult<T>.Fail(message);
-            return new OpResult<T>(result.IsSuccess, result.Message, result.Data);
+            var r = DDNCadAddins.Core.Models.OpResult<T>.Fail(message);
+            return new OpResult<T>(r.IsSuccess, r.Message, r.Data);
         }
     }
 }

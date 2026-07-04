@@ -785,41 +785,16 @@ namespace DDNCadAddins.Core.Services
         private bool TrySegmentIntersection(
             Point2D p1, Point2D p2, Point2D p3, Point2D p4, out Point2D intersection)
         {
-            intersection = default(Point2D);
-
-            var dx1 = p2.X - p1.X;
-            var dy1 = p2.Y - p1.Y;
-            var dx2 = p4.X - p3.X;
-            var dy2 = p4.Y - p3.Y;
-
-            var denominator = (dx1 * dy2) - (dy1 * dx2);
-            if (Math.Abs(denominator) < 1e-12)
-                return false;
-
-            var t = ((p3.X - p1.X) * dy2 - (p3.Y - p1.Y) * dx2) / denominator;
-            var u = ((p3.X - p1.X) * dy1 - (p3.Y - p1.Y) * dx1) / denominator;
-
-            if (t < -1e-12 || t > 1.0 + 1e-12 || u < -1e-12 || u > 1.0 + 1e-12)
-                return false;
-
-            intersection = new Point2D(p1.X + (t * dx1), p1.Y + (t * dy1));
-            return true;
+            return this.TrySegmentIntersectionParametric(p1, p2, p3, p4, out _, out intersection);
         }
 
         private Point2D LineLineIntersection(Point2D p1, Point2D p2, Point2D p3, Point2D p4)
         {
-            var dx1 = p2.X - p1.X;
-            var dy1 = p2.Y - p1.Y;
-            var dx2 = p4.X - p3.X;
-            var dy2 = p4.Y - p3.Y;
-
-            var denominator = (dx1 * dy2) - (dy1 * dx2);
-
-            if (Math.Abs(denominator) < 1e-12)
-                return new Point2D((p2.X + p1.X) / 2.0, (p2.Y + p1.Y) / 2.0);
-
-            var t = ((p3.X - p1.X) * dy2 - (p3.Y - p1.Y) * dx2) / denominator;
-            return new Point2D(p1.X + (t * dx1), p1.Y + (t * dy1));
+            // 委托给 TrySegmentIntersectionParametric，忽略线段范围检查
+            if (this.TrySegmentIntersectionParametric(p1, p2, p3, p4, out _, out var pt))
+                return pt;
+            // 平行线返回中点
+            return new Point2D((p2.X + p1.X) / 2.0, (p2.Y + p1.Y) / 2.0);
         }
 
         private static IReadOnlyList<Point2D> EnsureCCW(IReadOnlyList<Point2D> polygon)

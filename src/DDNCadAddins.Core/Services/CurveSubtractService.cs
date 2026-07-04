@@ -160,40 +160,8 @@ namespace DDNCadAddins.Core.Services
                 }
             }
 
-            // 按 t 排序
-            cutPoints.Sort((a, b) => a.Key.CompareTo(b.Key));
-
-            // 去重
-            var uniqueCutPoints = new List<KeyValuePair<double, Point2D>>();
-            foreach (var cp in cutPoints)
-            {
-                if (uniqueCutPoints.Count == 0 ||
-                    cp.Key - uniqueCutPoints[uniqueCutPoints.Count - 1].Key > Tol)
-                    uniqueCutPoints.Add(cp);
-            }
-
-            // 构建切分节点列表：起点, 交点1, 交点2, ..., 终点
-            var nodes = new List<(double t, Point2D pt)>();
-            nodes.Add((0.0, edge.Start));
-            foreach (var cp in uniqueCutPoints)
-                nodes.Add((cp.Key, cp.Value));
-            nodes.Add((1.0, edge.End));
-
-            // 逐子段生成 ExactSegment，使用精确交点坐标作为端点
-            var result = new List<ExactSegment>();
-            for (int i = 0; i < nodes.Count - 1; i++)
-            {
-                double tStart = nodes[i].t;
-                double tEnd = nodes[i + 1].t;
-                if (tEnd - tStart < Tol) continue;
-
-                var subSegment = CreateSubSegmentWithEndpoints(
-                    edge, tStart, tEnd, nodes[i].pt, nodes[i + 1].pt);
-                if (subSegment != null)
-                    result.Add(subSegment);
-            }
-
-            return result;
+            // 公共处理：排序、去重、构建节点、生成子段
+            return BuildSubSegmentsFromCutPoints(edge, cutPoints);
         }
 
         /// <summary>
@@ -217,70 +185,30 @@ namespace DDNCadAddins.Core.Services
 
             // 在角度空间均匀采样，用于求交
             const int angleSamples = 64;
-            var edgePoints = new List<Point2D>(angleSamples + 1);
-
-            for (int i = 0; i <= angleSamples; i++)
-            {
-                double t = (double)i / angleSamples;
-                double angle = edge.ArcStartAngle + dir * fullSpan * t;
-                edgePoints.Add(new Point2D(
-                    edge.ArcCenter.X + edge.ArcRadius * Math.Cos(angle),
-                    edge.ArcCenter.Y + edge.ArcRadius * Math.Sin(angle)));
-            }
-
-            // 收集交点：按角度参数 t 排序的 (t, 交点坐标) 对
             var cutPoints = new List<KeyValuePair<double, Point2D>>();
 
             for (int i = 0; i < angleSamples; i++)
             {
-                var p1 = edgePoints[i];
-                var p2 = edgePoints[i + 1];
+                double t = (double)i / angleSamples;
+                double angle = edge.ArcStartAngle + dir * fullSpan * t;
+                double nextAngle = edge.ArcStartAngle + dir * fullSpan * ((double)(i + 1) / angleSamples);
+                var p1 = new Point2D(
+                    edge.ArcCenter.X + edge.ArcRadius * Math.Cos(angle),
+                    edge.ArcCenter.Y + edge.ArcRadius * Math.Sin(angle));
+                var p2 = new Point2D(
+                    edge.ArcCenter.X + edge.ArcRadius * Math.Cos(nextAngle),
+                    edge.ArcCenter.Y + edge.ArcRadius * Math.Sin(nextAngle));
                 var intersections = boundary.FindLineIntersections(p1, p2);
 
                 foreach (var ix in intersections)
                 {
-                    // 直接计算交点在圆弧上的精确角度参数
-                    double angleT = ComputeArcIntersectionParam(
-                        edge, ix, dir, fullSpan);
+                    double angleT = ComputeArcIntersectionParam(edge, ix, dir, fullSpan);
                     if (angleT > Tol && angleT < 1.0 - Tol)
                         cutPoints.Add(new KeyValuePair<double, Point2D>(angleT, ix));
                 }
             }
 
-            // 按 t 排序
-            cutPoints.Sort((a, b) => a.Key.CompareTo(b.Key));
-
-            // 去重
-            var uniqueCutPoints = new List<KeyValuePair<double, Point2D>>();
-            foreach (var cp in cutPoints)
-            {
-                if (uniqueCutPoints.Count == 0 ||
-                    cp.Key - uniqueCutPoints[uniqueCutPoints.Count - 1].Key > Tol)
-                    uniqueCutPoints.Add(cp);
-            }
-
-            // 构建切分节点列表：起点, 交点1, 交点2, ..., 终点
-            var nodes = new List<(double t, Point2D pt)>();
-            nodes.Add((0.0, edge.Start));
-            foreach (var cp in uniqueCutPoints)
-                nodes.Add((cp.Key, cp.Value));
-            nodes.Add((1.0, edge.End));
-
-            // 逐子段生成 ExactSegment，使用精确交点坐标作为端点
-            var result = new List<ExactSegment>();
-            for (int i = 0; i < nodes.Count - 1; i++)
-            {
-                double tStart = nodes[i].t;
-                double tEnd = nodes[i + 1].t;
-                if (tEnd - tStart < Tol) continue;
-
-                var subSegment = CreateSubSegmentWithEndpoints(
-                    edge, tStart, tEnd, nodes[i].pt, nodes[i + 1].pt);
-                if (subSegment != null)
-                    result.Add(subSegment);
-            }
-
-            return result;
+            return BuildSubSegmentsFromCutPoints(edge, cutPoints);
         }
 
         /// <summary>
@@ -332,78 +260,39 @@ namespace DDNCadAddins.Core.Services
             if (fullSpan < 0) fullSpan += 2.0 * Math.PI;
 
             double dir = edge.EllipseIsClockwise ? -1.0 : 1.0;
-
             double cosRot = Math.Cos(edge.EllipseRotation);
             double sinRot = Math.Sin(edge.EllipseRotation);
 
             // 在角度空间均匀采样，用于求交
             const int angleSamples = 128;
-            var edgePoints = new List<Point2D>(angleSamples + 1);
-
-            for (int i = 0; i <= angleSamples; i++)
-            {
-                double t = (double)i / angleSamples;
-                double angle = edge.EllipseStartAngle + dir * fullSpan * t;
-                double lx = edge.EllipseMajorRadius * Math.Cos(angle);
-                double ly = edge.EllipseMinorRadius * Math.Sin(angle);
-                edgePoints.Add(new Point2D(
-                    edge.EllipseCenter.X + lx * cosRot - ly * sinRot,
-                    edge.EllipseCenter.Y + lx * sinRot + ly * cosRot));
-            }
-
-            // 收集交点：按角度参数 t 排序的 (t, 交点坐标) 对
             var cutPoints = new List<KeyValuePair<double, Point2D>>();
 
             for (int i = 0; i < angleSamples; i++)
             {
-                var p1 = edgePoints[i];
-                var p2 = edgePoints[i + 1];
+                double t = (double)i / angleSamples;
+                double angle = edge.EllipseStartAngle + dir * fullSpan * t;
+                double nextAngle = edge.EllipseStartAngle + dir * fullSpan * ((double)(i + 1) / angleSamples);
+                double lx = edge.EllipseMajorRadius * Math.Cos(angle);
+                double ly = edge.EllipseMinorRadius * Math.Sin(angle);
+                double nx = edge.EllipseMajorRadius * Math.Cos(nextAngle);
+                double ny = edge.EllipseMinorRadius * Math.Sin(nextAngle);
+                var p1 = new Point2D(
+                    edge.EllipseCenter.X + lx * cosRot - ly * sinRot,
+                    edge.EllipseCenter.Y + lx * sinRot + ly * cosRot);
+                var p2 = new Point2D(
+                    edge.EllipseCenter.X + nx * cosRot - ny * sinRot,
+                    edge.EllipseCenter.Y + nx * sinRot + ny * cosRot);
                 var intersections = boundary.FindLineIntersections(p1, p2);
 
                 foreach (var ix in intersections)
                 {
-                    // 直接计算交点在椭圆弧上的精确角度参数
-                    double angleT = ComputeEllipseIntersectionParam(
-                        edge, ix, cosRot, sinRot, dir, fullSpan);
+                    double angleT = ComputeEllipseIntersectionParam(edge, ix, cosRot, sinRot, dir, fullSpan);
                     if (angleT > Tol && angleT < 1.0 - Tol)
                         cutPoints.Add(new KeyValuePair<double, Point2D>(angleT, ix));
                 }
             }
 
-            // 按 t 排序
-            cutPoints.Sort((a, b) => a.Key.CompareTo(b.Key));
-
-            // 去重
-            var uniqueCutPoints = new List<KeyValuePair<double, Point2D>>();
-            foreach (var cp in cutPoints)
-            {
-                if (uniqueCutPoints.Count == 0 ||
-                    cp.Key - uniqueCutPoints[uniqueCutPoints.Count - 1].Key > Tol)
-                    uniqueCutPoints.Add(cp);
-            }
-
-            // 构建切分节点列表：起点, 交点1, 交点2, ..., 终点
-            var nodes = new List<(double t, Point2D pt)>();
-            nodes.Add((0.0, edge.Start));
-            foreach (var cp in uniqueCutPoints)
-                nodes.Add((cp.Key, cp.Value));
-            nodes.Add((1.0, edge.End));
-
-            // 逐子段生成 ExactSegment，使用精确交点坐标作为端点
-            var result = new List<ExactSegment>();
-            for (int i = 0; i < nodes.Count - 1; i++)
-            {
-                double tStart = nodes[i].t;
-                double tEnd = nodes[i + 1].t;
-                if (tEnd - tStart < Tol) continue;
-
-                var subSegment = CreateSubSegmentWithEndpoints(
-                    edge, tStart, tEnd, nodes[i].pt, nodes[i + 1].pt);
-                if (subSegment != null)
-                    result.Add(subSegment);
-            }
-
-            return result;
+            return BuildSubSegmentsFromCutPoints(edge, cutPoints);
         }
 
         /// <summary>
@@ -465,6 +354,53 @@ namespace DDNCadAddins.Core.Services
             int totalSegs = edgePoints.Count - 1;
             double globalT = (segIndex + localT) / totalSegs;
             return Math.Max(0.0, Math.Min(1.0, globalT));
+        }
+
+        /// <summary>
+        ///     公共方法：对收集的切分点进行排序、去重、构建节点列表、生成子段.
+        ///     被 <see cref="SplitEdgeByBoundary"/>、<see cref="SplitArcEdgeByBoundary"/>
+        ///     和 <see cref="SplitEllipseEdgeByBoundary"/> 共享.
+        /// </summary>
+        /// <param name="edge">原始边.</param>
+        /// <param name="cutPoints">未排序的切分点列表（t, 交点坐标）.</param>
+        /// <returns>子段列表.</returns>
+        private List<ExactSegment> BuildSubSegmentsFromCutPoints(
+            ExactSegment edge, List<KeyValuePair<double, Point2D>> cutPoints)
+        {
+            // 按 t 排序
+            cutPoints.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+            // 去重
+            var uniqueCutPoints = new List<KeyValuePair<double, Point2D>>();
+            foreach (var cp in cutPoints)
+            {
+                if (uniqueCutPoints.Count == 0 ||
+                    cp.Key - uniqueCutPoints[uniqueCutPoints.Count - 1].Key > Tol)
+                    uniqueCutPoints.Add(cp);
+            }
+
+            // 构建切分节点列表：起点, 交点1, 交点2, ..., 终点
+            var nodes = new List<(double t, Point2D pt)>();
+            nodes.Add((0.0, edge.Start));
+            foreach (var cp in uniqueCutPoints)
+                nodes.Add((cp.Key, cp.Value));
+            nodes.Add((1.0, edge.End));
+
+            // 逐子段生成 ExactSegment，使用精确交点坐标作为端点
+            var result = new List<ExactSegment>();
+            for (int i = 0; i < nodes.Count - 1; i++)
+            {
+                double tStart = nodes[i].t;
+                double tEnd = nodes[i + 1].t;
+                if (tEnd - tStart < Tol) continue;
+
+                var subSegment = CreateSubSegmentWithEndpoints(
+                    edge, tStart, tEnd, nodes[i].pt, nodes[i + 1].pt);
+                if (subSegment != null)
+                    result.Add(subSegment);
+            }
+
+            return result;
         }
 
         /// <summary>

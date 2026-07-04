@@ -207,7 +207,7 @@ namespace AddinsACAD.Commands
                     }
 
                     // 采样多边形（用于 TestRecorder 记录）
-                    var polygon = CurveConverter.ConvertToPolygon(curve);
+                    var polygon = new CurveToPolygonConverter().ConvertCurveToPolygon(curve);
                     if (polygon == null || polygon.Count < 3)
                     {
                         ed.WriteMessage($"\n曲线 {label} 多边形转换失败（顶点 < 3）。");

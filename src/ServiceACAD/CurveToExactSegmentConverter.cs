@@ -53,49 +53,13 @@ namespace ServiceACAD
 
         /// <summary>
         ///     将闭合 Curve 转换为 ICropBoundary（用于精确求交和包含测试）.
+        ///     委托给 <see cref="CropBoundaryFactory.CreateFromCurve"/> 实现.
         /// </summary>
         /// <param name="curve">闭合曲线.</param>
         /// <returns>裁剪边界；转换失败返回 null.</returns>
         public static ICropBoundary ConvertToCropBoundary(Curve curve)
         {
-            if (curve == null || !curve.Closed)
-                return null;
-
-            try
-            {
-                if (curve is Circle circle)
-                {
-                    return new CircleCropBoundary(
-                        new Point2D(circle.Center.X, circle.Center.Y),
-                        circle.Radius);
-                }
-
-                if (curve is Ellipse ellipse)
-                {
-                    var majorAxis = ellipse.MajorAxis;
-                    double rotation = Math.Atan2(majorAxis.Y, majorAxis.X);
-                    return new EllipseCropBoundary(
-                        new Point2D(ellipse.Center.X, ellipse.Center.Y),
-                        majorAxis.Length,
-                        ellipse.MinorRadius,
-                        rotation);
-                }
-
-                // Polyline / Spline → 多边形边界
-                var polygon = CurveConverter.ConvertToPolygon(curve);
-                if (polygon == null || polygon.Count < 3)
-                    return null;
-
-                var pts = new List<Point2D>(polygon.Count);
-                foreach (var pt in polygon)
-                    pts.Add(new Point2D(pt.X, pt.Y));
-
-                return new PolygonCropBoundary(pts);
-            }
-            catch
-            {
-                return null;
-            }
+            return CropBoundaryFactory.CreateFromCurve(curve);
         }
 
         // ──────────────────────────────────────────────────────────────
@@ -238,7 +202,7 @@ namespace ServiceACAD
 
         private static List<ExactSegment> ConvertBySampling(Curve curve)
         {
-            var polygon = CurveConverter.ConvertToPolygon(curve);
+            var polygon = new CurveToPolygonConverter().ConvertCurveToPolygon(curve);
             if (polygon == null || polygon.Count < 3)
                 return null;
 
