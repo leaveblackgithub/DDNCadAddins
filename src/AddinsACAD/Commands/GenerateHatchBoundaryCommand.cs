@@ -25,16 +25,67 @@ namespace AddinsACAD.Commands
                 var hatchId = this.SelectSingleHatch(ed);
                 if (hatchId.IsNull) return;
 
+                var result = GenerateHatchBoundary(hatchId);
+
+                if (result.IsSuccess)
+                {
+                    ed.WriteMessage($"\n生成完成：{result.LoopCount} 个环，{result.EntityCount} 个实体 [{result.TypeLog}]");
+                    if (!string.IsNullOrEmpty(result.Uid))
+                        ed.WriteMessage($"\n[TestRecorder] UID: {result.Uid}");
+                }
+                else
+                {
+                    ed.WriteMessage($"\n{result.Message}");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                var doc = Application.DocumentManager.MdiActiveDocument;
+                doc.Editor.WriteMessage($"\nGENERATEHATCHBOUNDARY 失败: {ex.Message}");
+                Logger._.Error($"GENERATEHATCHBOUNDARY 失败: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        ///     生成 Hatch 边界结果.
+        /// </summary>
+        public sealed class GenerateHatchBoundaryResult
+        {
+            public bool IsSuccess { get; set; }
+            public string Message { get; set; }
+            public int LoopCount { get; set; }
+            public int EntityCount { get; set; }
+            public string TypeLog { get; set; }
+            public string Uid { get; set; }
+        }
+
+        /// <summary>
+        ///     核心方法：根据 Hatch ObjectId 提取所有环的边界并生成实体.
+        ///     不包含 UI 交互，可被其他命令或服务调用.
+        /// </summary>
+        /// <param name="hatchId">Hatch 实体的 ObjectId.</param>
+        /// <returns>生成结果.</returns>
+        public static GenerateHatchBoundaryResult GenerateHatchBoundary(ObjectId hatchId)
+        {
+            var result = new GenerateHatchBoundaryResult();
+            try
+            {
+                if (hatchId.IsNull || hatchId.IsErased)
+                {
+                    result.Message = "Hatch 无效或已被删除。";
+                    return result;
+                }
+
                 int loopCount = 0;
                 int entityCount = 0;
-                string uid = "";
                 string typeLog = "";
+                string uid = "";
                 TestRecorder.CaptureUcs(out var ucsO, out var ucsX, out var ucsY);
 
                 CadServiceManager._.ExecuteInTransactions("", ts =>
                 {
                     var hatch = ts.GetObject<Hatch>(hatchId, OpenMode.ForRead);
-                    if (hatch == null) { ed.WriteMessage("\n无法打开 Hatch。"); return; }
+                    if (hatch == null) { result.Message = "无法打开 Hatch。"; return; }
 
                     var plane = new Plane(
                         Point3d.Origin + hatch.Normal * hatch.Elevation,
@@ -47,15 +98,14 @@ namespace AddinsACAD.Commands
                     switch (style)
                     {
                         case HatchStyle.Ignore:
-                            loopStart = 0; loopEnd = 1; break;        // 仅最外层
+                            loopStart = 0; loopEnd = 1; break;
                         case HatchStyle.Outer:
-                            loopStart = 0; loopEnd = Math.Min(2, loopCount); break; // 外侧两个环
-                        default: // NORMAL
-                            loopStart = 0; loopEnd = loopCount; break; // 所有环
+                            loopStart = 0; loopEnd = Math.Min(2, loopCount); break;
+                        default:
+                            loopStart = 0; loopEnd = loopCount; break;
                     }
                     typeLog += $"Style={style}|";
 
-                    // 使用 CurveToPolygonConverter 统一处理每个环
                     var generator = new CurveToPolygonConverter();
 
                     for (int li = loopStart; li < loopEnd; li++)
@@ -86,17 +136,21 @@ namespace AddinsACAD.Commands
                         Entities = new List<CropEntitySnapshot>(),
                     };
                     uid = TestRecorder.Record(record);
-                    ed.WriteMessage($"\n[TestRecorder] UID: {uid}");
                 });
 
-                ed.WriteMessage($"\n生成完成：{loopCount} 个环，{entityCount} 个实体 [{typeLog}]");
+                result.IsSuccess = true;
+                result.Message = "生成完成";
+                result.LoopCount = loopCount;
+                result.EntityCount = entityCount;
+                result.TypeLog = typeLog;
+                result.Uid = uid;
             }
             catch (System.Exception ex)
             {
-                var doc = Application.DocumentManager.MdiActiveDocument;
-                doc.Editor.WriteMessage($"\nGENERATEHATCHBOUNDARY 失败: {ex.Message}");
                 Logger._.Error($"GENERATEHATCHBOUNDARY 失败: {ex.Message}", ex);
+                result.Message = $"GENERATEHATCHBOUNDARY 失败: {ex.Message}";
             }
+            return result;
         }
 
         private ObjectId SelectSingleHatch(Editor ed)

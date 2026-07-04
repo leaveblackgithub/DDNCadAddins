@@ -8,6 +8,7 @@ using Autodesk.AutoCAD.Runtime;
 using DDNCadAddins.Core.Interfaces;
 using DDNCadAddins.Core.Models;
 using ServiceACAD;
+using CoreOpResult = DDNCadAddins.Core.Models.OpResult;
 using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 
 [assembly: CommandClass(typeof(AddinsACAD.Commands.CloneHatchCommand))]
@@ -22,7 +23,7 @@ namespace AddinsACAD.Commands
     /// </summary>
     public class CloneHatchCommand
     {
-        private struct HatchParams
+        public struct HatchParams
         {
             public HatchPatternType PatternType;
             public string PatternName;
@@ -34,6 +35,39 @@ namespace AddinsACAD.Commands
             public HatchStyle Style;
             public Vector3d Normal;
             public double Elevation;
+        }
+
+        /// <summary>
+        ///     提取源 Hatch 的填充参数.
+        ///     核心方法，不包含 UI 交互，可被其他命令或服务调用.
+        /// </summary>
+        /// <param name="hatchId">源 Hatch 的 ObjectId.</param>
+        /// <returns>包含 HatchParams 的操作结果.</returns>
+        public static ServiceACAD.OpResult<HatchParams> ExtractHatchParams(ObjectId hatchId)
+        {
+            var result = new HatchParams();
+            var gotParams = false;
+            CadServiceManager._.ExecuteInTransactions("", ts =>
+            {
+                var src = ts.GetObject<Hatch>(hatchId, OpenMode.ForRead);
+                if (src == null || src.IsErased) return;
+
+                result.PatternType   = src.PatternType;
+                result.PatternName   = src.PatternName;
+                result.PatternScale  = src.PatternScale;
+                result.PatternAngle  = src.PatternAngle;
+                result.PatternDouble = src.PatternDouble;
+                result.PatternSpace  = src.PatternSpace;
+                result.Origin        = src.Origin;
+                result.Style         = src.HatchStyle;
+                result.Normal        = src.Normal;
+                result.Elevation     = src.Elevation;
+                gotParams            = true;
+            });
+
+            if (!gotParams)
+                return ServiceACAD.OpResult<HatchParams>.Fail("源 Hatch 无效或已被删除。");
+            return ServiceACAD.OpResult<HatchParams>.Success(result);
         }
 
         [CommandMethod("CLONEHATCH")]
@@ -64,42 +98,23 @@ namespace AddinsACAD.Commands
 
                 var sourceId = per.ObjectId;
 
-                // Step 2: 在只读事务中提取并输出参数
-                var p = new HatchParams();
-                var gotParams = false;
-                CadServiceManager._.ExecuteInTransactions("", ts =>
+                // Step 2: 提取源 Hatch 参数（调用核心方法）
+                var extractResult = ExtractHatchParams(sourceId);
+                if (!extractResult.IsSuccess)
                 {
-                    var src = ts.GetObject<Hatch>(sourceId, OpenMode.ForRead);
-                    if (src == null || src.IsErased)
-                    {
-                        ed.WriteMessage("\n源 Hatch 无效或已被删除。");
-                        return;
-                    }
-
-                    p.PatternType   = src.PatternType;
-                    p.PatternName   = src.PatternName;
-                    p.PatternScale  = src.PatternScale;
-                    p.PatternAngle  = src.PatternAngle;
-                    p.PatternDouble = src.PatternDouble;
-                    p.PatternSpace  = src.PatternSpace;
-                    p.Origin        = src.Origin;
-                    p.Style         = src.HatchStyle;
-                    p.Normal        = src.Normal;
-                    p.Elevation     = src.Elevation;
-                    gotParams       = true;
-
-                    ed.WriteMessage(
-                        $"\n源 Hatch 参数：\n" +
-                        $"  PATTERN  = {src.PatternName} ({src.PatternType})\n" +
-                        $"  比例     = {src.PatternScale}\n" +
-                        $"  原点     = ({src.Origin.X:F4}, {src.Origin.Y:F4})\n" +
-                        $"  角度     = {src.PatternAngle:F6} rad ({src.PatternAngle * 180.0 / Math.PI:F2}°)\n" +
-                        $"  双向填充 = {src.PatternDouble}\n" +
-                        $"  间距     = {src.PatternSpace}");
-                });
-
-                if (!gotParams)
+                    ed.WriteMessage($"\n{extractResult.Message}");
                     return;
+                }
+
+                var p = extractResult.Data;
+                ed.WriteMessage(
+                    $"\n源 Hatch 参数：\n" +
+                    $"  PATTERN  = {p.PatternName} ({p.PatternType})\n" +
+                    $"  比例     = {p.PatternScale}\n" +
+                    $"  原点     = ({p.Origin.X:F4}, {p.Origin.Y:F4})\n" +
+                    $"  角度     = {p.PatternAngle:F6} rad ({p.PatternAngle * 180.0 / Math.PI:F2}°)\n" +
+                    $"  双向填充 = {p.PatternDouble}\n" +
+                    $"  间距     = {p.PatternSpace}");
 
                 // Step 3: 选取新边界对象（可多选）
                 var pso = new PromptSelectionOptions
@@ -127,8 +142,7 @@ namespace AddinsACAD.Commands
                 {
                     try
                     {
-                        // 4a: 重新生成 Hatch（应用源参数），替代深克隆
-                        var created = CloneHatchWithNewBoundaries(ts, sourceId, p, boundaryIds, ed, out newHatchId);
+                        var created = CloneHatchWithNewBoundaries(ts, p, boundaryIds, out newHatchId);
                         if (created)
                             ed.WriteMessage(
                                 $"\n已用源参数填充新边界：PATTERN={p.PatternName}, 比例={p.PatternScale}, " +
@@ -136,7 +150,6 @@ namespace AddinsACAD.Commands
 
                         isSuccess = created;
 
-                        // 4b: 采集源 Hatch + 新创建 Hatch 的几何快照（同一事务内）
                         record = new CropTestRecord
                         {
                             Command   = "CLONEHATCH",
@@ -197,18 +210,16 @@ namespace AddinsACAD.Commands
 
         /// <summary>
         ///     重新生成 Hatch（不深克隆），应用源 Hatch 的填充参数 + 新边界。
-        ///     用 new Hatch() + SetHatchPattern 替代 source.Clone()，避免深克隆开销。
+        ///     核心方法，不包含 UI 交互，可被其他命令或服务调用.
         /// </summary>
         /// <param name="ts">事务服务.</param>
-        /// <param name="sourceId">源 Hatch 的 ObjectId（仅用于读取参数，已由调用方提取到 HatchParams 中）.</param>
         /// <param name="p">源 Hatch 提取的填充参数.</param>
         /// <param name="boundaryIds">新边界对象的 ObjectId 数组.</param>
-        /// <param name="ed">编辑器（用于输出提示）.</param>
         /// <param name="newHatchId">[out] 新创建的 Hatch 的 ObjectId.</param>
         /// <returns>是否成功创建填充.</returns>
-        private static bool CloneHatchWithNewBoundaries(
-            ITransactionService ts, ObjectId sourceId, HatchParams p,
-            ObjectId[] boundaryIds, Editor ed, out ObjectId newHatchId)
+        public static bool CloneHatchWithNewBoundaries(
+            ITransactionService ts, HatchParams p,
+            ObjectId[] boundaryIds, out ObjectId newHatchId)
         {
             newHatchId = ObjectId.Null;
 
@@ -229,7 +240,7 @@ namespace AddinsACAD.Commands
                 // 2. 加入数据库
                 if (ts.AppendEntityToCurrentSpace(hatch).IsNull)
                 {
-                    ed.WriteMessage("\n无法将填充加入数据库。");
+                    Logger._.Warn("CloneHatch: 无法将填充加入数据库。");
                     hatch.Dispose();
                     return false;
                 }
@@ -278,7 +289,7 @@ namespace AddinsACAD.Commands
 
                 if (appended == 0)
                 {
-                    ed.WriteMessage("\n所选对象均不是有效的闭合边界。");
+                    Logger._.Warn("CloneHatch: 所选对象均不是有效的闭合边界。");
                     hatch.Erase();
                     newHatchId = ObjectId.Null;
                     return false;
