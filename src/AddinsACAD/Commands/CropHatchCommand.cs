@@ -662,24 +662,15 @@ namespace AddinsACAD.Commands
 
                 // Step 2: 构建包含矩阵，计算 depth = 被包含次数
                 //    同形检测：面积近似相等（差 < 1e-8）则视为 siblings，不建立包含关系
-                //    测试点使用所有顶点的平均坐标（质心），比单个顶点更稳健，
-                //    避免顶点恰好落在另一个多边形边界上导致射线法误判.
+                //    使用多顶点投票法：测试多个顶点是否在另一个多边形内部，
+                //    多数在内则判定为包含。比单顶点或质心更稳健：
+                //    - 单顶点可能恰好落在边界上 → 误判
+                //    - 质心对非凸形状（如裁剪后的弧形）可能落在多边形外部 → 误判
+                //    - 多顶点投票法即使个别顶点在边界上，多数投票仍能正确判断
                 const double areaTol = 1e-8;
                 for (int i = 0; i < n; i++)
                 {
                     if (plineCache[i] == null) continue;
-
-                    // 计算顶点平均坐标作为测试点
-                    double cx = 0, cy = 0;
-                    int vCount = plineCache[i].NumberOfVertices;
-                    for (int v = 0; v < vCount; v++)
-                    {
-                        var pt = plineCache[i].GetPoint3dAt(v);
-                        cx += pt.X;
-                        cy += pt.Y;
-                    }
-                    if (vCount > 0) { cx /= vCount; cy /= vCount; }
-                    var testPt = new Point3d(cx, cy, 0);
 
                     for (int j = 0; j < n; j++)
                     {
@@ -688,7 +679,19 @@ namespace AddinsACAD.Commands
                         // 同形检测：面积近似相等则视为 siblings
                         if (Math.Abs(areas[i] - areas[j]) < areaTol) continue;
 
-                        if (IsPointInsidePolygon(testPt, plineCache[j]))
+                        // 多顶点投票法：测试最多 5 个顶点
+                        int insideCount = 0;
+                        int testCount = 0;
+                        int maxTests = Math.Min(5, plineCache[i].NumberOfVertices);
+                        for (int v = 0; v < maxTests; v++)
+                        {
+                            var pt = plineCache[i].GetPoint3dAt(v);
+                            if (IsPointInsidePolygon(pt, plineCache[j]))
+                                insideCount++;
+                            testCount++;
+                        }
+                        // 多数顶点在 j 内部 → i 被 j 包含
+                        if (testCount > 0 && insideCount > testCount / 2)
                             depth[i]++;
                     }
                 }
