@@ -30,6 +30,30 @@ SYSTEM_CONTEXT: |
    - 使用NUnit、NUnitLite和ExtentReports作为测试框架
    - 使用事务处理确保AutoCAD操作的安全性
 
+   ## ★ 修改代码后验证流程（必须执行）★★★
+   - **每次修改代码后**，必须依次执行以下两步验证，**全部通过**后才能提交：
+   
+   ### 步骤 1：MSBuild 编译
+   - MSBuild 路径：`C:\Program Files\Microsoft Visual Studio\2022\Preview\MSBuild\Current\Bin\amd64\MSBuild.exe`
+   - 解决方案：`d:\leaveblackgithub\DDNCadAddins\src\DDNCadAddins.sln`
+   - 输出目录：`d:\leaveblackgithub\DDNCadAddins\src\bin\Debug\`
+   - 运行命令：
+     ```
+     cmd /c ""C:\Program Files\Microsoft Visual Studio\2022\Preview\MSBuild\Current\Bin\amd64\MSBuild.exe" "d:\leaveblackgithub\DDNCadAddins\src\DDNCadAddins.sln" /p:Configuration=Debug /t:Rebuild"
+     ```
+   - 编译错误必须全部修复后才能继续
+   
+   ### 步骤 2：NUnit 单元测试验证
+   - Console Runner 路径：`C:\Users\CFDDN\.nuget\packages\nunit.consolerunner\3.16.3\tools\nunit3-console.exe`
+   - 测试 DLL：`d:\leaveblackgithub\DDNCadAddins\src\bin\Debug\DDNCadAddins.Core.Tests.dll`
+   - 运行全部测试：
+     ```
+     cmd /c ""C:\Users\CFDDN\.nuget\packages\nunit.consolerunner\3.16.3\tools\nunit3-console.exe" "d:\leaveblackgithub\DDNCadAddins\src\bin\Debug\DDNCadAddins.Core.Tests.dll" --noheader"
+     ```
+   - 运行指定类：追加 `--where "class == 命名空间.测试类名"`
+   - 运行指定方法：追加 `--where "method == 命名空间.测试类名.方法名"`
+   - **所有测试必须全部通过**，存在失败测试时不能提交
+   
    ## ★ 测试驱动开发流程（TDD）★★★
    - 开发流程必须以测试驱动，按以下优先级排列：
      1. **第一优先级：纯逻辑 NUnit 测试**（`DDNCadAddins.Core.Tests`）
@@ -45,14 +69,6 @@ SYSTEM_CONTEXT: |
        - **每个子命令必须返回 TestRecords**，包含执行对象和执行结果的**所有相关几何信息**，用于复盘追溯 BUG
        - 手工测试子命令列表：`CROPTESTS` / `CLONEHATCH` / `GENERATEXCLIPBOUNDARY` / `EXPLODEASSHOWN` / `GENERATEHATCHBOUNDARY` / `SUBTRACTCLOSEDCURVE`（参见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) 完整列表）
    - 新增功能必须同时提供纯逻辑测试（优先级1）和在合适层级的测试（优先2，必要时3）
-
-   ### NUnit Console Runner 运行纯逻辑测试
-   - 路径：`C:\Users\CFDDN\.nuget\packages\nunit.consolerunner\3.16.3\tools\nunit3-console.exe`
-   - 测试 DLL：`d:\leaveblackgithub\DDNCadAddins\src\bin\Debug\DDNCadAddins.Core.Tests.dll`
-   - 运行全部测试：`cmd /c ""C:\Users\CFDDN\.nuget\packages\nunit.consolerunner\3.16.3\tools\nunit3-console.exe" "d:\leaveblackgithub\DDNCadAddins\src\bin\Debug\DDNCadAddins.Core.Tests.dll" --noheader"`
-   - 运行指定类：追加 `--where "class == 命名空间.测试类名"`
-   - 运行指定方法：追加 `--where "method == 命名空间.测试类名.方法名"`
-   - 每次修改纯逻辑代码后必须用 NUnit Console Runner 验证测试通过
 
    ### AUTOCMDTESTS（CAD 环境自动测试）
    - 命令名：`AUTOCMDTESTS`
