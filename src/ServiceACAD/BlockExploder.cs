@@ -8,6 +8,36 @@ using DDNCadAddins.Core.Services;
 namespace ServiceACAD
 {
     /// <summary>
+    ///     批量爆炸结果，包含统计信息和每个块的爆炸详情.
+    /// </summary>
+    public class ExplodeMultipleResult
+    {
+        /// <summary>成功爆炸的块数量.</summary>
+        public int SuccessCount { get; set; }
+
+        /// <summary>爆炸生成的实体总数.</summary>
+        public int TotalExploded { get; set; }
+
+        /// <summary>每个块的爆炸详情（块名 + 统计）.</summary>
+        public List<ExplodeDetail> Details { get; set; } = new List<ExplodeDetail>();
+
+        /// <summary>失败的块列表.</summary>
+        public List<string> FailedBlocks { get; set; } = new List<string>();
+    }
+
+    /// <summary>
+    ///     单个块爆炸详情.
+    /// </summary>
+    public class ExplodeDetail
+    {
+        /// <summary>块名称.</summary>
+        public string BlockName { get; set; }
+
+        /// <summary>爆炸结果统计.</summary>
+        public ExplodeAsShownResult Stats { get; set; }
+    }
+
+    /// <summary>
     ///     图块爆炸器 — 将块参照爆炸为基本实体，将属性引用转换为文本。
     ///     从 BlockService 提取，独立负责爆炸及后处理职责（SRP）。
     /// </summary>
@@ -18,6 +48,69 @@ namespace ServiceACAD
         public BlockExploder(ITransactionService serviceTrans)
         {
             this._serviceTrans = serviceTrans ?? throw new ArgumentNullException(nameof(serviceTrans));
+        }
+
+        /// <summary>
+        ///     批量爆炸多个块参照 — 静态方法，供命令层直接调用.
+        /// </summary>
+        /// <param name="blockRefIds">块参照 ObjectId 列表.</param>
+        /// <param name="ts">事务服务.</param>
+        /// <param name="cancellation">取消检测.</param>
+        /// <returns>批量爆炸结果.</returns>
+        public static OpResult<ExplodeMultipleResult> ExplodeMultiple(
+            List<ObjectId> blockRefIds,
+            ITransactionService ts,
+            ICommandCancellation cancellation)
+        {
+            try
+            {
+                if (blockRefIds == null || blockRefIds.Count == 0)
+                    return OpResult<ExplodeMultipleResult>.Fail("未选择图块");
+
+                var result = new ExplodeMultipleResult();
+
+                foreach (var blockRefId in blockRefIds)
+                {
+                    if (cancellation != null && cancellation.IsCancellationRequested)
+                        break;
+
+                    if (!blockRefId.IsValid || blockRefId.IsErased)
+                    {
+                        result.FailedBlocks.Add($"无效图块: {blockRefId}");
+                        continue;
+                    }
+
+                    var blockService = ts.Block.GetBlockService(blockRefId);
+                    if (blockService == null)
+                    {
+                        result.FailedBlocks.Add($"无法获取图块服务: {blockRefId}");
+                        continue;
+                    }
+
+                    var blockName = blockService.Name;
+                    var explodeResult = blockService.ExplodeAsShown();
+                    if (!explodeResult.IsSuccess)
+                    {
+                        result.FailedBlocks.Add($"爆炸图块 {blockName} 失败: {explodeResult.Message}");
+                        continue;
+                    }
+
+                    result.SuccessCount++;
+                    result.TotalExploded += explodeResult.Data?.EntityIds?.Count ?? 0;
+                    result.Details.Add(new ExplodeDetail
+                    {
+                        BlockName = blockName,
+                        Stats = explodeResult.Data,
+                    });
+                }
+
+                return OpResult<ExplodeMultipleResult>.Success(result);
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"批量爆炸块参照失败: {ex.Message}");
+                return OpResult<ExplodeMultipleResult>.Fail($"批量爆炸块参照失败: {ex.Message}");
+            }
         }
 
         /// <summary>

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Autodesk.AutoCAD.Runtime;
 using ServiceACAD;
 using Exception = System.Exception;
@@ -20,6 +19,7 @@ namespace AddinsACAD.Commands
         {
             try
             {
+                // ── 1. 输入获取 ──
                 var blockRefIds = CadServiceManager.ServiceEd.GetSelectedBlockReferences("\n选择要炸开的图块：");
                 if (blockRefIds.Count == 0)
                 {
@@ -27,61 +27,34 @@ namespace AddinsACAD.Commands
                     return;
                 }
 
+                // ── 2. 主体逻辑（委托给 BlockExploder.ExplodeMultiple） ──
                 using (var cancellation = new CommandCancellationScope())
                 {
-                    var successCount = 0;
-                    var totalExploded = 0;
-                    var failedBlocks = new List<string>();
-
+                    OpResult<ExplodeMultipleResult> explodeResult = null;
                     var transactionResult = CadServiceManager._.ExecuteInCommandTransaction(serviceTrans =>
                     {
-                        foreach (var blockRefId in blockRefIds)
-                        {
-                            if (cancellation.IsCancellationRequested)
-                            {
-                                return OpResult.Fail(CommandCancellationScope.UserCancelledMessage);
-                            }
-
-                            var blockService = serviceTrans.Block.GetBlockService(blockRefId);
-                            if (blockService == null)
-                            {
-                                failedBlocks.Add($"无法获取图块服务: {blockRefId}");
-                                continue;
-                            }
-
-                            var blockName = blockService.Name;
-                            var explodeResult = blockService.ExplodeAsShown();
-                            if (!explodeResult.IsSuccess)
-                            {
-                                failedBlocks.Add($"爆炸图块 {blockName} 失败: {explodeResult.Message}");
-                                continue;
-                            }
-
-                            successCount++;
-                            totalExploded += explodeResult.Data?.EntityIds?.Count ?? 0;
-                            WriteOutput(ExplodeReportFormatter.FormatBlockLine(blockName, explodeResult.Data));
-
-                            if (cancellation.IsCancellationRequested)
-                            {
-                                return OpResult.Fail(CommandCancellationScope.UserCancelledMessage);
-                            }
-                        }
-
-                        return OpResult.Success();
+                        explodeResult = BlockExploder.ExplodeMultiple(blockRefIds, serviceTrans, cancellation);
+                        return explodeResult.IsSuccess
+                            ? ServiceACAD.OpResult.Success()
+                            : ServiceACAD.OpResult.Fail(explodeResult.Message);
                     });
 
-                    if (!transactionResult.IsSuccess)
+                    if (!transactionResult.IsSuccess || explodeResult == null || !explodeResult.IsSuccess)
                     {
-                        if (!string.IsNullOrEmpty(transactionResult.Message))
-                        {
-                            WriteOutput($"\n{transactionResult.Message}");
-                        }
-
+                        WriteOutput($"\n{explodeResult?.Message ?? transactionResult.Message ?? "未知错误"}");
                         return;
                     }
 
-                    WriteOutput($"\n成功爆炸 {successCount} 个图块，生成了 {totalExploded} 个实体。");
-                    WriteFailureList(failedBlocks);
+                    var data = explodeResult.Data;
+
+                    // ── 3. 输出显示 ──
+                    foreach (var detail in data.Details)
+                    {
+                        WriteOutput(ExplodeReportFormatter.FormatBlockLine(detail.BlockName, detail.Stats));
+                    }
+
+                    WriteOutput($"\n成功爆炸 {data.SuccessCount} 个图块，生成了 {data.TotalExploded} 个实体。");
+                    WriteFailureList(data.FailedBlocks);
                 }
             }
             catch (Exception ex)
@@ -96,7 +69,7 @@ namespace AddinsACAD.Commands
         ///     输出失败列表
         /// </summary>
         /// <param name="failedBlocks">失败信息</param>
-        private static void WriteFailureList(IReadOnlyList<string> failedBlocks)
+        private static void WriteFailureList(System.Collections.Generic.IReadOnlyList<string> failedBlocks)
         {
             if (failedBlocks == null || failedBlocks.Count == 0)
             {
