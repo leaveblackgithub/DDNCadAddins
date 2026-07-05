@@ -661,12 +661,29 @@ namespace AddinsACAD.Commands
                 }
 
                 // Step 2: 构建包含矩阵，计算 depth = 被包含次数
+                //    HatchStyle.Ignore 特殊处理：只需取面积最大的曲线（外环），
+                //    不需要包含关系检测。Ignore 语义 = 只填充最外环，忽略所有内环.
+                if (style == HatchStyle.Ignore)
+                {
+                    // 按面积降序排序，取第 1 个（最大的 = 外环）
+                    var areaSorted = new List<(int Index, double Area)>();
+                    for (int i = 0; i < n; i++)
+                    {
+                        if (plineCache[i] == null) continue;
+                        areaSorted.Add((i, areas[i]));
+                    }
+                    areaSorted.Sort((a, b) => b.Area.CompareTo(a.Area));
+
+                    var ignoreResult = new List<ObjectId>();
+                    if (areaSorted.Count > 0)
+                        ignoreResult.Add(curveIds[areaSorted[0].Index]);
+                    return ignoreResult;
+                }
+
+                // Outer / Normal: 使用包含关系层次排序
                 //    同形检测：面积近似相等（差 < 1e-8）则视为 siblings，不建立包含关系
                 //    使用多顶点投票法：测试多个顶点是否在另一个多边形内部，
-                //    多数在内则判定为包含。比单顶点或质心更稳健：
-                //    - 单顶点可能恰好落在边界上 → 误判
-                //    - 质心对非凸形状（如裁剪后的弧形）可能落在多边形外部 → 误判
-                //    - 多顶点投票法即使个别顶点在边界上，多数投票仍能正确判断
+                //    多数在内则判定为包含.
                 const double areaTol = 1e-8;
                 for (int i = 0; i < n; i++)
                 {
