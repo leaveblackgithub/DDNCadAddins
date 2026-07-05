@@ -251,8 +251,8 @@ namespace AddinsACAD.Commands
                 //    优先尝试关联方式（传 ObjectIdCollection），失败则回退到顶点方式。
                 //    注意：Associative = true 必须在 AppendLoop(ObjectIdCollection) 之后设置，
                 //    否则 AutoCAD 引擎无法建立边界关联，EvaluateHatch 时填充不完整。
-                //    注意：第一个环为 Outermost（外边界），后续环为 Default（孔洞/内环），
-                //    否则所有环都被视为外边界会导致填充区域错误。
+                //    第1个环 = Outermost（外环），第2个环 = Default（内环/孔洞）.
+                //    调用方（ProcessHatches）已按面积降序排序并按 HatchStyle 截取相应数量.
                 var appended = 0;
                 for (int i = 0; i < boundaryIds.Length; i++)
                 {
@@ -261,11 +261,11 @@ namespace AddinsACAD.Commands
                     var ent = ts.GetObject<Entity>(id, OpenMode.ForRead);
                     if (!(ent is Curve curve)) continue;
 
+                    var loopType = (i == 0) ? HatchLoopTypes.Outermost : HatchLoopTypes.Default;
                     try
                     {
                         // 关联方式：用 ObjectIdCollection 追加环，AutoCAD 自动读取几何
                         var idCol = new ObjectIdCollection { id };
-                        var loopType = (i == 0) ? HatchLoopTypes.Outermost : HatchLoopTypes.Default;
                         hatch.AppendLoop(loopType, idCol);
                         appended++;
                     }
@@ -277,8 +277,7 @@ namespace AddinsACAD.Commands
                             var pts = new Point2dCollection();
                             var bulges = new DoubleCollection();
                             if (!ExtractCurveGeometry(curve, pts, bulges)) continue;
-                            var fallbackLoopType = (i == 0) ? HatchLoopTypes.Outermost : HatchLoopTypes.Default;
-                            hatch.AppendLoop(fallbackLoopType, pts, bulges);
+                            hatch.AppendLoop(loopType, pts, bulges);
                             appended++;
                         }
                         catch (System.Exception ex2)

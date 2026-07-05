@@ -96,18 +96,13 @@ namespace AddinsACAD.Commands
                         hatch.Normal);
                     loopCount = hatch.NumberOfLoops;
 
-                    // 根据 HatchStyle 确定要处理的环范围
-                    int loopStart, loopEnd;
+                    // 生成所有环的边界实体（不论 HatchStyle），
+                    // 让裁剪后的 Hatch 重建时由 HatchStyle 自动判断内外环关系.
+                    // 之前按 HatchStyle.Outer 只取前 2 个环，但环顺序不保证外环在前，
+                    // 会导致生成的边界实体不包含实际的内环（孔洞）.
+                    int loopStart = 0;
+                    int loopEnd = loopCount;
                     var style = hatch.HatchStyle;
-                    switch (style)
-                    {
-                        case HatchStyle.Ignore:
-                            loopStart = 0; loopEnd = 1; break;
-                        case HatchStyle.Outer:
-                            loopStart = 0; loopEnd = Math.Min(2, loopCount); break;
-                        default:
-                            loopStart = 0; loopEnd = loopCount; break;
-                    }
                     typeLog += $"Style={style}|";
 
                     var generator = new CurveToPolygonConverter();

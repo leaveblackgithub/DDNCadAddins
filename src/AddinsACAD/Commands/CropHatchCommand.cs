@@ -252,9 +252,50 @@ namespace AddinsACAD.Commands
 
                 ed.WriteMessage($"\n  裁剪后新生成 {clippedCurveIds.Count} 条曲线，准备用源 Hatch 参数填充...");
 
+                // ★ 第四步：按面积降序排序裁剪结果曲线
+                //    HatchStyle.Outer: 取前2个（第1个=外环 Outermost，第2个=内环 Default）
+                //    HatchStyle.Ignore: 取前1个（Outermost）
+                //    HatchStyle.Normal: 全部传入（交替填充）
+                List<ObjectId> sortedCurveIds = new List<ObjectId>();
+                if (clippedCurveIds.Count > 0)
+                {
+                    CadServiceManager._.ExecuteInTransactions(null, ts =>
+                    {
+                        var areaList = new List<(ObjectId Id, double Area)>();
+                        foreach (var id in clippedCurveIds)
+                        {
+                            if (!id.IsValid || id.IsErased) continue;
+                            var pline = ts.GetObject<Polyline>(id, OpenMode.ForRead);
+                            if (pline == null) continue;
+                            areaList.Add((id, pline.Area));
+                        }
+                        // 按面积降序排序
+                        areaList.Sort((a, b) => b.Area.CompareTo(a.Area));
+
+                        // 获取源 Hatch 的 HatchStyle
+                        HatchStyle srcStyle = HatchStyle.Normal;
+                        if (hatchIds.Count > 0 && hatchIds[0].IsValid && !hatchIds[0].IsErased)
+                        {
+                            var srcHatch = ts.GetObject<Hatch>(hatchIds[0], OpenMode.ForRead);
+                            if (srcHatch != null) srcStyle = srcHatch.HatchStyle;
+                        }
+
+                        int maxLoops = areaList.Count;
+                        if (srcStyle == HatchStyle.Ignore)
+                            maxLoops = Math.Min(1, areaList.Count);
+                        else if (srcStyle == HatchStyle.Outer)
+                            maxLoops = Math.Min(2, areaList.Count);
+
+                        for (int i = 0; i < maxLoops; i++)
+                            sortedCurveIds.Add(areaList[i].Id);
+                    });
+                }
+
+                ed.WriteMessage($"\n  按面积排序后取 {sortedCurveIds.Count} 条曲线用于重建 Hatch...");
+
                 // ★ 第五步：对每个源 Hatch 用 CloneHatchWithNewBoundaries 创建新 Hatch，清理中间产物
                 int newHatchesCreated = 0;
-                if (clippedCurveIds != null && clippedCurveIds.Count > 0)
+                if (sortedCurveIds.Count > 0)
                 {
                     CadServiceManager._.ExecuteInCommandTransaction(ts =>
                     {
@@ -275,7 +316,7 @@ namespace AddinsACAD.Commands
                                 ObjectId newHatchId = ObjectId.Null;
                                 var created = CloneHatchCommand.CloneHatchWithNewBoundaries(
                                     ts, extractResult.Data,
-                                    clippedCurveIds.ToArray(), out newHatchId);
+                                    sortedCurveIds.ToArray(), out newHatchId);
 
                                 if (created && !newHatchId.IsNull)
                                 {
@@ -302,6 +343,8 @@ namespace AddinsACAD.Commands
                             foreach (var id in clippedCurveIds)
                             {
                                 if (!id.IsValid || id.IsErased) continue;
+                                // 跳过已选入 sortedCurveIds 的曲线（它们作为 Hatch 边界关联对象保留）
+                                if (sortedCurveIds.Contains(id)) continue;
                                 try
                                 {
                                     var ent = ts.GetObject<Entity>(id, OpenMode.ForWrite);
