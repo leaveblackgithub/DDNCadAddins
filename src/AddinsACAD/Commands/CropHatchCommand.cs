@@ -286,9 +286,22 @@ namespace AddinsACAD.Commands
                             if (srcHatch != null) srcStyle = srcHatch.HatchStyle;
                         }
 
+                        // 计算裁剪边界的面积（用于 Normal 样式过滤"容器"曲线）
+                        double clipArea = 0;
+                        if (boundaryId.IsValid && !boundaryId.IsErased)
+                        {
+                            var clipCurve = ts.GetObject<Curve>(boundaryId, OpenMode.ForRead);
+                            if (clipCurve is Polyline clipPl)
+                                clipArea = clipPl.Area;
+                            else if (clipCurve is Circle clipCirc)
+                                clipArea = clipCirc.Area;
+                            else if (clipCurve is Ellipse clipEll)
+                                clipArea = clipEll.Area;
+                        }
+
                         // 使用包含关系层次排序（替代面积排序）
                         sortedCurveIds = SortByContainmentHierarchy(
-                            clippedCurveIds, srcStyle, ts);
+                            clippedCurveIds, srcStyle, ts, clipArea);
 
                         ed.WriteMessage($"\n  [调试] HatchStyle={srcStyle}, 裁剪曲线数={clippedCurveIds.Count}, 排序后={sortedCurveIds.Count}");
                     });
@@ -636,9 +649,11 @@ namespace AddinsACAD.Commands
         /// <param name="curveIds">裁剪后的 Polyline ObjectId 列表.</param>
         /// <param name="style">源 Hatch 的 HatchStyle.</param>
         /// <param name="ts">事务服务.</param>
+        /// <param name="clipArea">裁剪边界的面积（用于 Normal 样式过滤"容器"曲线）.</param>
         /// <returns>排序后的 ObjectId 列表（depth 0 在前 = 最外环）.</returns>
         private static List<ObjectId> SortByContainmentHierarchy(
-            List<ObjectId> curveIds, HatchStyle style, ITransactionService ts)
+            List<ObjectId> curveIds, HatchStyle style, ITransactionService ts,
+            double clipArea = 0)
         {
             try
             {
@@ -757,6 +772,65 @@ namespace AddinsACAD.Commands
                     }
                     filtered.Add((i, depth[i], areas[i]));
                     seenAreas.Add(areas[i]);
+                }
+
+                // Step 3b: Normal 样式 — 过滤与裁剪边界同形的"容器"曲线
+                //    当裁剪边界是 Hatch 的内环时，外环裁剪后与裁剪边界同形（"容器"），
+                //    不应作为外环。应保留面积不同的"内容"曲线作为外环.
+                //    仅当存在与裁剪边界面积不同的曲线时才过滤.
+                if (style == HatchStyle.Normal && clipArea > 0 && filtered.Count > 1)
+                {
+                    bool hasNonClipCurves = false;
+                    foreach (var item in filtered)
+                    {
+                        if (Math.Abs(item.Area - clipArea) >= areaTol)
+                        {
+                            hasNonClipCurves = true;
+                            break;
+                        }
+                    }
+
+                    if (hasNonClipCurves)
+                    {
+                        int removedCount = filtered.RemoveAll(
+                            item => Math.Abs(item.Area - clipArea) < areaTol);
+                        if (removedCount > 0)
+                            Logger._.Info($"[ContainmentSort] Normal 过滤容器曲线: 移除 {removedCount} 条 (clipArea={clipArea:F4})");
+                    }
+                }
+
+                // Step 3c: 移除容器曲线后，重新计算剩余曲线的 depth
+                //    容器曲线被移除后，剩余曲线的 depth 需要基于剩余曲线重新计算
+                if (filtered.Count > 1)
+                {
+                    for (int a = 0; a < filtered.Count; a++)
+                    {
+                        int newDepth = 0;
+                        var plineA = plineCache[filtered[a].Index];
+                        if (plineA == null) continue;
+
+                        for (int b = 0; b < filtered.Count; b++)
+                        {
+                            if (a == b) continue;
+                            var plineB = plineCache[filtered[b].Index];
+                            if (plineB == null) continue;
+                            if (Math.Abs(filtered[a].Area - filtered[b].Area) < areaTol) continue;
+
+                            int insideCount = 0;
+                            int testCount = 0;
+                            int maxTests = Math.Min(5, plineA.NumberOfVertices);
+                            for (int v = 0; v < maxTests; v++)
+                            {
+                                var pt = plineA.GetPoint3dAt(v);
+                                if (IsPointInsidePolygon(pt, plineB))
+                                    insideCount++;
+                                testCount++;
+                            }
+                            if (testCount > 0 && insideCount > testCount / 2)
+                                newDepth++;
+                        }
+                        filtered[a] = (filtered[a].Index, newDepth, filtered[a].Area);
+                    }
                 }
 
                 Logger._.Info($"[ContainmentSort] 过滤后剩余 {filtered.Count} 条曲线 (Style={style})");
