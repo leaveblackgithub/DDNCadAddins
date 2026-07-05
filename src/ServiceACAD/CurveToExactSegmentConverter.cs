@@ -42,6 +42,10 @@ namespace ServiceACAD
                 if (curve is Ellipse ellipse)
                     return ConvertEllipse(ellipse);
 
+                // Polyline2d（CurveFit 后）→ 高密度采样保持曲线精度
+                if (curve is Polyline2d poly2d)
+                    return ConvertPolyline2d(poly2d);
+
                 // Spline 等其他类型 → 采样为直线段
                 return ConvertBySampling(curve);
             }
@@ -191,6 +195,41 @@ namespace ServiceACAD
                     EllipseIsClockwise = false
                 };
                 segments.Add(seg);
+            }
+
+            return segments;
+        }
+
+        // ──────────────────────────────────────────────────────────────
+        //  Polyline2d：高密度采样（保持 CurveFit 曲线精度）
+        // ──────────────────────────────────────────────────────────────
+
+        /// <summary>
+        ///     将 Polyline2d 高密度采样为直线段.
+        ///     Polyline2d 经过 CurveFit 后包含曲线信息，
+        ///     用 200 个采样点沿参数空间均匀采样以保持曲线精度.
+        /// </summary>
+        private static List<ExactSegment> ConvertPolyline2d(Polyline2d poly2d)
+        {
+            var polygon = new CurveToPolygonConverter().ConvertCurveToPolygon(poly2d);
+            if (polygon == null || polygon.Count < 3)
+                return null;
+
+            var segments = new List<ExactSegment>(polygon.Count);
+            int n = polygon.Count;
+
+            for (int i = 0; i < n; i++)
+            {
+                var start = polygon[i];
+                var end = polygon[(i + 1) % n];
+
+                segments.Add(new ExactSegment
+                {
+                    Source = SegmentSource.Subject,
+                    SegmentType = ExactSegmentType.Line,
+                    Start = new Point2D(start.X, start.Y),
+                    End = new Point2D(end.X, end.Y)
+                });
             }
 
             return segments;

@@ -78,6 +78,12 @@ namespace ServiceACAD
                     return this.ConvertSpline(spline);
                 }
 
+                // Polyline2d（CurveFit 后）→ 高密度采样保持曲线精度
+                if (curve is Polyline2d poly2d)
+                {
+                    return this.ConvertPolyline2d(poly2d);
+                }
+
                 // 其他闭合曲线 → 均匀采样
                 return this.ConvertGenericClosedCurve(curve);
             }
@@ -298,6 +304,35 @@ namespace ServiceACAD
                 {
                     double param = s.StartParam + (s.EndParam - s.StartParam) * t;
                     var pt = s.GetPointAtParameter(param);
+                    return new Point2D(pt.X, pt.Y);
+                },
+                200);
+
+            var result = new List<CorePoint2D>();
+            foreach (var pt in pts)
+            {
+                result.Add(new CorePoint2D(pt.X, pt.Y));
+            }
+
+            return result.Count >= 3 ? result : null;
+        }
+
+        /// <summary>
+        ///     将 Polyline2d 高密度采样为多边形顶点.
+        ///     Polyline2d 经过 CurveFit 后包含曲线信息，
+        ///     用 200 个采样点沿参数空间均匀采样以保持曲线精度.
+        /// </summary>
+        private List<CorePoint2D> ConvertPolyline2d(Polyline2d poly2d)
+        {
+            var startPt = new Point2D(poly2d.StartPoint.X, poly2d.StartPoint.Y);
+            var endPt = new Point2D(poly2d.EndPoint.X, poly2d.EndPoint.Y);
+
+            var pts = this._fittedGen.GenerateGenericCurve(
+                startPt, endPt,
+                t =>
+                {
+                    double param = poly2d.StartParam + (poly2d.EndParam - poly2d.StartParam) * t;
+                    var pt = poly2d.GetPointAtParameter(param);
                     return new Point2D(pt.X, pt.Y);
                 },
                 200);
