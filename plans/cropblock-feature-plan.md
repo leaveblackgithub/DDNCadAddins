@@ -1,7 +1,7 @@
 # CROPBLOCK 功能计划
 
-> 版本：1.1.0 | 日期：2026-07-05 | 状态：规划中
-> 前提：暂时不考虑 XCLIP 处理，需要考虑嵌套块
+> 版本：1.2.0 | 日期：2026-07-05 | 状态：规划中
+> 前提：暂时不考虑 XCLIP 处理，嵌套块用包围盒初步分类（不递归裁剪）
 
 ---
 
@@ -21,8 +21,8 @@ BlockReference 的 GeometricExtents 包围盒
 
 **缺陷：**
 - 不对块内容做任何裁剪，相交时直接保留整个块
-- 不处理嵌套块
 - 不处理块内实体级别的裁剪
+- 嵌套块仅能用包围盒初步分类，无法做实体级裁剪
 - 没有独立命令，仅作为 CropService 调度器中的 NonCurve 处理器
 
 ### 1.2 现有 CROP 系列命令模式
@@ -42,9 +42,9 @@ BlockReference 的 GeometricExtents 包围盒
 ### 1.3 BlockExploder 现有能力
 
 [`BlockExploder.cs`](src/ServiceACAD/BlockExploder.cs) 已具备：
-- 爆炸块参照为基本实体（含嵌套块递归展开）
+- 爆炸块参照为基本实体（仅最外层，嵌套块作为独立 BlockReference 保留，不递归展开）
+- 爆炸后的嵌套块可通过包围盒参与粗筛分类
 - 处理属性引用 → 文本转换
-- 处理嵌套块的变换矩阵累加（位置、缩放、旋转）
 - 复制 XCLIP 状态
 - 图层/颜色/线型属性继承
 
@@ -52,7 +52,7 @@ BlockReference 的 GeometricExtents 包围盒
 
 ## 二、目标架构
 
-### 2.1 CROPBLOCK 核心策略：爆炸-裁剪模式
+### 2.1 CROPBLOCK 核心策略：爆炸-裁剪模式（仅最外层）
 
 由于不考虑 XCLIP，CROPBLOCK 采用**爆炸→裁剪**策略：
 
@@ -67,6 +67,14 @@ BlockReference 选中
                           ↓
                     保留侧的子实体添加到模型空间
                     删除侧的子实体丢弃
+
+嵌套块处理（包围盒粗筛，无实体级裁剪）：
+    → 爆炸时嵌套块保留为独立 BlockReference
+    → 对每个嵌套块做包围盒分类：
+       ├── Inside  → 保留（无需处理）
+       ├── Outside → 删除
+       └── Intersects → 跳过，保留原样，计入 SkippedCount
+    → 不对嵌套块做递归爆炸/实体级裁剪
 ```
 
 ### 2.2 命令设计
@@ -124,19 +132,23 @@ DDNCadAddins.Core（核心层）
 | 13 | 动态块参照 | 动态属性 | 爆炸后丢失动态特性（AutoCAD 标准行为） | 中 |
 | 14 | 带可见性状态的动态块 | 动态属性 | 按当前可见状态爆炸，不可见实体不出现 | 中 |
 
-### 3.2 嵌套块边界
+### 3.2 嵌套块边界（包围盒粗筛）
+
+> **当前迭代策略**：嵌套块在爆炸后保留为独立 BlockReference，
+> 用包围盒做初步分类（Inside→保留 / Outside→删除 / Intersects→跳过），**不做递归爆炸/实体级裁剪**。
+> 以下场景中仅 #18 在当前迭代生效（BlockExploder 已处理变换累加）。
 
 | # | 场景 | 分类 | 预期行为 | 风险等级 |
 |---|------|------|---------|---------|
-| 15 | 单层嵌套（块A含块B） | 核心功能 | 块A爆炸后，块B成为独立BlockReference，对块B再次包围盒分类→递归处理 | 高 |
-| 16 | 多层嵌套（3层以上） | 核心功能 | 递归爆炸直到所有嵌套块被处理 | 高 |
-| 17 | 循环引用（A→B→A） | 异常路径 | 检测循环引用，设置最大递归深度（建议≤10），超出则保留原块 | 高 |
-| 18 | 嵌套块缩放/旋转与父块累加 | 几何变换 | BlockExploder 已正确处理（Scale累乘 + Rotation累加） | 中 |
-| 19 | 嵌套块含属性 | 属性处理 | 每层爆炸时属性→文本，文本参与裁剪 | 中 |
-| 20 | 嵌套块在子块定义中位于不同图层 | 图层处理 | 爆炸后继承块定义中的图层设置 | 中 |
-| 21 | 同一块定义在多个嵌套层级出现 | 递归处理 | 每个实例独立处理（不共享状态） | 中 |
-| 22 | 嵌套块有 XCLIP（即使暂不处理） | 降级处理 | 检测到 XCLIP 时跳过裁剪，保留原块参照，输出提示 | 中 |
-| 23 | 嵌套块爆炸后与边界的关系判断 | 核心逻辑 | 每个爆炸后的子实体独立判断与边界的关系 | 高 |
+| 15 | 单层嵌套（块A含块B） | 包围盒粗筛 | 块A爆炸后，块B成为独立BlockReference，计算包围盒分类→保留/删除/跳过 | 中 |
+| 16 | 多层嵌套（3层以上） | 包围盒粗筛 | 每层爆炸后嵌套块独立做包围盒分类，不递归爆炸 | 中 |
+| 17 | 循环引用（A→B→A） | 无风险 | 不递归爆炸，无循环引用风险 | 低 |
+| 18 | 嵌套块缩放/旋转与父块累加 | ✅ 当前生效 | BlockExploder 已正确处理（Scale累乘 + Rotation累加） | 中 |
+| 19 | 嵌套块含属性 | 包围盒粗筛 | 属性已转为文本，文本作为独立实体参与裁剪；嵌套块本身仍只做包围盒分类 | 中 |
+| 20 | 嵌套块在子块定义中位于不同图层 | 包围盒粗筛 | 嵌套块作为独立 BlockReference 保留，继承其所在图层 | 中 |
+| 21 | 同一块定义在多个嵌套层级出现 | 包围盒粗筛 | 每个实例独立计算包围盒，独立分类 | 低 |
+| 22 | 嵌套块有 XCLIP | 降级处理 | 检测到 XCLIP 时走包围盒分类（不再跳过） | 中 |
+| 23 | 嵌套块爆炸后与边界的关系判断 | 包围盒粗筛 | 嵌套块整体作为 BlockReference 判断包围盒，不拆解到实体级 | 中 |
 
 ### 3.3 空间关系边界
 
@@ -160,7 +172,7 @@ DDNCadAddins.Core（核心层）
 | 34 | 块含 Hatch | 正常路径 | 通过 CropService 的 _nonCurveHandlers 处理 | 低 |
 | 35 | 块含 DBPoint | 正常路径 | 通过 CropService 的 _nonCurveHandlers 处理 | 低 |
 | 36 | 块含 Solid | 正常路径 | 通过 CropService 的 _nonCurveHandlers 处理 | 低 |
-| 37 | 块含嵌套 BlockReference | 递归处理 | 递归进入 CROPBLOCK 逻辑 | 高 |
+| 37 | 块含嵌套 BlockReference | 包围盒粗筛 | 保留为独立 BlockReference，包围盒分类：Inside→保留 / Outside→删除 / Intersects→跳过 | 中 |
 | 38 | 块含 AttributeDefinition（非 AttributeReference） | 特殊实体 | 爆炸时被 BlockExploder 跳过（不转换） | 低 |
 | 39 | 块含 Wipeout | 特殊实体 | CropService 无 Wipeout 处理器，走 SkippedCount | 低 |
 | 40 | 块含 MLine/Leader/Polyline3d | 正常路径 | 通过 CropService 分发处理 | 低 |
@@ -180,7 +192,7 @@ DDNCadAddins.Core（核心层）
 | # | 场景 | 分类 | 预期行为 | 风险等级 |
 |---|------|------|---------|---------|
 | 46 | 超大块（含数百子实体） | 性能 | 逐个处理子实体，可能较慢但不应崩溃 | 中 |
-| 47 | 深嵌套 + 大量兄弟节点 | 性能 | 递归深度×兄弟节点数，需限制递归深度 | 高 |
+| 47 | 深嵌套 + 大量兄弟节点 | 包围盒粗筛 | 嵌套块做包围盒分类，不递归爆炸，O(n) 复杂度 | 低 |
 | 48 | 全选模式无块可处理 | 空结果 | 输出"未找到块参照"提示 | 低 |
 | 49 | 全选模式所有块都在锁定图层 | 全部跳过 | 输出"所有块参照所在图层均已锁定" | 低 |
 | 50 | 混合场景：部分相交+部分全内+部分全外 | 综合 | 统计正确累加各项计数 | 中 |
@@ -210,14 +222,26 @@ DDNCadAddins.Core（核心层）
 - 如果同一块定义的多个实例被裁剪，每个都会产生不同的裁剪结果，无法合并为同一块定义
 - 与 AutoCAD 的 XCLIP 行为一致（XCLIP 也不重新打包）
 
-### 4.2 递归深度限制
+### 4.2 嵌套块处理策略（包围盒粗筛）
 
-**决策**：最大递归深度 = **10 层**，超出则保留原块参照并输出警告。
+**决策**：当前迭代对嵌套块采用**包围盒粗筛**策略：
+
+```
+爆炸后产生的嵌套 BlockReference
+    ↓ 计算 GeometricExtents
+    ├── Inside  → 保留（无需处理）
+    ├── Outside → 删除
+    └── Intersects → 跳过，保留原样，计入 SkippedCount
+```
+
+**不做**递归爆炸和实体级裁剪。
 
 **理由**：
-- 防止循环引用导致无限递归
-- 实际图纸中嵌套深度极少超过 5 层
-- 10 层提供了充足的安全边际
+- 包围盒分类是 O(1) 操作，性能开销极低
+- Inside / Outside 的判断结果是确定的，不会因跳过裁剪而丢失正确性
+- Intersects 时跳过是安全的保守策略（保留块参照，不丢失几何信息）
+- 嵌套块的 XCLIP 状态复制已有 [`BlockExploder.CopyXclipState()`](src/ServiceACAD/BlockExploder.cs:290) 支撑
+- 未来迭代可通过将 Intersects 路径改为递归调用 `CropBlockInternal()` 无缝升级
 
 ### 4.3 XCLIP 块降级处理
 
@@ -233,17 +257,23 @@ DDNCadAddins.Core（核心层）
 **决策**：爆炸时属性引用转换为 DBText，参与裁剪。
 
 **理由**：
-- [`BlockExploder.Explode()`](src/ServiceACAD/BlockExploder.cs:28) 已实现此逻辑
+- [`BlockExploder.Explode()`](src/ServiceACAD/BlockExploder.cs:121) 已实现此逻辑
 - 属性文本是块的视觉组成部分，应参与裁剪
 
-### 4.5 包围盒分类沿用现有逻辑
+### 4.5 包围盒分类沿用现有逻辑（最外层 + 嵌套块均适用）
 
 **决策**：块参照级别的包围盒分类沿用 [`CropUtils.ProcessNonCurve()`](src/ServiceACAD/CropUtils.cs:37) 逻辑。
+
+**补充说明**：
+- **最外层块参照**：包围盒分类 → Intersects 时爆炸 + 子实体级裁剪
+- **嵌套块**：包围盒分类 → Intersects 时跳过（保留原块），Inside/Outside 直接处理
+- 爆炸后子实体的裁剪使用各自的包围盒 + 精确边界判断
 
 **理由**：
 - 包围盒快速分类是高效的粗筛手段
 - 只有相交时才触发昂贵的爆炸+裁剪路径
 - 与现有 NonCurve 处理保持一致
+- 最外层和嵌套块共用同一套分类逻辑，差异仅在于 Intersects 分支的处理深度
 
 ---
 
@@ -257,14 +287,17 @@ DDNCadAddins.Core（核心层）
 
 1. **改造 [`CropBlockService.cs`](src/ServiceACAD/CropBlockService.cs)**
    - 新增 `ICropBoundary` 重载（配合精确边界）
-   - 新增 `CropBlockInternal()` 核心方法：爆炸→子实体裁剪→结果汇总
-   - 新增递归嵌套处理逻辑
+   - 新增 `CropBlockInternal()` 核心方法：
+     - 最外层：包围盒分类 → Intersects 时爆炸 + 子实体级裁剪
+     - 嵌套块：包围盒分类 → Intersects 时跳过 / Inside 保留 / Outside 删除
    - 新增 XCLIP 检测与降级处理
-   - 新增递归深度计数器
+   - **嵌套块包围盒粗筛**：复用 `CropUtils.ProcessNonCurve()` 的分类逻辑
 
 2. **可选：扩展 [`CropBlockResult`](src/ServiceACAD/CropBlockService.cs:9)**
    - 新增 `ExplodedCount`：被爆炸的块数量
-   - 新增 `NestedBlockHandledCount`：嵌套块处理数量
+   - 新增 `NestedBlockSkippedCount`：嵌套块因 Intersects 跳过裁剪的数量
+   - 新增 `NestedBlockKeptCount`：嵌套块因 Inside 保留的数量
+   - 新增 `NestedBlockDeletedCount`：嵌套块因 Outside 删除的数量
 
 ### Phase 3：AddinsACAD 层 — CropBlockCommand 新增
 
@@ -275,9 +308,10 @@ DDNCadAddins.Core（核心层）
 
 ## 六、EXPLODEASSHOWN 重构记录
 
-### 6.1 分析结论
+### 6.1 关键观察：BlockExploder 只炸开一层
 
-**EXPLODEASSHOWN 只炸开一层**，嵌套块仅做变换累加后保留为新的 `BlockReference`，不递归爆炸。详见 [`BlockExploder.ProcessExplodedEntities()`](src/ServiceACAD/BlockExploder.cs:144-159)：
+**核心发现**：[`BlockExploder.ProcessExplodedEntities()`](src/ServiceACAD/BlockExploder.cs:237-253) **不递归爆炸嵌套块**，
+嵌套块仅做变换累加后保留为新的 `BlockReference`：
 
 ```csharp
 // 嵌套块 → 创建新 BlockReference（不递归爆炸）
@@ -285,13 +319,19 @@ if (obj is BlockReference nestedBlockRef)
 {
     var newBlockRef = new BlockReference(transformedPosition, nestedBlockRef.BlockTableRecord)
     {
-        ScaleFactors = new Scale3d(...),  // 累乘
-        Rotation = nestedBlockRef.Rotation + blockRef.Rotation,  // 累加
+        ScaleFactors = ... ,  // 累乘
+        Rotation = ... ,      // 累加
         ...
     };
     entity = newBlockRef;
 }
 ```
+
+这恰好匹配当前迭代**包围盒粗筛**策略：
+- 最外层块爆炸后，嵌套子块以独立 `BlockReference` 形式存在于模型空间
+- 这些新产生的 `BlockReference` 被计入 `ExplodeAsShownResult.EntityIds`
+- CROPBLOCK 裁剪时，它们走**包围盒分类**路径：Inside→保留 / Outside→删除 / Intersects→跳过
+- 不做递归爆炸/实体级裁剪，Intersects 时计入 `SkippedCount`
 
 ### 6.2 重构内容
 
