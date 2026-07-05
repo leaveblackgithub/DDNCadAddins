@@ -136,7 +136,14 @@ namespace AddinsACAD.Commands
 
                 ed.WriteMessage($"\n  共生成 {allGeneratedIds.Count} 条边界曲线，准备用裁剪边界 B 进行裁剪...");
 
-                // ★ 第二步：调用 CROPCLOSEDCURVE 完整方法执行裁剪
+                // ★ 第二步：采集裁剪前的所有 Curve ObjectId（用于后续识别新生成的裁剪结果）
+                List<ObjectId> beforeCropCurveIds = null;
+                CadServiceManager._.ExecuteInTransactions(null, ts =>
+                {
+                    beforeCropCurveIds = ts.GetChildObjectsFromModelspace<Curve>();
+                });
+
+                // ★ 第三步：调用 CROPCLOSEDCURVE 完整方法执行裁剪
                 //   直接传 ObjectId，内部自动完成 CreateCurveSelection + 计算 + 绘制
                 if (allGeneratedIds.Count > 0)
                 {
@@ -151,6 +158,123 @@ namespace AddinsACAD.Commands
                 else
                 {
                     ed.WriteMessage("\n  没有有效的边界曲线可供裁剪。");
+                }
+
+                // ★ 第四步：找出新生成的裁剪结果曲线
+                List<ObjectId> clippedCurveIds = null;
+                CadServiceManager._.ExecuteInTransactions(null, ts =>
+                {
+                    var afterCropCurveIds = ts.GetChildObjectsFromModelspace<Curve>();
+                    clippedCurveIds = new List<ObjectId>();
+                    if (afterCropCurveIds != null)
+                    {
+                        var beforeSet = new HashSet<ObjectId>(beforeCropCurveIds ?? new List<ObjectId>());
+                        foreach (var id in afterCropCurveIds)
+                        {
+                            if (!beforeSet.Contains(id))
+                                clippedCurveIds.Add(id);
+                        }
+                    }
+                });
+
+                ed.WriteMessage($"\n  裁剪后新生成 {clippedCurveIds?.Count ?? 0} 条曲线，准备用源 Hatch 参数填充...");
+
+                // ★ 第五步：对每个源 Hatch，用 CloneHatchWithNewBoundaries 创建新 Hatch
+                //   然后删除中间产物（HatchBoundary、裁剪结果曲线、原始 Hatch）
+                int newHatchesCreated = 0;
+                if (clippedCurveIds != null && clippedCurveIds.Count > 0)
+                {
+                    CadServiceManager._.ExecuteInCommandTransaction(ts =>
+                    {
+                        try
+                        {
+                            foreach (var srcHatchId in capturedHatchIds)
+                            {
+                                if (!srcHatchId.IsValid || srcHatchId.IsErased)
+                                    continue;
+
+                                // 提取源 Hatch 参数
+                                var extractResult = CloneHatchCommand.ExtractHatchParams(srcHatchId);
+                                if (!extractResult.IsSuccess)
+                                {
+                                    ed.WriteMessage($"\n  Hatch {srcHatchId}: 提取参数失败 — {extractResult.Message}");
+                                    continue;
+                                }
+
+                                // 用裁剪结果曲线作为新边界创建填充
+                                ObjectId newHatchId = ObjectId.Null;
+                                var created = CloneHatchCommand.CloneHatchWithNewBoundaries(
+                                    ts, extractResult.Data,
+                                    clippedCurveIds.ToArray(), out newHatchId);
+
+                                if (created && !newHatchId.IsNull)
+                                {
+                                    newHatchesCreated++;
+                                    ed.WriteMessage($"\n  Hatch {srcHatchId}: 新填充已创建 ({newHatchId})");
+                                }
+                                else
+                                {
+                                    ed.WriteMessage($"\n  Hatch {srcHatchId}: 创建新填充失败");
+                                }
+                            }
+
+                            // ★ 第六步：清理中间产物
+                            //   删除 GenerateHatchBoundary 生成的边界实体
+                            foreach (var id in allGeneratedIds)
+                            {
+                                if (!id.IsValid || id.IsErased) continue;
+                                try
+                                {
+                                    var ent = ts.GetObject<Entity>(id, OpenMode.ForWrite);
+                                    if (ent != null && !ent.IsErased)
+                                    {
+                                        ent.Erase();
+                                        ed.WriteMessage($"\n  删除边界实体: {id}");
+                                    }
+                                }
+                                catch { /* 忽略删除失败 */ }
+                            }
+
+                            //   删除 CropClosedCurveMulti 生成的裁剪结果曲线
+                            foreach (var id in clippedCurveIds)
+                            {
+                                if (!id.IsValid || id.IsErased) continue;
+                                try
+                                {
+                                    var ent = ts.GetObject<Entity>(id, OpenMode.ForWrite);
+                                    if (ent != null && !ent.IsErased)
+                                    {
+                                        ent.Erase();
+                                        ed.WriteMessage($"\n  删除裁剪结果: {id}");
+                                    }
+                                }
+                                catch { /* 忽略删除失败 */ }
+                            }
+
+                            //   删除原始 Hatch
+                            foreach (var id in capturedHatchIds)
+                            {
+                                if (!id.IsValid || id.IsErased) continue;
+                                try
+                                {
+                                    var ent = ts.GetObject<Entity>(id, OpenMode.ForWrite);
+                                    if (ent != null && !ent.IsErased)
+                                    {
+                                        ent.Erase();
+                                        ed.WriteMessage($"\n  删除原始 Hatch: {id}");
+                                    }
+                                }
+                                catch { /* 忽略删除失败 */ }
+                            }
+
+                            return ServiceACAD.OpResult.Success();
+                        }
+                        catch (System.Exception ex)
+                        {
+                            Logger._.Error($"CloneHatch 填充失败: {ex.Message}", ex);
+                            return ServiceACAD.OpResult.Fail(ex.Message);
+                        }
+                    });
                 }
 
                 // ── TestRecorder 记录 ──
