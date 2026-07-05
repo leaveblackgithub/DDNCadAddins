@@ -17,7 +17,7 @@ namespace AddinsACAD.Commands
 {
     /// <summary>
     ///     CROPHATCH 命令 — 选择闭合边界曲线，再选择 Hatch，询问裁剪方向后
-    ///     先调用 GenerateHatchBoundary 生成边界实体，后续裁剪逻辑待确认.
+    ///     先调用 GenerateHatchBoundary 生成边界实体，然后批量裁剪并重建填充.
     ///     同时提供 CROPALLHATCHES 自动选择所有 Hatch.
     /// </summary>
     public class CropHatchCommand
@@ -104,18 +104,107 @@ namespace AddinsACAD.Commands
                 var capturedHatchIds = hatchIds;
                 var capturedKeepInside = keepInside.Value;
                 string directionLabel = capturedKeepInside ? "减掉外部-保留内部" : "减掉内部-保留外部";
+                string commandName = selectAllHatches ? "CROPALLHATCHES" : "CROPHATCH";
 
                 ed.WriteMessage($"\n═══════════════════════════════════════════");
                 ed.WriteMessage($"\n   CROPHATCH 开始 — 裁剪方向: {directionLabel}");
                 ed.WriteMessage($"\n═══════════════════════════════════════════");
 
-                int totalBoundaryEntities = 0;
+                // ★ 调用统一的 ProcessHatches 方法
+                var result = ProcessHatches(ed, hatchIds, boundaryId, capturedKeepInside);
+
+                // ── TestRecorder 记录 ──
+                try
+                {
+                    var record = new CropTestRecord
+                    {
+                        Command = commandName,
+                        Direction = capturedKeepInside ? "Inside" : "Outside",
+                        IsSuccess = result.IsSuccess,
+                        UcsOrigin = ucsOrigin,
+                        UcsXAxis = ucsX,
+                        UcsYAxis = ucsY,
+                        BoundaryVertices = capturedBoundaryVerts,
+                        BoundaryVertexCount = capturedBoundaryVerts.Count,
+                        TotalEntityCount = capturedHatchIds.Count,
+                        DeletedCount = 0,
+                        KeptCount = result.TotalBoundaryEntities,
+                        SkippedCount = capturedHatchIds.Count - result.TotalHatchesProcessed,
+                    };
+                    var uid = ServiceACAD.TestRecorder.Record(record);
+                    ed.WriteMessage($"\n[TestRecorder] UID: {uid}");
+                }
+                catch (System.Exception recEx)
+                {
+                    Logger._.Warn($"TestRecorder 记录失败: {recEx.Message}");
+                }
+
+                ed.WriteMessage($"\n{'─',50}");
+                ed.WriteMessage($"\n  {commandName} 汇总:");
+                ed.WriteMessage($"\n{'─',50}");
+                ed.WriteMessage($"\n  处理 Hatch: {result.TotalHatchesProcessed,6}");
+                ed.WriteMessage($"\n  生成边界实体: {result.TotalBoundaryEntities,6}");
+                ed.WriteMessage($"\n  新填充: {result.NewHatchesCreated,6}");
+                ed.WriteMessage($"\n  跳过: {capturedHatchIds.Count - result.TotalHatchesProcessed,6}");
+                ed.WriteMessage($"\n{'─',50}");
+                ed.WriteMessage($"\n═══════════════════════════════════════════");
+                ed.WriteMessage($"\n   {commandName} 完成");
+                ed.WriteMessage($"\n═══════════════════════════════════════════");
+            }
+            catch (System.Exception ex)
+            {
+                Logger._.Error($"CROPHATCH 命令失败: {ex.Message}", ex);
+                CadServiceManager.ServiceEd.WriteMessage($"\nCROPHATCH 命令失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        ///     Hatch 裁剪处理结果.
+        /// </summary>
+        public sealed class ProcessHatchesResult
+        {
+            /// <summary>操作是否成功.</summary>
+            public bool IsSuccess { get; set; }
+            /// <summary>成功处理的 Hatch 数量.</summary>
+            public int TotalHatchesProcessed { get; set; }
+            /// <summary>生成的边界实体总数.</summary>
+            public int TotalBoundaryEntities { get; set; }
+            /// <summary>新创建的 Hatch 数量.</summary>
+            public int NewHatchesCreated { get; set; }
+        }
+
+        /// <summary>
+        ///     批量处理 Hatch 裁剪（GenerateHatchBoundary → CropClosedCurveMulti → CloneHatch）.
+        ///     此方法可被 CROPINSIDE/CROPOUTSIDE 等命令直接调用.
+        /// </summary>
+        /// <param name="ed">编辑器（用于输出日志）.</param>
+        /// <param name="hatchIds">待裁剪的 Hatch ObjectId 列表.</param>
+        /// <param name="boundaryId">裁剪边界曲线 ObjectId.</param>
+        /// <param name="keepInside">true=保留内部(CROPOUTSIDE)，false=保留外部(CROPINSIDE).</param>
+        /// <returns>处理结果.</returns>
+        public static ProcessHatchesResult ProcessHatches(
+            Editor ed, IReadOnlyList<ObjectId> hatchIds, ObjectId boundaryId, bool keepInside)
+        {
+            var result = new ProcessHatchesResult();
+            try
+            {
+                if (hatchIds == null || hatchIds.Count == 0)
+                {
+                    result.IsSuccess = true;
+                    return result;
+                }
+                if (boundaryId.IsNull || boundaryId.IsErased)
+                {
+                    result.IsSuccess = false;
+                    return result;
+                }
+
                 int totalHatchesProcessed = 0;
-                string commandName = selectAllHatches ? "CROPALLHATCHES" : "CROPHATCH";
+                int totalBoundaryEntities = 0;
                 var allGeneratedIds = new List<ObjectId>();
 
-                // ★ 第一步：调用 GENERATEHATCHBOUNDARY 完整方法生成边界实体
-                foreach (var hatchId in capturedHatchIds)
+                // ★ 第一步：调用 GENERATEHATCHBOUNDARY 生成所有 Hatch 的边界实体
+                foreach (var hatchId in hatchIds)
                 {
                     if (!hatchId.IsValid || hatchId.IsErased)
                         continue;
@@ -134,21 +223,20 @@ namespace AddinsACAD.Commands
                     }
                 }
 
-                ed.WriteMessage($"\n  共生成 {allGeneratedIds.Count} 条边界曲线，准备用裁剪边界 B 进行裁剪...");
+                ed.WriteMessage($"\n  共生成 {allGeneratedIds.Count} 条边界曲线，准备用裁剪边界进行裁剪...");
 
-                // ★ 第二步：采集裁剪前的所有 Curve ObjectId（用于后续识别新生成的裁剪结果）
+                // ★ 第二步：采集裁剪前的所有 Curve ObjectId
                 List<ObjectId> beforeCropCurveIds = null;
                 CadServiceManager._.ExecuteInTransactions(null, ts =>
                 {
                     beforeCropCurveIds = ts.GetChildObjectsFromModelspace<Curve>();
                 });
 
-                // ★ 第三步：调用 CROPCLOSEDCURVE 完整方法执行裁剪
-                //   直接传 ObjectId，内部自动完成 CreateCurveSelection + 计算 + 绘制
+                // ★ 第三步：调用 CROPCLOSEDCURVE 执行裁剪
                 if (allGeneratedIds.Count > 0)
                 {
                     var cropResult = CropClosedCurveCommand.CropClosedCurveMulti(
-                        allGeneratedIds, boundaryId, capturedKeepInside);
+                        allGeneratedIds, boundaryId, keepInside);
 
                     if (cropResult.IsSuccess)
                         ed.WriteMessage($"\n  CROPCLOSEDCURVE 裁剪完成: {cropResult.Message}");
@@ -179,8 +267,7 @@ namespace AddinsACAD.Commands
 
                 ed.WriteMessage($"\n  裁剪后新生成 {clippedCurveIds?.Count ?? 0} 条曲线，准备用源 Hatch 参数填充...");
 
-                // ★ 第五步：对每个源 Hatch，用 CloneHatchWithNewBoundaries 创建新 Hatch
-                //   然后删除中间产物（HatchBoundary、裁剪结果曲线、原始 Hatch）
+                // ★ 第五步：对每个源 Hatch 用 CloneHatchWithNewBoundaries 创建新 Hatch，清理中间产物
                 int newHatchesCreated = 0;
                 if (clippedCurveIds != null && clippedCurveIds.Count > 0)
                 {
@@ -188,12 +275,11 @@ namespace AddinsACAD.Commands
                     {
                         try
                         {
-                            foreach (var srcHatchId in capturedHatchIds)
+                            foreach (var srcHatchId in hatchIds)
                             {
                                 if (!srcHatchId.IsValid || srcHatchId.IsErased)
                                     continue;
 
-                                // 提取源 Hatch 参数
                                 var extractResult = CloneHatchCommand.ExtractHatchParams(srcHatchId);
                                 if (!extractResult.IsSuccess)
                                 {
@@ -201,7 +287,6 @@ namespace AddinsACAD.Commands
                                     continue;
                                 }
 
-                                // 用裁剪结果曲线作为新边界创建填充
                                 ObjectId newHatchId = ObjectId.Null;
                                 var created = CloneHatchCommand.CloneHatchWithNewBoundaries(
                                     ts, extractResult.Data,
@@ -219,52 +304,35 @@ namespace AddinsACAD.Commands
                             }
 
                             // ★ 第六步：清理中间产物
-                            //   删除 GenerateHatchBoundary 生成的边界实体
                             foreach (var id in allGeneratedIds)
                             {
                                 if (!id.IsValid || id.IsErased) continue;
                                 try
                                 {
                                     var ent = ts.GetObject<Entity>(id, OpenMode.ForWrite);
-                                    if (ent != null && !ent.IsErased)
-                                    {
-                                        ent.Erase();
-                                        ed.WriteMessage($"\n  删除边界实体: {id}");
-                                    }
+                                    if (ent != null && !ent.IsErased) ent.Erase();
                                 }
-                                catch { /* 忽略删除失败 */ }
+                                catch { }
                             }
-
-                            //   删除 CropClosedCurveMulti 生成的裁剪结果曲线
                             foreach (var id in clippedCurveIds)
                             {
                                 if (!id.IsValid || id.IsErased) continue;
                                 try
                                 {
                                     var ent = ts.GetObject<Entity>(id, OpenMode.ForWrite);
-                                    if (ent != null && !ent.IsErased)
-                                    {
-                                        ent.Erase();
-                                        ed.WriteMessage($"\n  删除裁剪结果: {id}");
-                                    }
+                                    if (ent != null && !ent.IsErased) ent.Erase();
                                 }
-                                catch { /* 忽略删除失败 */ }
+                                catch { }
                             }
-
-                            //   删除原始 Hatch
-                            foreach (var id in capturedHatchIds)
+                            foreach (var id in hatchIds)
                             {
                                 if (!id.IsValid || id.IsErased) continue;
                                 try
                                 {
                                     var ent = ts.GetObject<Entity>(id, OpenMode.ForWrite);
-                                    if (ent != null && !ent.IsErased)
-                                    {
-                                        ent.Erase();
-                                        ed.WriteMessage($"\n  删除原始 Hatch: {id}");
-                                    }
+                                    if (ent != null && !ent.IsErased) ent.Erase();
                                 }
-                                catch { /* 忽略删除失败 */ }
+                                catch { }
                             }
 
                             return ServiceACAD.OpResult.Success();
@@ -276,49 +344,54 @@ namespace AddinsACAD.Commands
                         }
                     });
                 }
-
-                // ── TestRecorder 记录 ──
-                try
+                else
                 {
-                    var record = new CropTestRecord
+                    // 无裁剪结果：删除原始 Hatch 和中间边界实体（全在裁剪侧）
+                    CadServiceManager._.ExecuteInCommandTransaction(ts =>
                     {
-                        Command = commandName,
-                        Direction = capturedKeepInside ? "Inside" : "Outside",
-                        IsSuccess = true,
-                        UcsOrigin = ucsOrigin,
-                        UcsXAxis = ucsX,
-                        UcsYAxis = ucsY,
-                        BoundaryVertices = capturedBoundaryVerts,
-                        BoundaryVertexCount = capturedBoundaryVerts.Count,
-                        TotalEntityCount = capturedHatchIds.Count,
-                        DeletedCount = 0,
-                        KeptCount = totalBoundaryEntities,
-                        SkippedCount = capturedHatchIds.Count - totalHatchesProcessed,
-                    };
-                    var uid = ServiceACAD.TestRecorder.Record(record);
-                    ed.WriteMessage($"\n[TestRecorder] UID: {uid}");
-                }
-                catch (System.Exception recEx)
-                {
-                    Logger._.Warn($"TestRecorder 记录失败: {recEx.Message}");
+                        try
+                        {
+                            foreach (var id in hatchIds)
+                            {
+                                if (!id.IsValid || id.IsErased) continue;
+                                try
+                                {
+                                    var ent = ts.GetObject<Entity>(id, OpenMode.ForWrite);
+                                    if (ent != null && !ent.IsErased) ent.Erase();
+                                }
+                                catch { }
+                            }
+                            foreach (var id in allGeneratedIds)
+                            {
+                                if (!id.IsValid || id.IsErased) continue;
+                                try
+                                {
+                                    var ent = ts.GetObject<Entity>(id, OpenMode.ForWrite);
+                                    if (ent != null && !ent.IsErased) ent.Erase();
+                                }
+                                catch { }
+                            }
+                            return ServiceACAD.OpResult.Success();
+                        }
+                        catch (System.Exception ex)
+                        {
+                            Logger._.Error($"清理无结果 Hatch 失败: {ex.Message}", ex);
+                            return ServiceACAD.OpResult.Fail(ex.Message);
+                        }
+                    });
                 }
 
-                ed.WriteMessage($"\n{'─',50}");
-                ed.WriteMessage($"\n  {commandName} 汇总:");
-                ed.WriteMessage($"\n{'─',50}");
-                ed.WriteMessage($"\n  处理 Hatch: {totalHatchesProcessed,6}");
-                ed.WriteMessage($"\n  生成边界实体: {totalBoundaryEntities,6}");
-                ed.WriteMessage($"\n  跳过: {capturedHatchIds.Count - totalHatchesProcessed,6}");
-                ed.WriteMessage($"\n{'─',50}");
-                ed.WriteMessage($"\n═══════════════════════════════════════════");
-                ed.WriteMessage($"\n   {commandName} 完成");
-                ed.WriteMessage($"\n═══════════════════════════════════════════");
+                result.IsSuccess = true;
+                result.TotalHatchesProcessed = totalHatchesProcessed;
+                result.TotalBoundaryEntities = totalBoundaryEntities;
+                result.NewHatchesCreated = newHatchesCreated;
             }
             catch (System.Exception ex)
             {
-                Logger._.Error($"CROPHATCH 命令失败: {ex.Message}", ex);
-                CadServiceManager.ServiceEd.WriteMessage($"\nCROPHATCH 命令失败: {ex.Message}");
+                Logger._.Error($"ProcessHatches 失败: {ex.Message}", ex);
+                result.IsSuccess = false;
             }
+            return result;
         }
 
         /// <summary>
