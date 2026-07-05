@@ -273,12 +273,12 @@ namespace ServiceACAD
         /// <param name="ts">事务服务.</param>
         /// <param name="loop">精确段组成的闭合环.</param>
         /// <param name="colorIndex">颜色索引.</param>
-        /// <returns>创建的顶点总数.</returns>
-        public static int DrawExactSegments(
+        /// <returns>创建的 Polyline 的 ObjectId；失败返回 ObjectId.Null.</returns>
+        public static ObjectId DrawExactSegments(
             ITransactionService ts, IReadOnlyList<ExactSegment> loop, int colorIndex)
         {
             if (loop == null || loop.Count == 0)
-                return 0;
+                return ObjectId.Null;
 
             try
             {
@@ -287,7 +287,6 @@ namespace ServiceACAD
                 pline.ColorIndex = colorIndex;
 
                 int vertexIdx = 0;
-                int totalVertices = 0;
 
                 for (int segIdx = 0; segIdx < loop.Count; segIdx++)
                 {
@@ -296,18 +295,15 @@ namespace ServiceACAD
 
                     if (seg.SegmentType == ExactSegmentType.Arc)
                     {
-                        // 从圆弧参数计算凸度
                         bulge = CalcBulgeFromArc(
                             seg.ArcStartAngle, seg.ArcEndAngle, seg.ArcIsClockwise);
                         pline.AddVertexAt(vertexIdx,
                             new Point2d(seg.Start.X, seg.Start.Y),
                             bulge, 0.0, 0.0);
                         vertexIdx++;
-                        totalVertices++;
                     }
                     else if (seg.SegmentType == ExactSegmentType.Ellipse)
                     {
-                        // 椭圆弧采样为多段直线（含起点，不含终点）
                         var pts = seg.ToPolylinePoints();
                         for (int i = 0; i < pts.Count - 1; i++)
                         {
@@ -315,30 +311,24 @@ namespace ServiceACAD
                                 new Point2d(pts[i].X, pts[i].Y),
                                 0.0, 0.0, 0.0);
                             vertexIdx++;
-                            totalVertices++;
                         }
                     }
                     else
                     {
-                        // 直线段：添加起点
                         pline.AddVertexAt(vertexIdx,
                             new Point2d(seg.Start.X, seg.Start.Y),
                             bulge, 0.0, 0.0);
                         vertexIdx++;
-                        totalVertices++;
                     }
                 }
 
-                // 添加最后一段的终点（闭合环的最后顶点）
                 var lastSeg = loop[loop.Count - 1];
                 pline.AddVertexAt(vertexIdx,
                     new Point2d(lastSeg.End.X, lastSeg.End.Y),
                     0.0, 0.0, 0.0);
-                totalVertices++;
 
                 pline.Closed = true;
 
-                // 确保 Intersection 图层存在
                 try
                 {
                     ts.Style.GetOrCreateLayer("Intersection");
@@ -346,15 +336,13 @@ namespace ServiceACAD
                 }
                 catch
                 {
-                    // 图层创建失败时继续使用当前图层
                 }
 
-                ts.AppendEntityToCurrentSpace(pline);
-                return totalVertices;
+                return ts.AppendEntityToCurrentSpace(pline);
             }
             catch
             {
-                return 0;
+                return ObjectId.Null;
             }
         }
 

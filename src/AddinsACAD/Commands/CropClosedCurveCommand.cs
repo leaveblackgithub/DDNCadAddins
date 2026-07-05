@@ -56,6 +56,11 @@ namespace AddinsACAD.Commands
             public int PolyCount { get; set; }
             public int TotalVertices { get; set; }
             public string Uid { get; set; }
+            /// <summary>
+            ///     裁剪后新创建的实体 ObjectId 列表（外环在前，内环在后）.
+            ///     顺序由 CurveSubtractService 保证，可安全用于 Hatch 边界重建.
+            /// </summary>
+            public List<ObjectId> CreatedEntityIds { get; set; } = new List<ObjectId>();
         }
 
         /// <summary>
@@ -184,11 +189,17 @@ namespace AddinsACAD.Commands
                         foreach (var loop in subtractResult.Loops)
                         {
                             if (loop == null || loop.Count == 0) continue;
-                            int vertexCount = CurveToExactSegmentConverter.DrawExactSegments(ts, loop, 3);
-                            if (vertexCount > 0)
+                            var polyId = CurveToExactSegmentConverter.DrawExactSegments(ts, loop, 3);
+                            if (!polyId.IsNull)
                             {
                                 resultPolyCount++;
-                                totalVertices += vertexCount;
+                                // 读取顶点数用于统计
+                                var pline = ts.GetObject<Polyline>(polyId);
+                                if (pline != null)
+                                {
+                                    totalVertices += pline.NumberOfVertices;
+                                }
+                                result.CreatedEntityIds.Add(polyId);
                             }
                         }
                     });

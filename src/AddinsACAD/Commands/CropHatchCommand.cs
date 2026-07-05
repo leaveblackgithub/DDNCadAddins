@@ -225,47 +225,32 @@ namespace AddinsACAD.Commands
 
                 ed.WriteMessage($"\n  共生成 {allGeneratedIds.Count} 条边界曲线，准备用裁剪边界进行裁剪...");
 
-                // ★ 第二步：采集裁剪前的所有 Curve ObjectId
-                List<ObjectId> beforeCropCurveIds = null;
-                CadServiceManager._.ExecuteInTransactions(null, ts =>
-                {
-                    beforeCropCurveIds = ts.GetChildObjectsFromModelspace<Curve>();
-                });
-
-                // ★ 第三步：调用 CROPCLOSEDCURVE 执行裁剪
+                // ★ 第二步：调用 CROPCLOSEDCURVE 执行裁剪
+                //    使用 CropResult.CreatedEntityIds 获取外环→内环顺序的结果曲线，
+                //    而非依赖不可靠的 before/after diff（BlockTableRecord 迭代顺序不确定）.
+                List<ObjectId> clippedCurveIds = new List<ObjectId>();
                 if (allGeneratedIds.Count > 0)
                 {
                     var cropResult = CropClosedCurveCommand.CropClosedCurveMulti(
                         allGeneratedIds, boundaryId, keepInside);
 
                     if (cropResult.IsSuccess)
+                    {
                         ed.WriteMessage($"\n  CROPCLOSEDCURVE 裁剪完成: {cropResult.Message}");
+                        if (cropResult.CreatedEntityIds != null)
+                            clippedCurveIds = cropResult.CreatedEntityIds;
+                    }
                     else
+                    {
                         ed.WriteMessage($"\n  CROPCLOSEDCURVE 裁剪: {cropResult.Message}");
+                    }
                 }
                 else
                 {
                     ed.WriteMessage("\n  没有有效的边界曲线可供裁剪。");
                 }
 
-                // ★ 第四步：找出新生成的裁剪结果曲线
-                List<ObjectId> clippedCurveIds = null;
-                CadServiceManager._.ExecuteInTransactions(null, ts =>
-                {
-                    var afterCropCurveIds = ts.GetChildObjectsFromModelspace<Curve>();
-                    clippedCurveIds = new List<ObjectId>();
-                    if (afterCropCurveIds != null)
-                    {
-                        var beforeSet = new HashSet<ObjectId>(beforeCropCurveIds ?? new List<ObjectId>());
-                        foreach (var id in afterCropCurveIds)
-                        {
-                            if (!beforeSet.Contains(id))
-                                clippedCurveIds.Add(id);
-                        }
-                    }
-                });
-
-                ed.WriteMessage($"\n  裁剪后新生成 {clippedCurveIds?.Count ?? 0} 条曲线，准备用源 Hatch 参数填充...");
+                ed.WriteMessage($"\n  裁剪后新生成 {clippedCurveIds.Count} 条曲线，准备用源 Hatch 参数填充...");
 
                 // ★ 第五步：对每个源 Hatch 用 CloneHatchWithNewBoundaries 创建新 Hatch，清理中间产物
                 int newHatchesCreated = 0;
