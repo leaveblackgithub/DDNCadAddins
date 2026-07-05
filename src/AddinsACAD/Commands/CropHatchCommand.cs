@@ -379,8 +379,6 @@ namespace AddinsACAD.Commands
                             foreach (var id in clippedCurveIds)
                             {
                                 if (!id.IsValid || id.IsErased) continue;
-                                // 跳过已选入 sortedCurveIds 的曲线（它们作为 Hatch 边界关联对象保留）
-                                if (sortedCurveIds.Contains(id)) continue;
                                 try
                                 {
                                     var ent = ts.GetObject<Entity>(id, OpenMode.ForWrite);

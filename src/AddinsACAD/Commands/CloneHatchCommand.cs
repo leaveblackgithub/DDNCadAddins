@@ -253,12 +253,10 @@ namespace AddinsACAD.Commands
 
                 newHatchId = hatch.ObjectId;
 
-                // 3. 追加边界环
-                //    优先尝试关联方式（传 ObjectIdCollection），失败则回退到顶点方式。
-                //    注意：Associative = true 必须在 AppendLoop(ObjectIdCollection) 之后设置，
-                //    否则 AutoCAD 引擎无法建立边界关联，EvaluateHatch 时填充不完整。
-                //    第1个环 = Outermost（外环），第2个环 = Default（内环/孔洞）.
-                //    调用方（ProcessHatches）已按面积降序排序并按 HatchStyle 截取相应数量.
+                // 3. 追加边界环（顶点方式，非关联）
+                //    使用顶点方式追加环，不关联外部边界曲线，这样裁剪完成后
+                //    临时生成的边界曲线可以被安全删除。
+                //    第1个环 = Outermost（外环），其余 = Default（内环/孔洞）.
                 var appended = 0;
                 for (int i = 0; i < boundaryIds.Length; i++)
                 {
@@ -270,32 +268,20 @@ namespace AddinsACAD.Commands
                     var loopType = (i == 0) ? HatchLoopTypes.Outermost : HatchLoopTypes.Default;
                     try
                     {
-                        // 关联方式：用 ObjectIdCollection 追加环，AutoCAD 自动读取几何
-                        var idCol = new ObjectIdCollection { id };
-                        hatch.AppendLoop(loopType, idCol);
+                        var pts = new Point2dCollection();
+                        var bulges = new DoubleCollection();
+                        if (!ExtractCurveGeometry(curve, pts, bulges)) continue;
+                        hatch.AppendLoop(loopType, pts, bulges);
                         appended++;
                     }
-                    catch (System.Exception)
+                    catch (System.Exception ex)
                     {
-                        // 回退：用顶点方式追加（非关联，但至少保证几何正确）
-                        try
-                        {
-                            var pts = new Point2dCollection();
-                            var bulges = new DoubleCollection();
-                            if (!ExtractCurveGeometry(curve, pts, bulges)) continue;
-                            hatch.AppendLoop(loopType, pts, bulges);
-                            appended++;
-                        }
-                        catch (System.Exception ex2)
-                        {
-                            Logger._.Warn($"边界 {id} 追加失败: {ex2.Message}");
-                        }
+                        Logger._.Warn($"边界 {id} 追加失败: {ex.Message}");
                     }
                 }
 
-                // 关联性必须在所有 AppendLoop(ObjectIdCollection) 完成后设置
-                if (appended > 0)
-                    hatch.Associative = true;
+                // 非关联方式：不设置 Associative，边界曲线可安全删除
+                hatch.Associative = false;
 
                 if (appended == 0)
                 {
