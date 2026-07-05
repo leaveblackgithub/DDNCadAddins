@@ -662,11 +662,24 @@ namespace AddinsACAD.Commands
 
                 // Step 2: 构建包含矩阵，计算 depth = 被包含次数
                 //    同形检测：面积近似相等（差 < 1e-8）则视为 siblings，不建立包含关系
+                //    测试点使用所有顶点的平均坐标（质心），比单个顶点更稳健，
+                //    避免顶点恰好落在另一个多边形边界上导致射线法误判.
                 const double areaTol = 1e-8;
                 for (int i = 0; i < n; i++)
                 {
                     if (plineCache[i] == null) continue;
-                    var testPt = plineCache[i].GetPoint3dAt(0);
+
+                    // 计算顶点平均坐标作为测试点
+                    double cx = 0, cy = 0;
+                    int vCount = plineCache[i].NumberOfVertices;
+                    for (int v = 0; v < vCount; v++)
+                    {
+                        var pt = plineCache[i].GetPoint3dAt(v);
+                        cx += pt.X;
+                        cy += pt.Y;
+                    }
+                    if (vCount > 0) { cx /= vCount; cy /= vCount; }
+                    var testPt = new Point3d(cx, cy, 0);
 
                     for (int j = 0; j < n; j++)
                     {
