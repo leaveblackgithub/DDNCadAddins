@@ -147,25 +147,45 @@ namespace AddinsACAD.Commands
                 }
 
                 boundaryId = res.ObjectId;
+                var capturedId = boundaryId;
+                DDNCadAddins.Core.Interfaces.ICropBoundary boundary = null;
+                var points = new List<DDNCadAddins.Core.Models.Point2D>();
 
-                // 创建 ICropBoundary
-                var boundaryResult = CropBoundaryFactory.CreateBoundary(boundaryId);
-                if (!boundaryResult.IsSuccess)
+                CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
                 {
-                    ed.WriteMessage($"\n{boundaryResult.Message}");
+                    var curve = serviceTrans.GetObject<Curve>(capturedId);
+                    if (curve == null)
+                    {
+                        return;
+                    }
+
+                    if (!curve.Closed)
+                    {
+                        ed.WriteMessage("\n所选的边界曲线未闭合，请选择闭合曲线。");
+                        return;
+                    }
+
+                    // 使用 CropBoundaryFactory 创建精确边界
+                    boundary = ServiceACAD.CropBoundaryFactory.CreateFromCurve(curve);
+
+                    // 获取近似多边形（用于嵌套块包围盒粗筛）
+                    if (boundary != null)
+                    {
+                        var polygon = boundary.GetApproximatePolygon();
+                        if (polygon != null && polygon.Count >= 3)
+                        {
+                            points.AddRange(polygon);
+                        }
+                    }
+                });
+
+                if (boundary == null || points.Count < 3)
+                {
+                    ed.WriteMessage("\n边界曲线无效或顶点不足，请选择更大的闭合曲线。");
                     return (null, null, ObjectId.Null);
                 }
 
-                var boundary = boundaryResult.Data;
-                var polygon = boundary.GetApproximatePolygon();
-
-                if (polygon.Count < 3)
-                {
-                    ed.WriteMessage("\n边界多边形顶点不足");
-                    return (null, null, ObjectId.Null);
-                }
-
-                return (boundary, new List<DDNCadAddins.Core.Models.Point2D>(polygon), boundaryId);
+                return (boundary, points, boundaryId);
             }
             catch (System.Exception ex)
             {
