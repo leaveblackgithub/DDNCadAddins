@@ -52,7 +52,7 @@ namespace ServiceACAD
             this._mlineService = new CropMLineService(this._cropGeometry);
             this._leaderService = new CropLeaderService(this._cropGeometry);
             this._hatchService = new CropHatchService(this._cropGeometry);
-            this._blockService = new CropBlockService(this._cropGeometry);
+            this._blockService = new CropBlockService(this._cropGeometry, this);
             this._textService = new CropTextService(this._cropGeometry);
             this._mtextService = new CropMTextService(this._cropGeometry);
             this._dimService = new CropDimService(this._cropGeometry);
@@ -92,9 +92,24 @@ namespace ServiceACAD
                 [typeof(Hatch)] = (e, bp, ki, ts, r) => this.CropNonCurveWithPolygon((Hatch)e, bp, ki, ts, r,
                     (p, ids, s) => ki ? this._hatchService.CropHatchesInside(p, ids, s)
                                        : this._hatchService.CropHatchesOutside(p, ids, s)),
-                [typeof(BlockReference)] = (e, bp, ki, ts, r) => this.CropNonCurveWithPolygon((BlockReference)e, bp, ki, ts, r,
-                    (p, ids, s) => ki ? this._blockService.CropBlocksInside(p, ids, s)
-                                       : this._blockService.CropBlocksOutside(p, ids, s)),
+                [typeof(BlockReference)] = (e, boundary, ki, ts, r) =>
+                {
+                    var ids = new List<ObjectId> { e.ObjectId };
+                    var polygon = boundary.GetApproximatePolygon();
+                    OpResult<CropBlockResult> result;
+                    if (ki)
+                        result = this._blockService.CropBlocksInside(boundary, polygon, ids, ts);
+                    else
+                        result = this._blockService.CropBlocksOutside(boundary, polygon, ids, ts);
+
+                    if (!result.IsSuccess)
+                        return this.TryDeleteEntity(e, r);
+
+                    r.DeletedCount += result.Data.DeletedCount;
+                    r.KeptCount += result.Data.KeptCount;
+                    r.SkippedCount += result.Data.SkippedCount;
+                    return true;
+                },
                 [typeof(DBText)] = (e, bp, ki, ts, r) => this.CropNonCurveWithPolygon((DBText)e, bp, ki, ts, r,
                     (p, ids, s) => ki ? this._textService.CropTextsInside(p, ids, s)
                                        : this._textService.CropTextsOutside(p, ids, s)),
