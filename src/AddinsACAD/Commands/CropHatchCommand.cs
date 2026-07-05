@@ -720,11 +720,13 @@ namespace AddinsACAD.Commands
                     Logger._.Info($"[ContainmentSort] 曲线[{i}]: Area={areas[i]:F4}, Depth={depth[i]}, Style={style}");
                 }
 
-                // Step 3: 按 HatchStyle 过滤
+                // Step 3: 按 HatchStyle 过滤 + 去重
                 //    Ignore: 只保留 depth == 0
                 //    Outer: 保留 depth <= 1
                 //    Normal: 保留所有 depth
+                //    去重：面积近似相等的曲线只保留第一条（避免同形曲线相互抵消）
                 var filtered = new List<(int Index, int Depth, double Area)>();
+                var seenAreas = new List<double>();
                 for (int i = 0; i < n; i++)
                 {
                     if (plineCache[i] == null) continue;
@@ -738,7 +740,23 @@ namespace AddinsACAD.Commands
                         Logger._.Info($"[ContainmentSort] 曲线[{i}] 被 Outer 过滤: depth={depth[i]} > 1");
                         continue;
                     }
+                    // 去重：检查是否已有近似面积的曲线
+                    bool isDuplicate = false;
+                    foreach (var seenArea in seenAreas)
+                    {
+                        if (Math.Abs(areas[i] - seenArea) < areaTol)
+                        {
+                            isDuplicate = true;
+                            break;
+                        }
+                    }
+                    if (isDuplicate)
+                    {
+                        Logger._.Info($"[ContainmentSort] 曲线[{i}] 去重跳过: Area={areas[i]:F4} 已存在");
+                        continue;
+                    }
                     filtered.Add((i, depth[i], areas[i]));
+                    seenAreas.Add(areas[i]);
                 }
 
                 Logger._.Info($"[ContainmentSort] 过滤后剩余 {filtered.Count} 条曲线 (Style={style})");
