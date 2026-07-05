@@ -1,298 +1,372 @@
-# Hatch 裁剪 — 包含关系层次排序设计
+# Hatch 裁剪 — 统一环有效性设计
 
-> 版本：1.1.0 | 日期：2026-07-05 | 状态：设计中
+> 版本：2.0.0 | 日期：2026-07-05 | 状态：设计中
 
 ---
 
-## 一、HatchStyle 语义
+## 一、核心概念
 
-### 1.1 AutoCAD HatchStyle 定义
+### 1.1 环的深度（depth）
 
-| HatchStyle | 填充行为 | 环嵌套层级 |
-|------------|---------|-----------|
-| `Normal` | 交替填充：depth-0 填充，depth-1 不填充，depth-2 填充… | 所有深度参与 |
-| `Outer` | **只填充 depth-0 与 depth-1 之间的区域**，depth≥2 忽略 | 仅 depth-0 和 depth-1 |
-| `Ignore` | 填充 depth-0 内部全部区域，忽略所有内环 | 仅 depth-0 |
-
-### 1.2 包含关系层次定义
+Hatch 的每个环在包含关系树中有确定的深度：
 
 ```
 depth 0: 最外环（不被任何其他环包含）
-depth 1: 最外环内的孔洞（被 depth-0 包含，但不被其他 depth-1 包含）
-depth 2: 孔洞内的岛（被 depth-0 和 depth-1 包含）
-depth 3: 岛内的孔洞（被 depth-0, depth-1, depth-2 包含）
+depth 1: 最外环内的孔洞
+depth 2: 孔洞内的岛
+depth 3: 岛内的孔洞
 ...
 ```
 
-**depth = 包含此环的上级环数量**
+### 1.2 环的有效性分类
 
-### 1.3 用户场景
+根据 HatchStyle 和环的深度，每个环分为三类：
 
-原始 Hatch 有 3 个环，包含关系为 A→B→C：
-- **环 A**（depth 0，最外环）：大矩形
-- **环 B**（depth 1，孔洞）：中圆
-- **环 C**（depth 2，岛）：小圆
+| HatchStyle | depth 0 | depth 1 | depth 2+ | 说明 |
+|-----------|---------|---------|----------|------|
+| **Outer** | 外（有效） | 内（有效） | 无效 | 只填充外环与内环之间 |
+| **Ignore** | 外（有效） | 无效 | 无效 | 只填充外环内部 |
+| **Normal** | 外（有效，填充） | 内（有效，不填充） | 有效（交替填充） | 所有环参与交替填充 |
 
-`HatchStyle.Outer` 填充区域 = A \ B（大矩形减去中圆），环 C 被忽略。
+### 1.3 裁剪边界的深度（clipDepth）
 
-### 1.4 裁剪后的正确行为
+裁剪边界对应原始 Hatch 的某个环。通过比较裁剪边界面积与各原始环面积确定：
 
-裁剪后应填充在**裁剪后的 A 与裁剪后的 B 之间**。环 C 裁剪后的结果仍然忽略。
+```
+clipDepth = 与裁剪边界面积最匹配的原始环的 depth
+```
+
+### 1.4 新深度（newDepth）
+
+裁剪后，每个环的新深度 = 原始深度 - 裁剪边界深度：
+
+```
+newDepth = originalDepth - clipDepth
+```
+
+- `newDepth < 0`：**容器**（在裁剪边界之上，忽略）
+- `newDepth >= 0`：**内容**（在裁剪边界处或之内，参与重建）
 
 ---
 
-## 二、当前流程与问题分析
+## 二、统一处理逻辑
 
-### 2.1 当前 ProcessHatches 流程
+### 2.1 核心流程
 
 ```
-1. GenerateHatchBoundary → 生成边界实体（所有环）
-2. CropClosedCurveMulti → 对每个边界实体独立裁剪
-3. 按面积降序排序（有缺陷！）× 按 HatchStyle 取相应数量
-4. CloneHatchWithNewBoundaries → 用排序后的曲线重建 Hatch
+1. GenerateHatchBoundary → 生成所有环的边界实体，记录每个环的 loopIndex
+2. 计算每个原始环的 depth（包含关系层次）
+3. 确定 clipDepth（裁剪边界匹配的原始环 depth）
+4. 逐个环裁剪（保留 loopIndex 关联）
+5. 对每个裁剪结果计算 newDepth = originalDepth - clipDepth
+6. 按 HatchStyle 和 newDepth 过滤
+7. 排序后重建 Hatch
 ```
 
-### 2.2 面积排序的缺陷
+### 2.2 HatchStyle 分策略
 
-| 场景 | 面积排序行为 | 错误原因 |
-|------|-------------|---------|
-| 单一外环+单一孔洞 | 外环面积>孔洞面积 → 正确 | — |
-| 外环+多个孔洞（同层） | 按面积大小排出顺序，无法区分哪个是外环 | 面积排序改变了内外层次 |
-| 裁剪后外环面积<裁剪后孔洞面积 | 裁剪边界大幅削切外环，但孔洞几乎未变 | 面积排序把孔洞排到外环前面 |
-| 外环分裂成多个碎片 | 面积最大的碎片 ≠ 外环的完整裁剪结果 | 多个碎片可能都是外环的一部分 |
+| HatchStyle | 过滤规则 | 无有效外环时 |
+|-----------|---------|------------|
+| **Outer** | 保留 newDepth == 0（外环）和 newDepth == 1（内环） | **删除 Hatch** |
+| **Normal** | 保留所有 newDepth >= 0（交替填充） | **删除 Hatch** |
+| **Ignore** | 保留 newDepth == 0（外环） | 取面积最大的曲线作为外环 |
 
-**面积排序的致命缺陷：无法反映包含关系（谁包含谁）。**
+### 2.3 各场景分析
+
+#### 场景：3 层嵌套 Hatch (A→B→C)，HatchStyle.Outer
+
+```
+环 A (depth 0, 外): 大矩形
+环 B (depth 1, 内): 中圆
+环 C (depth 2, 无效): 小圆
+```
+
+| 裁剪边界 | clipDepth | 裁剪后 newDepth | 过滤结果 | 正确行为 |
+|---------|-----------|----------------|---------|---------|
+| A（外环） | 0 | A':0, B':1, C':2 | A'(外)+B'(内), C'过滤 | 填充 A'\B' |
+| B（内环） | 1 | A':-1(容器), B':0, C':1 | B'(外)+C'(内) | **但 Outer 只保留 depth≤1，B'是外环，C'是内环 → 填充 B'\C'** → 不对！ |
+
+等等，这里有问题。让我重新分析。
+
+**Outer 语义**：填充最外环与第一个内环之间。如果裁剪边界是内环 B（depth 1），则：
+- 裁剪后 A' = A ∩ B = B 的形状（因为 B 在 A 内部）
+- 裁剪后 B' = B ∩ B = B 的形状
+- 裁剪后 C' = C ∩ B = C 的形状（如果 C 在 B 内部）
+
+newDepth: A'=-1(容器), B'=0, C'=1
+
+Outer 过滤：保留 newDepth 0 和 1 → B'(外) + C'(内)
+
+但 B 原来是内环（孔洞），C 原来是无效环（岛）。裁剪后 B' 变成外环，C' 变成内环。
+
+填充 B'\C' = B 的形状减去 C 的形状。
+
+但用户说"OUTER的内环或者无效环剪切，HATCH完全删除"。
+
+这意味着：当裁剪边界是 Outer 样式的内环或无效环时，应该删除 Hatch。
+
+为什么？因为 Outer 样式只填充外环与内环之间。如果裁剪边界是内环 B：
+- 裁剪后的区域 = B 的形状
+- B 原来是孔洞（不填充区域）
+- 在 B 的内部，Outer 样式不填充任何东西（因为 Outer 只填充 A\B，不填充 B 内部）
+- 所以裁剪后应该没有填充区域 → 删除 Hatch
+
+如果裁剪边界是无效环 C：
+- 裁剪后的区域 = C 的形状
+- C 在 B 内部，B 是孔洞（不填充）
+- 所以 C 的区域也不填充 → 删除 Hatch
+
+**结论：Outer 样式，当 clipDepth >= 1 时，删除 Hatch。**
+
+#### 修正后的 Outer 逻辑
+
+| 裁剪边界 | clipDepth | 行为 |
+|---------|-----------|------|
+| 外环（depth 0） | 0 | 正常裁剪：A'(外) + B'(内) |
+| 内环（depth 1） | 1 | **删除 Hatch**（裁剪区域在孔洞内，无填充） |
+| 无效环（depth 2+） | 2+ | **删除 Hatch**（裁剪区域在无效环内，无填充） |
+| 非 Hatch 环 | 无法匹配 | 正常裁剪（按包含关系排序） |
+
+#### Normal 逻辑
+
+| 裁剪边界 | clipDepth | newDepth | 行为 |
+|---------|-----------|---------|------|
+| 外环（depth 0, 填充） | 0 | A':0, B':1, C':2 | 全部保留，交替填充 |
+| 内环（depth 1, 不填充） | 1 | A':-1(容器), B':0, C':1 | 过滤容器，B'(外)+C'(内) |
+| 岛（depth 2, 填充） | 2 | A':-2, B':-1, C':0 | 过滤容器，C'(外) |
+| 孔洞内孔洞（depth 3, 不填充） | 3 | A':-3, B':-2, C':-1, D':0 | 过滤容器，D'(外) |
+
+**Normal 规则**：保留 newDepth >= 0，过滤 newDepth < 0（容器）。newDepth 0 = Outermost，其余 = Default。
+
+#### Ignore 逻辑
+
+| 裁剪边界 | clipDepth | 行为 |
+|---------|-----------|------|
+| 外环（depth 0） | 0 | A'(外)，忽略所有内环 |
+| 内环（depth 1+） | 1+ | 裁剪后 A' = clip 形状 → **A' 作为外环**（Ignore 填充所有内部） |
+| 非 Hatch 环 | 无法匹配 | 取面积最大的曲线作为外环 |
+
+**Ignore 规则**：取面积最大的曲线作为外环（因为 Ignore 填充最外环内部全部区域）。
 
 ---
 
----
+## 三、实现方案
 
-## 四、边界条件分析（更新版：以包含关系为基准）
-
-### 4.1 裁剪方向
-
-| 命令 | keepInside | 语义 | 对 Hatch 环的影响 |
-|------|-----------|------|------------------|
-| CROPOUTSIDE | true | 保留裁剪边界内部 | 每个环取与裁剪边界的交集 |
-| CROPINSIDE | false | 保留裁剪边界外部 | 每个环取与裁剪边界的差集 |
-
-### 4.2 测试用例：3层嵌套 Hatch (A→B→C)
-
-```
-原始 Hatch (HatchStyle.Outer):
-  环 A (depth 0): 大矩形 100×100
-  环 B (depth 1): 中圆 半径 30（在 A 内部）
-  环 C (depth 2): 小圆 半径 10（在 B 内部）
-  
-Outer 填充: A \ B（环 C 被忽略）
-```
-
-### 4.3 CROPOUTSIDE（保留内部 = 交集 A ∩ Clip）边界条件
-
-| # | 场景 | 裁剪后环 | 包含关系 depth | 正确行为 |
-|---|------|---------|---------------|---------|
-| 1 | Clip 完全包含 A | A', B', C' | A':0, B':1, C':2 | Outermost: A', Default: B' (忽略 C') |
-| 2 | Clip 在 A 内、B 外 | A' (Clip形状) | A':0 | Outermost: A' (无孔洞) |
-| 3 | Clip 在 A 内、B 内、C 外 | A'(=B'), 均=Clip | A':0, B':0(同形) | 填充 A'\B' = 空 → 删除 Hatch |
-| 4 | Clip 在 A 内、B 内、C 内 | A'=B'=C'=Clip | 全为 0(同形) | 填充 A'\B' = 空 → 删除 Hatch |
-| 5 | Clip 跨越 A+B | A'_part, B'_part | A':0, B':1 | Outermost: A', Default: B' |
-| 6 | Clip 完全在 A 外 | 无 | — | 删除 Hatch |
-| 7 | Clip 只与 A 相交 | A'_part | A':0 | Outermost: A' (无孔洞) |
-| 8 | Clip 只与 B 相交 | B'_part (无外环) | — | 删除 Hatch |
-
-> **同形检测**：当两个裁剪后的 Polyline 面积近似相等（差 < 1e-8），且一个包含另一个时 → 视为同形，不建立包含关系，处于同 depth。
-
-### 4.4 CROPINSIDE（保留外部 = 差集 A \ Clip）边界条件
-
-| # | 场景 | 裁剪后环 | 包含关系 depth | 正确行为 |
-|---|------|---------|---------------|---------|
-| 1 | Clip 完全在 A 外 | A, B, C 不变 | A:0, B:1, C:2 | Outermost: A, Default: B (忽略 C) |
-| 2 | Clip 在 A 内、B 外 | A'_带洞, B, C | A':0, B:1, C:2 | Outermost: A', Default: B (忽略 C) |
-| 3 | Clip 在 A 内、B 内、C 外 | A'_带洞, B'_带洞, C | A':0, B':1, C:2 | Outermost: A', Default: B' (忽略 C) |
-| 4 | Clip 在 A 内、B 内、C 内 | A'_带洞, B'_带洞, C'_带洞 | A':0, B':1, C':2 | Outermost: A', Default: B' (忽略 C') |
-| 5 | Clip 跨越 A+B | A'_part, B'_part | A':0, B':1 | Outermost: A', Default: B' |
-| 6 | Clip 完全包含 A | 空 | — | 删除 Hatch |
-| 7 | Clip 只与 A 相交 | A'_part, B, C | A':0, B:1, C:2 | Outermost: A', Default: B |
-| 8 | Clip 只与 B 相交、不与 A 相交 | A, B'_part, C | A:0, B':1, C:2 | Outermost: A, Default: B' |
-
-### 4.5 特殊情况
-
-| # | 场景 | 包含关系排序的处理 | 正确行为 |
-|---|------|------------------|---------|
-| 1 | 裁剪后只有1个环 | depth = 0（最外环） | Outermost: 该环（无孔洞） |
-| 2 | 裁剪后无环 | — | 删除 Hatch |
-| 3 | 裁剪后外环分裂成多个碎片 | 多个 depth-0 环 | 取第1个为 Outermost，其余忽略 |
-| 4 | 同 depth 有多个环（多个孔洞同层） | depth-1 的环全部传入 | 全部为 Default，AutoCAD 自动填充两者之间的区域 |
-| 5 | 裁剪后外环与孔洞同形同面积 | 同形检测 → 视为同 depth | 填充空 → 删除 Hatch |
-| 6 | HatchStyle.Ignore | 只保留 depth = 0 | 第1个 = Outermost，忽略其余 |
-| 7 | HatchStyle.Normal | 保留所有 depth | 全部传入，AutoCAD 交替填充 |
-
----
-
-## 五、实现方案
-
-### 5.1 ✅ 已完成 - 修改 GenerateHatchBoundary
-
-**移除 HatchStyle 限制，生成所有环。**
-
-### 5.2 ✅ 已完成 - 修改 CloneHatchWithNewBoundaries
-
-**接受排序后的边界，第1个 Outermost，其余 Default：**
-
-```csharp
-var loopType = (i == 0) ? HatchLoopTypes.Outermost : HatchLoopTypes.Default;
-```
-
-### 5.3 🔄 本次实施 — 修改 ProcessHatches：用包含关系排序替换面积排序
-
-#### 5.3.1 射线法判断点在多边形内
-
-```csharp
-/// <summary>
-/// 使用射线法判断点是否在多边形内部（WCS 2D 投影）.
-/// </summary>
-private static bool IsPointInsidePolygon(Point3d point, Polyline polyline)
-{
-    if (!polyline.Closed) return false;
-    
-    int n = polyline.NumberOfVertices;
-    bool inside = false;
-    double px = point.X, py = point.Y;
-    
-    for (int i = 0, j = n - 1; i < n; j = i++)
-    {
-        var p1 = polyline.GetPoint3dAt(i);
-        var p2 = polyline.GetPoint3dAt(j);
-        
-        // 水平向右射线法
-        if ((p1.Y > py) != (p2.Y > py) &&
-            px < (p2.X - p1.X) * (py - p1.Y) / (p2.Y - p1.Y) + p1.X)
-        {
-            inside = !inside;
-        }
-    }
-    return inside;
-}
-```
-
-#### 5.3.2 包含关系排序方法
+### 3.1 数据结构
 
 ```csharp
 /// <summary>
-/// 使用包含关系层次排序裁剪后的曲线列表.
-/// 构建包含树，按 depth 升序 + 面积降序排列.
+/// 环的有效性分类.
 /// </summary>
-private static List<ObjectId> SortByContainmentHierarchy(
-    List<ObjectId> curveIds, HatchStyle style, ITransactionService ts)
+public enum LoopValidity
 {
-    if (curveIds.Count <= 1) return curveIds;
-    
-    int n = curveIds.Count;
-    var areas = new double[n];
-    var plineCache = new Polyline[n];  // 只读缓存
-    var depth = new int[n];
-    
-    // Step 1: 读取所有 Polyline，计算面积
-    for (int i = 0; i < n; i++)
-    {
-        var pline = ts.GetObject<Polyline>(curveIds[i], OpenMode.ForRead);
-        if (pline == null) continue;
-        plineCache[i] = pline;
-        areas[i] = pline.Area;
-    }
-    
-    // Step 2: 构建包含矩阵，计算 depth = 被包含次数
-    const double areaTol = 1e-8;
-    for (int i = 0; i < n; i++)
-    {
-        if (plineCache[i] == null) continue;
-        var testPt = plineCache[i].GetPoint3dAt(0);
-        
-        for (int j = 0; j < n; j++)
-        {
-            if (i == j || plineCache[j] == null) continue;
-            
-            // 同形检测：面积近似相等则视为 siblings
-            if (Math.Abs(areas[i] - areas[j]) < areaTol) continue;
-            
-            if (IsPointInsidePolygon(testPt, plineCache[j]))
-                depth[i]++;
-        }
-    }
-    
-    // Step 3: 按 HatchStyle 过滤
-    var filtered = new List<(int Index, int Depth, double Area)>();
-    for (int i = 0; i < n; i++)
-    {
-        if (plineCache[i] == null) continue;
-        if (style == HatchStyle.Ignore && depth[i] > 0) continue;
-        if (style == HatchStyle.Outer && depth[i] > 1) continue;
-        filtered.Add((i, depth[i], areas[i]));
-    }
-    
-    if (filtered.Count == 0) return new List<ObjectId>();
-    
-    // Step 4: 排序 — depth 升序，同 depth 面积降序
-    filtered.Sort((a, b) =>
-    {
-        int cmp = a.Depth.CompareTo(b.Depth);
-        if (cmp == 0) cmp = b.Area.CompareTo(a.Area);
-        return cmp;
-    });
-    
-    // Step 5: 构建结果
-    var result = new List<ObjectId>();
-    foreach (var item in filtered) result.Add(curveIds[item.Index]);
-    return result;
+    Outer,    // 外环（depth 0，填充）
+    Inner,    // 内环（depth 1，孔洞）
+    Invalid,  // 无效环（depth 2+，在 Outer/Ignore 中被忽略）
+}
+
+/// <summary>
+/// 带原始环信息的裁剪结果.
+/// </summary>
+public class CroppedLoopInfo
+{
+    public ObjectId CurveId;        // 裁剪后的曲线 ObjectId
+    public int OriginalDepth;       // 原始环的 depth
+    public int NewDepth;            // 新 depth = originalDepth - clipDepth
+    public double Area;             // 裁剪后面积
+    public LoopValidity Validity;   // 有效性分类
 }
 ```
 
-#### 5.3.3 ProcessHatches 中替换面积排序
+### 3.2 ProcessHatches 修改流程
 
-将原来的「按面积排序」代码块替换为调用 `SortByContainmentHierarchy`：
+```
+1. 对每个 Hatch:
+   a. GenerateHatchBoundary → 生成所有环，记录 loopIndex
+   b. 计算每个环的 originalDepth（包含关系层次）
+   c. 计算每个环的面积
+
+2. 确定 clipDepth:
+   a. 计算裁剪边界面积
+   b. 与各原始环面积比较，找最匹配的环
+   c. clipDepth = 匹配环的 originalDepth
+   d. 如果无匹配（裁剪边界不是 Hatch 的环），clipDepth = 0
+
+3. 逐个环裁剪:
+   a. 对每个环的边界实体，调用 CropClosedCurveMulti 单独裁剪
+   b. 记录裁剪结果的 CurveId 和 originalDepth
+
+4. 计算 newDepth 和有效性:
+   a. newDepth = originalDepth - clipDepth
+   b. 按 HatchStyle 分类有效性
+
+5. 按 HatchStyle 过滤:
+   a. Outer: clipDepth >= 1 → 删除 Hatch
+            clipDepth == 0 → 保留 newDepth 0 和 1
+   b. Normal: 保留 newDepth >= 0，过滤 newDepth < 0
+   c. Ignore: 取面积最大的曲线
+
+6. 排序: newDepth 升序 + 面积降序
+
+7. 重建 Hatch: newDepth 0 = Outermost，其余 = Default
+```
+
+### 3.3 clipDepth 匹配算法
 
 ```csharp
-// ★ 第四步：用包含关系层次排序替代面积排序
-List<ObjectId> sortedCurveIds = new List<ObjectId>();
-if (clippedCurveIds.Count > 0)
+/// <summary>
+/// 确定裁剪边界对应的原始环 depth.
+/// </summary>
+private static int DetermineClipDepth(
+    double clipArea, List<(int LoopIndex, double Area, int Depth)> loopInfos,
+    double areaTol = 0.01)
 {
-    CadServiceManager._.ExecuteInTransactions(null, ts =>
-    {
-        // 获取源 Hatch 的 HatchStyle
-        HatchStyle srcStyle = HatchStyle.Normal;
-        if (hatchIds.Count > 0 && hatchIds[0].IsValid && !hatchIds[0].IsErased)
-        {
-            var srcHatch = ts.GetObject<Hatch>(hatchIds[0], OpenMode.ForRead);
-            if (srcHatch != null) srcStyle = srcHatch.HatchStyle;
-        }
+    // 按面积差绝对值排序，找最接近的环
+    var sorted = loopInfos
+        .OrderBy(x => Math.Abs(x.Area - clipArea))
+        .ToList();
 
-        // 使用包含关系层次排序（替代面积排序）
-        sortedCurveIds = SortByContainmentHierarchy(
-            clippedCurveIds, srcStyle, ts);
-    });
+    if (sorted.Count == 0) return 0;
+
+    // 如果最接近的环面积差 < 容差，认为匹配
+    if (Math.Abs(sorted[0].Area - clipArea) / clipArea < areaTol)
+        return sorted[0].Depth;
+
+    // 无匹配：裁剪边界不是 Hatch 的环，clipDepth = 0
+    return 0;
 }
 ```
 
-### 5.4 HatchStyle 对应的环选择策略
+### 3.4 逐个环裁剪
 
-| HatchStyle | depth 过滤 | Outermost | Default |
-|-----------|-----------|-----------|---------|
-| Ignore | depth == 0 | 第1个 depth-0 | 无 |
-| Outer | depth <= 1 | 第1个 depth-0 | 所有 depth-1 |
-| Normal | 所有 depth | 第1个 depth-0 | 其余所有 |
+```csharp
+// 对每个环单独裁剪，保留 loopIndex 关联
+var croppedLoops = new List<CroppedLoopInfo>();
+foreach (var loopInfo in loopInfos)
+{
+    var cropResult = CropClosedCurveCommand.CropClosedCurveMulti(
+        new List<ObjectId> { loopInfo.EntityId }, boundaryId, keepInside);
 
-### 5.5 清理策略
+    if (cropResult.IsSuccess && cropResult.CreatedEntityIds != null)
+    {
+        foreach (var curveId in cropResult.CreatedEntityIds)
+        {
+            // 读取面积
+            double area = 0;
+            CadServiceManager._.ExecuteInTransactions(null, ts =>
+            {
+                var pline = ts.GetObject<Polyline>(curveId, OpenMode.ForRead);
+                if (pline != null) area = pline.Area;
+            });
 
-- 裁剪中间产物（`allGeneratedIds` + 未被选入 `sortedCurveIds` 的 `clippedCurveIds`）全部删除
-- 原始 Hatch 全部删除
-- `sortedCurveIds` 中的曲线作为新 Hatch 的关联边界保留
+            croppedLoops.Add(new CroppedLoopInfo
+            {
+                CurveId = curveId,
+                OriginalDepth = loopInfo.Depth,
+                Area = area,
+            });
+        }
+    }
+}
+```
+
+### 3.5 HatchStyle 过滤
+
+```csharp
+// 计算 newDepth
+foreach (var cl in croppedLoops)
+    cl.NewDepth = cl.OriginalDepth - clipDepth;
+
+// 按 HatchStyle 过滤
+List<CroppedLoopInfo> filtered;
+switch (srcStyle)
+{
+    case HatchStyle.Outer:
+        if (clipDepth >= 1)
+        {
+            // 裁剪边界是内环或无效环 → 删除 Hatch
+            filtered = new List<CroppedLoopInfo>();
+        }
+        else
+        {
+            // 保留 newDepth 0 和 1
+            filtered = croppedLoops
+                .Where(x => x.NewDepth >= 0 && x.NewDepth <= 1)
+                .ToList();
+        }
+        break;
+
+    case HatchStyle.Normal:
+        // 保留 newDepth >= 0，过滤容器
+        filtered = croppedLoops
+            .Where(x => x.NewDepth >= 0)
+            .ToList();
+        break;
+
+    case HatchStyle.Ignore:
+        // 取面积最大的曲线作为外环
+        filtered = croppedLoops
+            .OrderByDescending(x => x.Area)
+            .Take(1)
+            .ToList();
+        break;
+
+    default:
+        filtered = croppedLoops.Where(x => x.NewDepth >= 0).ToList();
+        break;
+}
+
+// 去重：相同面积只保留第一条
+filtered = DeduplicateByArea(filtered, areaTol);
+
+// 排序：newDepth 升序 + 面积降序
+filtered = filtered
+    .OrderBy(x => x.NewDepth)
+    .ThenByDescending(x => x.Area)
+    .ToList();
+```
 
 ---
 
-## 六、实施步骤
+## 四、边界条件汇总
 
-1. ✅ **`GenerateHatchBoundaryCommand.cs`** — 移除 HatchStyle 环数限制，生成所有环（已完成）
-2. ✅ **`CloneHatchCommand.cs` CloneHatchWithNewBoundaries** — 第1个 Outermost，其余 Default（已完成）
-3. 🔄 **`CropHatchCommand.cs` ProcessHatches** — 用包含关系层次排序替换面积排序（本次实施）
+### 4.1 Outer 样式
+
+| 裁剪边界 | clipDepth | 行为 |
+|---------|-----------|------|
+| 外环 | 0 | 保留 newDepth 0(外) + 1(内) |
+| 内环 | 1 | **删除 Hatch** |
+| 无效环 | 2+ | **删除 Hatch** |
+| 非 Hatch 环 | 0 | 按包含关系排序，取 depth 0+1 |
+
+### 4.2 Normal 样式
+
+| 裁剪边界 | clipDepth | 行为 |
+|---------|-----------|------|
+| 外环(depth 0, 填充) | 0 | 全部保留，交替填充 |
+| 内环(depth 1, 不填充) | 1 | 过滤容器，newDepth 0=外, 1=内 |
+| 岛(depth 2, 填充) | 2 | 过滤容器，newDepth 0=外 |
+| 更深层 | 3+ | 过滤容器，newDepth 0=外 |
+| 非 Hatch 环 | 0 | 按包含关系排序，全部保留 |
+
+### 4.3 Ignore 样式
+
+| 裁剪边界 | clipDepth | 行为 |
+|---------|-----------|------|
+| 外环 | 0 | 取面积最大曲线作为外环 |
+| 内环/无效环 | 1+ | 取面积最大曲线作为外环 |
+| 非 Hatch 环 | 0 | 取面积最大曲线作为外环 |
+
+---
+
+## 五、实施步骤
+
+1. **`GenerateHatchBoundaryCommand.cs`** — 返回每个环的 loopIndex 和面积
+2. **`CropHatchCommand.cs` ProcessHatches** — 重写为统一逻辑：
+   - 逐个环裁剪（保留 loopIndex 关联）
+   - 确定 clipDepth
+   - 计算 newDepth
+   - 按 HatchStyle 过滤
+3. **`CloneHatchCommand.cs`** — 保持 HatchStyle.Normal + 第1个 Outermost，其余 Default
 4. 编译验证
 5. Git 提交推送

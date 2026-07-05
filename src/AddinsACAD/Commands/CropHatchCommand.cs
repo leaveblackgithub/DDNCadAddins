@@ -268,11 +268,11 @@ namespace AddinsACAD.Commands
                     });
                 }
 
-                // ★ 第四步：用包含关系层次排序替代面积排序
-                //    构建包含树 → 按 depth 升序 + 面积降序排列
-                //    HatchStyle.Ignore: 只保留 depth == 0（最外环）
-                //    HatchStyle.Outer: 保留 depth <= 1（最外环 + 所有孔洞）
-                //    HatchStyle.Normal: 保留所有 depth（交替填充）
+                // ★ 第四步：统一环有效性 + clipDepth 逻辑
+                //    1. 计算原始环面积 → 确定 clipDepth（裁剪边界对应的原始环深度）
+                //    2. Outer 样式: clipDepth >= 1 → 删除 Hatch（裁剪区域在孔洞内，无填充）
+                //    3. Normal 样式: 过滤容器曲线（与裁剪边界同形的曲线）
+                //    4. Ignore 样式: 取面积最大的曲线作为外环
                 List<ObjectId> sortedCurveIds = new List<ObjectId>();
                 if (clippedCurveIds.Count > 0)
                 {
@@ -286,7 +286,7 @@ namespace AddinsACAD.Commands
                             if (srcHatch != null) srcStyle = srcHatch.HatchStyle;
                         }
 
-                        // 计算裁剪边界的面积（用于 Normal 样式过滤"容器"曲线）
+                        // 计算裁剪边界的面积
                         double clipArea = 0;
                         if (boundaryId.IsValid && !boundaryId.IsErased)
                         {
@@ -299,11 +299,51 @@ namespace AddinsACAD.Commands
                                 clipArea = clipEll.Area;
                         }
 
-                        // 使用包含关系层次排序（替代面积排序）
+                        // 计算原始边界实体的面积，按面积降序排序
+                        // 面积最大 = 外环(depth 0)，次大 = 内环(depth 1)，以此类推
+                        var origAreas = new List<double>();
+                        foreach (var id in allGeneratedIds)
+                        {
+                            if (!id.IsValid || id.IsErased) continue;
+                            var ent = ts.GetObject<Entity>(id, OpenMode.ForRead);
+                            if (ent is Polyline pl) origAreas.Add(pl.Area);
+                            else if (ent is Circle cir) origAreas.Add(cir.Area);
+                            else if (ent is Ellipse ell) origAreas.Add(ell.Area);
+                        }
+                        origAreas.Sort((a, b) => b.CompareTo(a));
+
+                        // 确定 clipDepth：裁剪边界面积匹配哪个原始环
+                        // 面积差 < 1% 视为匹配
+                        int clipDepth = 0;
+                        if (clipArea > 0)
+                        {
+                            for (int i = 0; i < origAreas.Count; i++)
+                            {
+                                double ratio = Math.Abs(origAreas[i] - clipArea) / clipArea;
+                                if (ratio < 0.01)
+                                {
+                                    clipDepth = i; // 0=外环, 1=内环, 2+=无效环
+                                    break;
+                                }
+                            }
+                        }
+
+                        ed.WriteMessage($"\n  [调试] HatchStyle={srcStyle}, clipArea={clipArea:F4}, clipDepth={clipDepth}, 原始环数={origAreas.Count}");
+
+                        // ★ Outer 样式：clipDepth >= 1 → 删除 Hatch
+                        //    裁剪边界是内环或无效环 → 裁剪区域在孔洞内 → 无填充
+                        if (srcStyle == HatchStyle.Outer && clipDepth >= 1)
+                        {
+                            ed.WriteMessage($"\n  Outer 样式：裁剪边界是内环或无效环(depth={clipDepth})，删除 Hatch");
+                            sortedCurveIds = new List<ObjectId>();
+                            return;
+                        }
+
+                        // 使用包含关系层次排序
                         sortedCurveIds = SortByContainmentHierarchy(
                             clippedCurveIds, srcStyle, ts, clipArea);
 
-                        ed.WriteMessage($"\n  [调试] HatchStyle={srcStyle}, 裁剪曲线数={clippedCurveIds.Count}, 排序后={sortedCurveIds.Count}");
+                        ed.WriteMessage($"\n  [调试] 排序后={sortedCurveIds.Count}");
                     });
                 }
 
