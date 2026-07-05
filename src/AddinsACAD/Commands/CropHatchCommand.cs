@@ -252,22 +252,6 @@ namespace AddinsACAD.Commands
 
                 ed.WriteMessage($"\n  裁剪后新生成 {clippedCurveIds.Count} 条曲线，准备用源 Hatch 参数填充...");
 
-                // ★ 调试：输出每条裁剪结果曲线的面积
-                if (clippedCurveIds.Count > 0)
-                {
-                    CadServiceManager._.ExecuteInTransactions(null, ts =>
-                    {
-                        for (int i = 0; i < clippedCurveIds.Count; i++)
-                        {
-                            var id = clippedCurveIds[i];
-                            if (!id.IsValid || id.IsErased) continue;
-                            var pline = ts.GetObject<Polyline>(id, OpenMode.ForRead);
-                            if (pline == null) continue;
-                            ed.WriteMessage($"\n  [调试] 裁剪曲线[{i}]: Area={pline.Area:F4}, Vertices={pline.NumberOfVertices}, Closed={pline.Closed}");
-                        }
-                    });
-                }
-
                 // ★ 第四步：统一环有效性 + clipDepth 逻辑
                 //    1. 计算原始环面积 → 确定 clipDepth（裁剪边界对应的原始环深度）
                 //    2. Outer 样式: clipDepth >= 1 → 删除 Hatch（裁剪区域在孔洞内，无填充）
@@ -328,8 +312,6 @@ namespace AddinsACAD.Commands
                             }
                         }
 
-                        ed.WriteMessage($"\n  [调试] HatchStyle={srcStyle}, clipArea={clipArea:F4}, clipDepth={clipDepth}, 原始环数={origAreas.Count}");
-
                         // ★ Outer 样式：clipDepth >= 1 → 删除 Hatch
                         //    裁剪边界是内环或无效环 → 裁剪区域在孔洞内 → 无填充
                         if (srcStyle == HatchStyle.Outer && clipDepth >= 1)
@@ -342,8 +324,6 @@ namespace AddinsACAD.Commands
                         // 使用包含关系层次排序
                         sortedCurveIds = SortByContainmentHierarchy(
                             clippedCurveIds, srcStyle, ts, clipArea);
-
-                        ed.WriteMessage($"\n  [调试] 排序后={sortedCurveIds.Count}");
                     });
                 }
 
