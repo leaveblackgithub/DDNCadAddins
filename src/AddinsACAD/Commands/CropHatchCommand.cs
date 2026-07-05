@@ -252,26 +252,16 @@ namespace AddinsACAD.Commands
 
                 ed.WriteMessage($"\n  裁剪后新生成 {clippedCurveIds.Count} 条曲线，准备用源 Hatch 参数填充...");
 
-                // ★ 第四步：按面积降序排序裁剪结果曲线
-                //    HatchStyle.Outer: 取前2个（第1个=外环 Outermost，第2个=内环 Default）
-                //    HatchStyle.Ignore: 取前1个（Outermost）
-                //    HatchStyle.Normal: 全部传入（交替填充）
+                // ★ 第四步：用包含关系层次排序替代面积排序
+                //    构建包含树 → 按 depth 升序 + 面积降序排列
+                //    HatchStyle.Ignore: 只保留 depth == 0（最外环）
+                //    HatchStyle.Outer: 保留 depth <= 1（最外环 + 所有孔洞）
+                //    HatchStyle.Normal: 保留所有 depth（交替填充）
                 List<ObjectId> sortedCurveIds = new List<ObjectId>();
                 if (clippedCurveIds.Count > 0)
                 {
                     CadServiceManager._.ExecuteInTransactions(null, ts =>
                     {
-                        var areaList = new List<(ObjectId Id, double Area)>();
-                        foreach (var id in clippedCurveIds)
-                        {
-                            if (!id.IsValid || id.IsErased) continue;
-                            var pline = ts.GetObject<Polyline>(id, OpenMode.ForRead);
-                            if (pline == null) continue;
-                            areaList.Add((id, pline.Area));
-                        }
-                        // 按面积降序排序
-                        areaList.Sort((a, b) => b.Area.CompareTo(a.Area));
-
                         // 获取源 Hatch 的 HatchStyle
                         HatchStyle srcStyle = HatchStyle.Normal;
                         if (hatchIds.Count > 0 && hatchIds[0].IsValid && !hatchIds[0].IsErased)
@@ -280,18 +270,13 @@ namespace AddinsACAD.Commands
                             if (srcHatch != null) srcStyle = srcHatch.HatchStyle;
                         }
 
-                        int maxLoops = areaList.Count;
-                        if (srcStyle == HatchStyle.Ignore)
-                            maxLoops = Math.Min(1, areaList.Count);
-                        else if (srcStyle == HatchStyle.Outer)
-                            maxLoops = Math.Min(2, areaList.Count);
-
-                        for (int i = 0; i < maxLoops; i++)
-                            sortedCurveIds.Add(areaList[i].Id);
+                        // 使用包含关系层次排序（替代面积排序）
+                        sortedCurveIds = SortByContainmentHierarchy(
+                            clippedCurveIds, srcStyle, ts);
                     });
                 }
 
-                ed.WriteMessage($"\n  按面积排序后取 {sortedCurveIds.Count} 条曲线用于重建 Hatch...");
+                ed.WriteMessage($"\n  按包含关系排序后取 {sortedCurveIds.Count} 条曲线用于重建 Hatch...");
 
                 // ★ 第五步：对每个源 Hatch 用 CloneHatchWithNewBoundaries 创建新 Hatch，清理中间产物
                 int newHatchesCreated = 0;
@@ -581,6 +566,137 @@ namespace AddinsACAD.Commands
                 Logger._.Error($"选择待裁剪 Hatch 失败: {ex.Message}", ex);
                 ed.WriteMessage($"\n选择待裁剪 Hatch 失败: {ex.Message}");
                 return null;
+            }
+        }
+
+        /// <summary>
+        ///     使用射线法判断点是否在多边形内部（WCS 2D 投影）.
+        ///     水平向右射线，与多边形边交点为奇数则在内部.
+        /// </summary>
+        /// <param name="point">测试点（WCS）.</param>
+        /// <param name="polyline">闭合多段线.</param>
+        /// <returns>true=点在多边形内部，false=在外部或边界上.</returns>
+        private static bool IsPointInsidePolygon(Point3d point, Polyline polyline)
+        {
+            try
+            {
+                if (polyline == null || !polyline.Closed) return false;
+
+                int n = polyline.NumberOfVertices;
+                if (n < 3) return false;
+
+                bool inside = false;
+                double px = point.X, py = point.Y;
+
+                for (int i = 0, j = n - 1; i < n; j = i++)
+                {
+                    var p1 = polyline.GetPoint3dAt(i);
+                    var p2 = polyline.GetPoint3dAt(j);
+
+                    // 水平向右射线法：判断射线与边的交点
+                    if ((p1.Y > py) != (p2.Y > py) &&
+                        px < (p2.X - p1.X) * (py - p1.Y) / (p2.Y - p1.Y) + p1.X)
+                    {
+                        inside = !inside;
+                    }
+                }
+
+                return inside;
+            }
+            catch (System.Exception ex)
+            {
+                Logger._.Error($"IsPointInsidePolygon 失败: {ex.Message}", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        ///     使用包含关系层次排序裁剪后的曲线列表.
+        ///     构建包含树：depth = 被包含次数（被多少个其他环包含）.
+        ///     按 depth 升序 + 面积降序排列，再按 HatchStyle 过滤.
+        /// </summary>
+        /// <param name="curveIds">裁剪后的 Polyline ObjectId 列表.</param>
+        /// <param name="style">源 Hatch 的 HatchStyle.</param>
+        /// <param name="ts">事务服务.</param>
+        /// <returns>排序后的 ObjectId 列表（depth 0 在前 = 最外环）.</returns>
+        private static List<ObjectId> SortByContainmentHierarchy(
+            List<ObjectId> curveIds, HatchStyle style, ITransactionService ts)
+        {
+            try
+            {
+                if (curveIds == null || curveIds.Count <= 1)
+                    return curveIds ?? new List<ObjectId>();
+
+                int n = curveIds.Count;
+                var areas = new double[n];
+                var plineCache = new Polyline[n];
+                var depth = new int[n];
+
+                // Step 1: 读取所有 Polyline，计算面积
+                for (int i = 0; i < n; i++)
+                {
+                    if (!curveIds[i].IsValid || curveIds[i].IsErased) continue;
+                    var pline = ts.GetObject<Polyline>(curveIds[i], OpenMode.ForRead);
+                    if (pline == null) continue;
+                    plineCache[i] = pline;
+                    areas[i] = pline.Area;
+                }
+
+                // Step 2: 构建包含矩阵，计算 depth = 被包含次数
+                //    同形检测：面积近似相等（差 < 1e-8）则视为 siblings，不建立包含关系
+                const double areaTol = 1e-8;
+                for (int i = 0; i < n; i++)
+                {
+                    if (plineCache[i] == null) continue;
+                    var testPt = plineCache[i].GetPoint3dAt(0);
+
+                    for (int j = 0; j < n; j++)
+                    {
+                        if (i == j || plineCache[j] == null) continue;
+
+                        // 同形检测：面积近似相等则视为 siblings
+                        if (Math.Abs(areas[i] - areas[j]) < areaTol) continue;
+
+                        if (IsPointInsidePolygon(testPt, plineCache[j]))
+                            depth[i]++;
+                    }
+                }
+
+                // Step 3: 按 HatchStyle 过滤
+                //    Ignore: 只保留 depth == 0
+                //    Outer: 保留 depth <= 1
+                //    Normal: 保留所有 depth
+                var filtered = new List<(int Index, int Depth, double Area)>();
+                for (int i = 0; i < n; i++)
+                {
+                    if (plineCache[i] == null) continue;
+                    if (style == HatchStyle.Ignore && depth[i] > 0) continue;
+                    if (style == HatchStyle.Outer && depth[i] > 1) continue;
+                    filtered.Add((i, depth[i], areas[i]));
+                }
+
+                if (filtered.Count == 0)
+                    return new List<ObjectId>();
+
+                // Step 4: 排序 — depth 升序，同 depth 面积降序
+                filtered.Sort((a, b) =>
+                {
+                    int cmp = a.Depth.CompareTo(b.Depth);
+                    if (cmp == 0) cmp = b.Area.CompareTo(a.Area);
+                    return cmp;
+                });
+
+                // Step 5: 构建结果
+                var result = new List<ObjectId>();
+                foreach (var item in filtered)
+                    result.Add(curveIds[item.Index]);
+
+                return result;
+            }
+            catch (System.Exception ex)
+            {
+                Logger._.Error($"SortByContainmentHierarchy 失败: {ex.Message}", ex);
+                return new List<ObjectId>();
             }
         }
     }
