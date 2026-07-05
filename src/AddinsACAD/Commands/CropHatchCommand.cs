@@ -252,6 +252,22 @@ namespace AddinsACAD.Commands
 
                 ed.WriteMessage($"\n  裁剪后新生成 {clippedCurveIds.Count} 条曲线，准备用源 Hatch 参数填充...");
 
+                // ★ 调试：输出每条裁剪结果曲线的面积
+                if (clippedCurveIds.Count > 0)
+                {
+                    CadServiceManager._.ExecuteInTransactions(null, ts =>
+                    {
+                        for (int i = 0; i < clippedCurveIds.Count; i++)
+                        {
+                            var id = clippedCurveIds[i];
+                            if (!id.IsValid || id.IsErased) continue;
+                            var pline = ts.GetObject<Polyline>(id, OpenMode.ForRead);
+                            if (pline == null) continue;
+                            ed.WriteMessage($"\n  [调试] 裁剪曲线[{i}]: Area={pline.Area:F4}, Vertices={pline.NumberOfVertices}, Closed={pline.Closed}");
+                        }
+                    });
+                }
+
                 // ★ 第四步：用包含关系层次排序替代面积排序
                 //    构建包含树 → 按 depth 升序 + 面积降序排列
                 //    HatchStyle.Ignore: 只保留 depth == 0（最外环）
@@ -273,6 +289,8 @@ namespace AddinsACAD.Commands
                         // 使用包含关系层次排序（替代面积排序）
                         sortedCurveIds = SortByContainmentHierarchy(
                             clippedCurveIds, srcStyle, ts);
+
+                        ed.WriteMessage($"\n  [调试] HatchStyle={srcStyle}, 裁剪曲线数={clippedCurveIds.Count}, 排序后={sortedCurveIds.Count}");
                     });
                 }
 
@@ -662,6 +680,13 @@ namespace AddinsACAD.Commands
                     }
                 }
 
+                // ★ 调试日志：输出每条曲线的 depth 和面积
+                for (int i = 0; i < n; i++)
+                {
+                    if (plineCache[i] == null) continue;
+                    Logger._.Info($"[ContainmentSort] 曲线[{i}]: Area={areas[i]:F4}, Depth={depth[i]}, Style={style}");
+                }
+
                 // Step 3: 按 HatchStyle 过滤
                 //    Ignore: 只保留 depth == 0
                 //    Outer: 保留 depth <= 1
@@ -670,10 +695,20 @@ namespace AddinsACAD.Commands
                 for (int i = 0; i < n; i++)
                 {
                     if (plineCache[i] == null) continue;
-                    if (style == HatchStyle.Ignore && depth[i] > 0) continue;
-                    if (style == HatchStyle.Outer && depth[i] > 1) continue;
+                    if (style == HatchStyle.Ignore && depth[i] > 0)
+                    {
+                        Logger._.Info($"[ContainmentSort] 曲线[{i}] 被 Ignore 过滤: depth={depth[i]} > 0");
+                        continue;
+                    }
+                    if (style == HatchStyle.Outer && depth[i] > 1)
+                    {
+                        Logger._.Info($"[ContainmentSort] 曲线[{i}] 被 Outer 过滤: depth={depth[i]} > 1");
+                        continue;
+                    }
                     filtered.Add((i, depth[i], areas[i]));
                 }
+
+                Logger._.Info($"[ContainmentSort] 过滤后剩余 {filtered.Count} 条曲线 (Style={style})");
 
                 if (filtered.Count == 0)
                     return new List<ObjectId>();
