@@ -226,6 +226,12 @@ namespace AddinsACAD.Commands
             try
             {
                 // 1. 创建新 Hatch，应用源 Hatch 的填充参数（图案名称/比例/角度/原点等）
+                //    注意：HatchStyle 统一使用 Normal，而非源 Hatch 的原始 Style。
+                //    原因：Outer/Ignore 样式会导致 AutoCAD 在 EvaluateHatch 时
+                //    重新自行判断环的内外关系，覆盖我们手动设置的 HatchLoopTypes。
+                //    使用 Normal 后，AutoCAD 尊重我们设置的 Outermost/Default 环类型，
+                //    按 depth 交替填充，效果与原始 Outer/Ignore 等价（因为
+                //    ProcessHatches 已按 HatchStyle 过滤了相应 depth 的环）。
                 var hatch = new Hatch();
                 hatch.SetHatchPattern(p.PatternType, p.PatternName);
                 hatch.PatternScale  = p.PatternScale;
@@ -233,7 +239,7 @@ namespace AddinsACAD.Commands
                 hatch.PatternDouble = p.PatternDouble;
                 hatch.PatternSpace  = p.PatternSpace;
                 hatch.Origin        = p.Origin;
-                hatch.HatchStyle    = p.Style;
+                hatch.HatchStyle    = HatchStyle.Normal;
                 hatch.Normal        = p.Normal;
                 hatch.Elevation     = p.Elevation;
 
