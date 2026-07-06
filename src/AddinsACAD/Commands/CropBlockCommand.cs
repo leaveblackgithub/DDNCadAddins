@@ -104,7 +104,8 @@ namespace AddinsACAD.Commands
                     try
                     {
                         var geoService = new CropGeometryService();
-                        var blockService = new CropBlockService(geoService);
+                        var cropService = new CropService(geoService);
+                        var blockService = new CropBlockService(geoService, cropService);
 
                         blockCropResult = blockService.CropBlocks(
                             boundary, boundaryPoints.AsReadOnly(), blockRefIds, capturedKeepInside, serviceTrans);

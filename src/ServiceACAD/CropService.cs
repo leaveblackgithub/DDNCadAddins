@@ -52,7 +52,7 @@ namespace ServiceACAD
             this._mlineService = new CropMLineService(this._cropGeometry);
             this._leaderService = new CropLeaderService(this._cropGeometry);
             this._hatchService = new CropHatchService(this._cropGeometry);
-            this._blockService = new CropBlockService(this._cropGeometry);
+            this._blockService = new CropBlockService(this._cropGeometry, this);
             this._textService = new CropTextService(this._cropGeometry);
             this._mtextService = new CropMTextService(this._cropGeometry);
             this._dimService = new CropDimService(this._cropGeometry);

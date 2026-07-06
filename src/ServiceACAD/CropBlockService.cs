@@ -9,7 +9,7 @@ using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 namespace ServiceACAD
 {
     /// <summary>
-    ///     BlockReference 裁剪结果统计 — 简化版.
+    ///     BlockReference 裁剪结果统计.
     /// </summary>
     public class CropBlockResult
     {
@@ -27,24 +27,28 @@ namespace ServiceACAD
     }
 
     /// <summary>
-    ///     BlockReference 裁剪服务 — 包围盒分类 + ExplodeAsShown 炸开（仅最外层，不递归裁剪子实体）.
-    ///     <para>流程：获取输入 → 包围盒分类 → Inside 保留 / Outside 删除 / Intersects 炸开.</para>
+    ///     BlockReference 裁剪服务 — 包围盒分类 + ExplodeAsShown 炸开 → 裁剪子实体.
+    ///     <para>流程：获取输入 → 包围盒分类 → Inside 保留 / Outside 删除 / Intersects 炸开+裁剪.</para>
+    ///     <para>炸开后对非 BlockReference 子实体调用 ICropService.CropInside/CropOutside 精确裁剪，嵌套块保留原样.</para>
     /// </summary>
     public class CropBlockService
     {
         private readonly ICropGeometryService _geometry;
+        private readonly ICropService _cropService;
 
         /// <summary>
         ///     构造函数.
         /// </summary>
         /// <param name="geometry">几何服务（用于包围盒分类）.</param>
-        public CropBlockService(ICropGeometryService geometry)
+        /// <param name="cropService">裁剪服务（用于裁剪爆炸后的非块参照子实体）.</param>
+        public CropBlockService(ICropGeometryService geometry, ICropService cropService)
         {
             this._geometry = geometry ?? new CropGeometryService();
+            this._cropService = cropService ?? throw new ArgumentNullException(nameof(cropService));
         }
 
         /// <summary>
-        ///     裁剪块参照 — 包围盒分类 + ExplodeAsShown 炸开.
+        ///     裁剪块参照 — 包围盒分类 + ExplodeAsShown 炸开 + 子实体裁剪.
         /// </summary>
         /// <param name="boundary">精确裁剪边界（ICropBoundary）.</param>
         /// <param name="polygon">边界的近似多边形顶点（用于包围盒分类）.</param>
@@ -105,13 +109,13 @@ namespace ServiceACAD
 
                         if (containment == ContainmentResult.Intersects)
                         {
-                            // 与边界相交 → ExplodeAsShown 炸开
-                            var exploder = new BlockExploder(ts);
-                            var explodeResult = exploder.Explode(blockRef);
+                            // 与边界相交 → 爆炸 + 裁剪子实体（嵌套块保留原样）
+                            var explodeCropResult = this.ExplodeAndCropChildren(
+                                blockRef, boundary, keepInside, ts);
 
-                            if (!explodeResult.IsSuccess)
+                            if (!explodeCropResult.IsSuccess)
                             {
-                                Logger._.Warn($"爆炸块参照失败，跳过: {explodeResult.Message}");
+                                Logger._.Warn($"爆炸裁剪块参照失败，跳过: {explodeCropResult.Message}");
                                 result.SkippedCount++;
                                 continue;
                             }
@@ -136,6 +140,78 @@ namespace ServiceACAD
             {
                 Logger._.Error($"CropBlock 操作失败: {ex.Message}", ex);
                 return OpResult<CropBlockResult>.Fail($"裁剪图块失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        ///     爆炸块参照并对非 BlockReference 子实体执行裁剪（嵌套块保留原样）.
+        /// </summary>
+        /// <param name="blockRef">块参照.</param>
+        /// <param name="boundary">裁剪边界.</param>
+        /// <param name="keepInside">裁剪方向.</param>
+        /// <param name="ts">事务服务.</param>
+        /// <returns>操作结果.</returns>
+        private OpResult<object> ExplodeAndCropChildren(
+            BlockReference blockRef,
+            ICropBoundary boundary,
+            bool keepInside,
+            ITransactionService ts)
+        {
+            try
+            {
+                // ── 1. 爆炸 ──
+                var exploder = new BlockExploder(ts);
+                var explodeResult = exploder.Explode(blockRef);
+                if (!explodeResult.IsSuccess)
+                    return OpResult<object>.Fail(explodeResult.Message);
+
+                var childIds = explodeResult.Data.EntityIds;
+                if (childIds == null || childIds.Count == 0)
+                    return OpResult<object>.Fail("爆炸后未生成任何实体");
+
+                // ── 2. 分离 BlockReference（嵌套块保留原样）和其他实体 ──
+                var nonBlockIds = new List<ObjectId>();
+                foreach (var childId in childIds)
+                {
+                    if (!childId.IsValid || childId.IsErased)
+                        continue;
+
+                    // 跳过嵌套块参照
+                    if (childId.ObjectClass != null &&
+                        childId.ObjectClass.Name == "AcDbBlockReference")
+                    {
+                        continue;
+                    }
+
+                    nonBlockIds.Add(childId);
+                }
+
+                // ── 3. 裁剪非块参照子实体 ──
+                if (nonBlockIds.Count > 0)
+                {
+                    var input = new CropInput
+                    {
+                        Boundary = boundary,
+                        EntityIds = nonBlockIds,
+                        TransactionService = ts,
+                    };
+
+                    var cropResult = keepInside
+                        ? this._cropService.CropInside(input)
+                        : this._cropService.CropOutside(input);
+
+                    if (!cropResult.IsSuccess)
+                    {
+                        Logger._.Warn($"裁剪爆炸后子实体时部分失败: {cropResult.Message}");
+                    }
+                }
+
+                return OpResult<object>.Success(null);
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"爆炸裁剪子实体失败: {ex.Message}", ex);
+                return OpResult<object>.Fail($"爆炸裁剪子实体失败: {ex.Message}");
             }
         }
 
