@@ -1,4 +1,4 @@
-feat: 新增 CropSplineServiceTests（AUTOCMDTEST）
+feat: 新增 CropEllipseServiceTests（AUTOCMDTEST）
 
-- 新增 CropSplineServiceTests.cs: 9 个样条曲线裁剪测试
+- 新增 CropEllipseServiceTests.cs: 10 个椭圆裁剪测试
 - AddinsACAD.csproj: 添加新测试文件编译项
