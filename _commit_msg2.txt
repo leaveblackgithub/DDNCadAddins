@@ -1,4 +1,4 @@
-fix: CropTextServiceTests 修复侧数据库 eInvalidExtents 问题
+feat: 新增 CropMTextServiceTests（AUTOCMDTEST）
 
-- CropUtils.ProcessNonCurve: 捕获 eInvalidExtents 异常，安全保留
-- CropTextServiceTests: 使用宽松断言避免侧数据库文字样式缺失导致失败
+- 新增 CropMTextServiceTests.cs: 9 个多行文字裁剪测试
+- AddinsACAD.csproj: 添加新测试文件编译项
