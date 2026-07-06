@@ -1,4 +1,4 @@
-feat: 新增 CropSolidServiceTests（AUTOCMDTEST）
+feat: 新增 CropLeaderServiceTests（AUTOCMDTEST）
 
-- 新增 CropSolidServiceTests.cs: 7 个实体裁剪测试
+- 新增 CropLeaderServiceTests.cs: 9 个引线裁剪测试
 - AddinsACAD.csproj: 添加新测试文件编译项
