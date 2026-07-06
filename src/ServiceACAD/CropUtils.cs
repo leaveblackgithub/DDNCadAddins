@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using DDNCadAddins.Core.Interfaces;
 using DDNCadAddins.Core.Services;
@@ -14,7 +15,7 @@ namespace ServiceACAD
     ///     <para>非曲线实体：边界框 + 保留/删除.</para>
     ///     <para>曲线实体：采样 + 中点分类 + 拆分（使用 FittedCurveGenerator 统一采样）.</para>
     /// </summary>
-    internal static class CropUtils
+    public static class CropUtils
     {
         private static readonly FittedCurveGenerator FittedGen = new FittedCurveGenerator();
 
@@ -166,6 +167,91 @@ namespace ServiceACAD
             }
 
             return result;
+        }
+
+        /// <summary>
+        ///     将闭合曲线采样为多边形顶点列表（用于裁剪边界）.
+        ///     在事务内打开曲线，采样 64 个点，去重后返回.
+        /// </summary>
+        /// <param name="serviceTrans">事务服务</param>
+        /// <param name="curveId">闭合曲线的 ObjectId</param>
+        /// <param name="sampleCount">采样点数（默认 64）</param>
+        /// <returns>采样后的多边形顶点列表；失败或无效时返回 null.</returns>
+        public static List<CorePoint2D> SampleClosedCurveBoundary(
+            ITransactionService serviceTrans, ObjectId curveId, int sampleCount = 64)
+        {
+            try
+            {
+                var curve = serviceTrans.GetObject<Curve>(curveId);
+                if (curve == null || !curve.Closed)
+                    return null;
+
+                var startParam = curve.StartParam;
+                var endParam = curve.EndParam;
+                var points = new List<CorePoint2D>(sampleCount);
+
+                for (var i = 0; i < sampleCount; i++)
+                {
+                    var param = startParam + (endParam - startParam) * i / sampleCount;
+                    var pt = curve.GetPointAtParameter(Math.Min(param, endParam));
+                    points.Add(new CorePoint2D(pt.X, pt.Y));
+                }
+
+                // 去重
+                var deduped = new List<CorePoint2D>(sampleCount);
+                foreach (var p in points)
+                {
+                    if (deduped.Count == 0) { deduped.Add(p); continue; }
+                    var last = deduped[deduped.Count - 1];
+                    if (Math.Abs(last.X - p.X) > 1e-6 || Math.Abs(last.Y - p.Y) > 1e-6)
+                        deduped.Add(p);
+                }
+
+                return deduped.Count >= 3 ? deduped : null;
+            }
+            catch (Exception ex)
+            {
+                Logger._.Warn($"采样闭合曲线边界失败: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        ///     询问裁剪方向：减掉外部-保留内部，还是减掉内部-保留外部.
+        /// </summary>
+        /// <param name="ed">编辑器</param>
+        /// <returns>true=减掉外部（保留内部），false=减掉内部（保留外部），null=取消.</returns>
+        public static bool? AskCropDirection(Editor ed)
+        {
+            try
+            {
+                var options = new PromptKeywordOptions(
+                    "\n请选择裁剪方向 [减掉外部-保留内部(O)/减掉内部-保留外部(I)]: ", "减掉外部 减掉内部");
+                options.Keywords.Add("减掉外部", "减掉外部-保留内部(O)", "减掉边界外部的实体，保留内部");
+                options.Keywords.Add("减掉内部", "减掉内部-保留外部(I)", "减掉边界内部的实体，保留外部");
+                options.Keywords.Default = "减掉外部";
+                options.AllowNone = true;
+
+                var result = ed.GetKeywords(options);
+                if (result.Status != PromptStatus.OK && result.Status != PromptStatus.Keyword)
+                {
+                    ed.WriteMessage("\n取消裁剪方向选择。");
+                    return null;
+                }
+
+                if (result.StringResult == "减掉外部")
+                    return true;
+                if (result.StringResult == "减掉内部")
+                    return false;
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"询问裁剪方向失败: {ex.Message}", ex);
+                ed.WriteMessage($"\n询问裁剪方向失败: {ex.Message}");
+                return null;
+            }
         }
 
         private static void EraseEntity(Entity entity)

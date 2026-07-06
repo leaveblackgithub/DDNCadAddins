@@ -122,12 +122,14 @@ namespace AddinsACAD.Commands
                                 $"\n{commandName} 非 Hatch 裁剪: 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个");
                         }
 
-                        // ── 处理 Hatch 实体（委托给 CropHatchCommand.ProcessHatches） ──
+                        // ── 处理 Hatch 实体（委托给 CropHatchService.ProcessHatches） ──
                         int newHatchesCreated = 0;
                         if (hatchIds.Count > 0)
                         {
-                            var hatchResult = CropHatchCommand.ProcessHatches(
-                                ed, hatchIds, boundaryId, keepInside);
+                            var hatchGeoService = new CropGeometryService();
+                            var cropHatchService = new CropHatchService(hatchGeoService);
+                            var hatchResult = cropHatchService.ProcessHatches(
+                                hatchIds, boundaryId, boundary, keepInside);
                             newHatchesCreated = hatchResult.NewHatchesCreated;
                         }
 

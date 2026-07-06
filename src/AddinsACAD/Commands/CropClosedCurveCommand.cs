@@ -8,8 +8,8 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using DDNCadAddins.Core.Interfaces;
-using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
+using DDNCadAddins.Core.Models;
 using ServiceACAD;
 using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 
@@ -20,214 +20,62 @@ namespace AddinsACAD.Commands
     /// <summary>
     ///     CROPCLOSEDCURVE — 先选择裁剪边界曲线 B（Clip，单选），再选择被剪曲线 A₁...Aₙ（Subjects，多选），
     ///     根据裁剪方向选择保留外部（差集）或保留内部（交集）.
-    ///     支持 Polyline、Circle、Ellipse、Spline.
-    ///     <para>
-    ///         精确模式：使用 <see cref="CurveSubtractService"/> 逐边精确求交，
-    ///         交点采用解析解（直线-圆/直线-椭圆二次方程），子线段参数化生成.
-    ///     </para>
-    ///     - 保留外部（差集 A \ B）：不相交→返回A，A包含B→带洞环，B包含A→空，相交→L形
-    ///     - 保留内部（交集 A ∩ B）：不相交→空，A包含B→B，B包含A→A，相交→交集多边形
+    ///     核心逻辑委托给 <see cref="CropClosedCurveService"/> 实现.
     /// </summary>
     public class CropClosedCurveCommand
     {
-        /// <summary>曲线选择结果.</summary>
-        public sealed class CurveSelection
-        {
-            /// <summary>曲线类型名称.</summary>
-            public string Type;
-
-            /// <summary>采样多边形顶点（用于 TestRecorder）.</summary>
-            public List<CorePoint2D> Polygon;
-
-            /// <summary>精确段列表（用于精确差集计算）.</summary>
-            public List<ExactSegment> ExactSegments;
-
-            /// <summary>精确裁剪边界（用于精确求交和包含测试）.</summary>
-            public ICropBoundary Boundary;
-        }
+        /// <summary>
+        ///     CurveSelection 别名，委托到 <see cref="ServiceACAD.CropClosedCurveService.CurveSelection"/>.
+        /// </summary>
+        public sealed class CurveSelection : ServiceACAD.CropClosedCurveService.CurveSelection { }
 
         /// <summary>
-        ///     裁剪计算结果.
+        ///     CropResult 别名，委托到 <see cref="ServiceACAD.CropClosedCurveService.CropResult"/>.
         /// </summary>
-        public sealed class CropResult
-        {
-            public bool IsSuccess { get; set; }
-            public string Message { get; set; }
-            public int PolyCount { get; set; }
-            public int TotalVertices { get; set; }
-            public string Uid { get; set; }
-            /// <summary>
-            ///     裁剪后新创建的实体 ObjectId 列表（外环在前，内环在后）.
-            ///     顺序由 CurveSubtractService 保证，可安全用于 Hatch 边界重建.
-            /// </summary>
-            public List<ObjectId> CreatedEntityIds { get; set; } = new List<ObjectId>();
-        }
+        public sealed class CropResult : ServiceACAD.CropClosedCurveService.CropResult { }
 
         /// <summary>
         ///     从 Curve ObjectId 创建 CurveSelection.
-        ///     核心方法，不包含 UI 交互，可被其他命令或服务调用.
+        ///     委托到 <see cref="CropClosedCurveService.CreateCurveSelection"/>.
         /// </summary>
-        /// <param name="curveId">闭合曲线的 ObjectId.</param>
-        /// <returns>曲线选择结果；失败返回 null.</returns>
-        public static CurveSelection CreateCurveSelection(ObjectId curveId)
+        public static ServiceACAD.CropClosedCurveService.CurveSelection CreateCurveSelection(ObjectId curveId)
         {
-            if (curveId.IsNull || curveId.IsErased) return null;
-
-            CurveSelection sel = null;
-            CadServiceManager._.ExecuteInTransactions(null, ts =>
-            {
-                var curve = ts.GetObject<Curve>(curveId, OpenMode.ForRead);
-                if (curve == null || !curve.Closed) return;
-
-                var exactSegments = CurveToExactSegmentConverter.ConvertToExactSegments(curve);
-                if (exactSegments == null || exactSegments.Count == 0) return;
-
-                var boundary = CurveToExactSegmentConverter.ConvertToCropBoundary(curve);
-                if (boundary == null) return;
-
-                var polygon = new CurveToPolygonConverter().ConvertCurveToPolygon(curve);
-                if (polygon == null || polygon.Count < 3) return;
-
-                sel = new CurveSelection
-                {
-                    Type = curve.GetType().Name,
-                    Polygon = polygon,
-                    ExactSegments = exactSegments,
-                    Boundary = boundary
-                };
-            });
-
-            return sel;
+            return ServiceACAD.CropClosedCurveService.CreateCurveSelection(curveId);
         }
 
         /// <summary>
         ///     执行多条闭合曲线 A₁...Aₙ 与一条闭合曲线 B 的裁剪运算（ObjectId 重载）.
-        ///     核心方法，不包含 UI 交互，可被其他命令或服务调用.
-        ///     内部自动完成 CreateCurveSelection + 计算 + 绘制.
+        ///     委托到 <see cref="CropClosedCurveService.CropClosedCurveMulti"/>.
         /// </summary>
-        /// <param name="subjectCurveIds">Subject 曲线的 ObjectId 列表.</param>
-        /// <param name="clipCurveId">Clip 曲线 B 的 ObjectId.</param>
-        /// <param name="keepInside">true=保留内部（交集 A∩B），false=保留外部（差集 A\B）.</param>
-        /// <returns>裁剪计算结果.</returns>
-        public static CropResult CropClosedCurveMulti(
-            IReadOnlyList<ObjectId> subjectCurveIds, ObjectId clipCurveId,
-            bool keepInside)
+        public static ServiceACAD.CropClosedCurveService.CropResult CropClosedCurveMulti(
+            IReadOnlyList<ObjectId> subjectCurveIds, ObjectId clipCurveId, bool keepInside)
         {
-            // 内部完成 CreateCurveSelection
-            var subjectCurves = new List<CurveSelection>();
-            foreach (var id in subjectCurveIds)
-            {
-                var sel = CreateCurveSelection(id);
-                if (sel != null)
-                    subjectCurves.Add(sel);
-            }
-
-            var clipCurve = CreateCurveSelection(clipCurveId);
-            return CropClosedCurveMulti(subjectCurves, clipCurve, keepInside);
+            return ServiceACAD.CropClosedCurveService.CropClosedCurveMulti(
+                subjectCurveIds, clipCurveId, keepInside);
         }
 
         /// <summary>
         ///     执行多条闭合曲线 A₁...Aₙ 与一条闭合曲线 B 的裁剪运算.
-        ///     核心方法，不包含 UI 交互，可被其他命令或服务调用.
+        ///     委托到 <see cref="CropClosedCurveService.CropClosedCurveMulti"/>.
         /// </summary>
-        /// <param name="subjectCurves">Subject 曲线列表.</param>
-        /// <param name="clipCurve">Clip 曲线 B.</param>
-        /// <param name="keepInside">true=保留内部（交集 A∩B），false=保留外部（差集 A\B）.</param>
-        /// <returns>裁剪计算结果.</returns>
-        public static CropResult CropClosedCurveMulti(
-            IReadOnlyList<CurveSelection> subjectCurves, CurveSelection clipCurve,
+        public static ServiceACAD.CropClosedCurveService.CropResult CropClosedCurveMulti(
+            IReadOnlyList<ServiceACAD.CropClosedCurveService.CurveSelection> subjectCurves,
+            ServiceACAD.CropClosedCurveService.CurveSelection clipCurve,
             bool keepInside)
         {
-            var result = new CropResult();
-            try
-            {
-                if (subjectCurves == null || subjectCurves.Count == 0)
-                {
-                    result.Message = "未选择 Subject 曲线。";
-                    return result;
-                }
-                if (clipCurve == null)
-                {
-                    result.Message = "未选择 Clip 曲线。";
-                    return result;
-                }
-
-                var subtractService = new CurveSubtractService();
-
-                // 构建 Subject 元组列表
-                var subjects = new List<(IReadOnlyList<ExactSegment> Edges, ICropBoundary Boundary)>();
-                foreach (var subj in subjectCurves)
-                {
-                    subjects.Add((subj.ExactSegments, subj.Boundary));
-                }
-
-                // 根据方向选择算法
-                ExactSubtractResult subtractResult;
-                if (keepInside)
-                {
-                    // 保留内部 = 交集 A ∩ B
-                    var serviceResult = subtractService.IntersectMultiSubject(
-                        subjects, clipCurve.ExactSegments, clipCurve.Boundary);
-                    subtractResult = serviceResult.IsSuccess ? serviceResult.Data : null;
-                }
-                else
-                {
-                    // 保留外部 = 差集 A \ B
-                    var serviceResult = subtractService.SubtractMultiSubject(
-                        subjects, clipCurve.ExactSegments, clipCurve.Boundary);
-                    subtractResult = serviceResult.IsSuccess ? serviceResult.Data : null;
-                }
-
-                bool noResult = subtractResult == null || subtractResult.IsEmpty;
-                int resultPolyCount = 0;
-                int totalVertices = 0;
-
-                if (!noResult)
-                {
-                    CadServiceManager._.ExecuteInTransactions("", ts =>
-                    {
-                        foreach (var loop in subtractResult.Loops)
-                        {
-                            if (loop == null || loop.Count == 0) continue;
-                            var polyId = CurveToExactSegmentConverter.DrawExactSegments(ts, loop, 3);
-                            if (!polyId.IsNull)
-                            {
-                                resultPolyCount++;
-                                // 读取顶点数用于统计
-                                var pline = ts.GetObject<Polyline>(polyId);
-                                if (pline != null)
-                                {
-                                    totalVertices += pline.NumberOfVertices;
-                                }
-                                result.CreatedEntityIds.Add(polyId);
-                            }
-                        }
-                    });
-                }
-
-                result.IsSuccess = resultPolyCount > 0;
-                result.PolyCount = resultPolyCount;
-                result.TotalVertices = totalVertices;
-                string directionLabel = keepInside ? "减掉外部-保留内部" : "减掉内部-保留外部";
-                result.Message = resultPolyCount > 0
-                    ? $"{directionLabel}: {resultPolyCount} 个封闭环，共 {totalVertices} 个顶点"
-                    : noResult ? "无结果"
-                               : "裁剪绘制失败";
-            }
-            catch (System.Exception ex)
-            {
-                Logger._.Error($"CROPCLOSEDCURVE 失败: {ex.Message}", ex);
-                result.Message = $"CROPCLOSEDCURVE 失败: {ex.Message}";
-            }
-            return result;
+            return ServiceACAD.CropClosedCurveService.CropClosedCurveMulti(
+                subjectCurves, clipCurve, keepInside);
         }
 
         /// <summary>
         ///     执行两条闭合曲线的精确裁剪运算（单 Subject 兼容重载）.
         /// </summary>
-        public static CropResult CropClosedCurve(CurveSelection curveA, CurveSelection curveB, bool keepInside)
+        public static ServiceACAD.CropClosedCurveService.CropResult CropClosedCurve(
+            ServiceACAD.CropClosedCurveService.CurveSelection curveA,
+            ServiceACAD.CropClosedCurveService.CurveSelection curveB,
+            bool keepInside)
         {
-            return CropClosedCurveMulti(new[] { curveA }, curveB, keepInside);
+            return ServiceACAD.CropClosedCurveService.CropClosedCurve(curveA, curveB, keepInside);
         }
 
         [CommandMethod("CROPCLOSEDCURVE")]
@@ -245,17 +93,17 @@ namespace AddinsACAD.Commands
                 // ── 步骤 1: 选择裁剪边界曲线 B（Clip，单选）───────────────────
                 var idB = SelectClosedCurveEntity(ed, "B（裁剪边界）");
                 if (idB.IsNull) return;
-                var curveB = CreateCurveSelection(idB);
+                var curveB = ServiceACAD.CropClosedCurveService.CreateCurveSelection(idB);
                 if (curveB == null) { ed.WriteMessage("\n边界曲线 B 转换失败。"); return; }
 
                 // ── 步骤 2: 选择被剪曲线 A₁...Aₙ（Subjects，多选）───────────
                 var subjectIds = SelectClosedCurveEntities(ed, "被剪曲线");
                 if (subjectIds == null || subjectIds.Count == 0) return;
 
-                var subjectCurves = new List<CurveSelection>();
+                var subjectCurves = new List<ServiceACAD.CropClosedCurveService.CurveSelection>();
                 foreach (var subjId in subjectIds)
                 {
-                    var subjCurve = CreateCurveSelection(subjId);
+                    var subjCurve = ServiceACAD.CropClosedCurveService.CreateCurveSelection(subjId);
                     if (subjCurve != null)
                         subjectCurves.Add(subjCurve);
                 }
@@ -275,8 +123,9 @@ namespace AddinsACAD.Commands
 
                 string directionLabel = keepInside.Value ? "减掉外部-保留内部" : "减掉内部-保留外部";
 
-                // ── 步骤 3: 精确裁剪运算（调用核心方法）─────────────────────
-                var result = CropClosedCurveMulti(subjectCurves, curveB, keepInside.Value);
+                // ── 步骤 3: 精确裁剪运算（委托到 CropClosedCurveService）──────
+                var result = ServiceACAD.CropClosedCurveService.CropClosedCurveMulti(
+                    subjectCurves, curveB, keepInside.Value);
                 stopwatch.Stop();
 
                 // ── 步骤 4: 输出命令行信息 ──────────────────────────────────
@@ -342,7 +191,7 @@ namespace AddinsACAD.Commands
                 // ── 步骤 1: 选择裁剪边界曲线 B（Clip，单选）───────────────────
                 var idB = SelectClosedCurveEntity(ed, "B（裁剪边界）");
                 if (idB.IsNull) return;
-                var curveB = CreateCurveSelection(idB);
+                var curveB = ServiceACAD.CropClosedCurveService.CreateCurveSelection(idB);
                 if (curveB == null) { ed.WriteMessage("\n边界曲线 B 转换失败。"); return; }
 
                 // ── 步骤 2: 自动选择所有被剪闭合曲线（Subjects）───────────────
@@ -368,11 +217,11 @@ namespace AddinsACAD.Commands
                     return;
                 }
 
-                var subjectCurves = new List<CurveSelection>();
+                var subjectCurves = new List<ServiceACAD.CropClosedCurveService.CurveSelection>();
                 var subjectIds = new List<ObjectId>();
                 foreach (var id in allCurveIds)
                 {
-                    var subjCurve = CreateCurveSelection(id);
+                    var subjCurve = ServiceACAD.CropClosedCurveService.CreateCurveSelection(id);
                     if (subjCurve != null)
                     {
                         subjectCurves.Add(subjCurve);
@@ -396,7 +245,8 @@ namespace AddinsACAD.Commands
                 string directionLabel = keepInside.Value ? "减掉外部-保留内部" : "减掉内部-保留外部";
 
                 // ── 步骤 3: 精确裁剪运算 ───────────────────────────────────
-                var result = CropClosedCurveMulti(subjectCurves, curveB, keepInside.Value);
+                var result = ServiceACAD.CropClosedCurveService.CropClosedCurveMulti(
+                    subjectCurves, curveB, keepInside.Value);
                 stopwatch.Stop();
 
                 // ── 步骤 4: 输出命令行信息 ──────────────────────────────────

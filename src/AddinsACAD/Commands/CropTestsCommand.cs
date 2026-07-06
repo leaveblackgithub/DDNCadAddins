@@ -117,7 +117,7 @@ namespace AddinsACAD.Commands
                                 if (!hatchId.IsValid || hatchId.IsErased)
                                     continue;
 
-                                var genResult = GenerateHatchBoundaryCommand.GenerateHatchBoundary(hatchId);
+                                var genResult = HatchBoundaryService.GenerateHatchBoundary(hatchId);
                                 if (genResult.IsSuccess)
                                 {
                                     hatchBoundaryGenerated++;
@@ -272,43 +272,12 @@ namespace AddinsACAD.Commands
         }
 
         // ════════════════════════════════════════════════════════════════
-        //  辅助方法
+        //  辅助方法（委托到 CropUtils 共享实现）
         // ════════════════════════════════════════════════════════════════
 
         private bool? AskCropDirection(Editor ed)
         {
-            try
-            {
-                var options = new PromptKeywordOptions(
-                    "\n请选择裁剪方向 [减掉外部-保留内部(O)/减掉内部-保留外部(I)]: ", "减掉外部 减掉内部");
-                options.Keywords.Add("减掉外部", "减掉外部-保留内部(O)", "减掉边界外部的实体，保留内部");
-                options.Keywords.Add("减掉内部", "减掉内部-保留外部(I)", "减掉边界内部的实体，保留外部");
-                options.Keywords.Default = "减掉外部";
-                options.AllowNone = true;
-
-                var result = ed.GetKeywords(options);
-                if (result.Status != PromptStatus.OK && result.Status != PromptStatus.Keyword)
-                {
-                    ed.WriteMessage("\n取消裁剪方向选择。");
-                    return null;
-                }
-
-                // 减掉外部 = 保留内部 = keepInside = true
-                // 减掉内部 = 保留外部 = keepInside = false
-                if (result.StringResult == "减掉外部")
-                    return true;
-                if (result.StringResult == "减掉内部")
-                    return false;
-
-                // 默认 = 减掉外部（保留内部）
-                return true;
-            }
-            catch (System.Exception ex)
-            {
-                Logger._.Error($"询问裁剪方向失败: {ex.Message}", ex);
-                ed.WriteMessage($"\n询问裁剪方向失败: {ex.Message}");
-                return null;
-            }
+            return CropUtils.AskCropDirection(ed);
         }
 
         private List<CorePoint2D> SelectSingleBoundaryCurve(Editor ed, out ObjectId boundaryId)
@@ -329,40 +298,16 @@ namespace AddinsACAD.Commands
 
                 boundaryId = promptResult.ObjectId;
                 var capturedId = boundaryId;
-                var points = new List<CorePoint2D>();
+                List<CorePoint2D> points = null;
 
                 CadServiceManager._.ExecuteInTransactions(null, serviceTrans =>
                 {
-                    var curve = serviceTrans.GetObject<Curve>(capturedId);
-                    if (curve == null || !curve.Closed)
-                    {
-                        ed.WriteMessage("\n所选的边界曲线未闭合，请选择闭合曲线。");
-                        return;
-                    }
-
-                    const int sampleCount = 64;
-                    var startParam = curve.StartParam;
-                    var endParam = curve.EndParam;
-
-                    for (var i = 0; i < sampleCount; i++)
-                    {
-                        var param = startParam + (endParam - startParam) * i / sampleCount;
-                        var pt = curve.GetPointAtParameter(Math.Min(param, endParam));
-                        points.Add(new CorePoint2D(pt.X, pt.Y));
-                    }
-
-                    var deduped = new List<CorePoint2D>();
-                    foreach (var p in points)
-                    {
-                        if (deduped.Count == 0) { deduped.Add(p); continue; }
-                        var last = deduped[deduped.Count - 1];
-                        if (Math.Abs(last.X - p.X) > 1e-6 || Math.Abs(last.Y - p.Y) > 1e-6)
-                            deduped.Add(p);
-                    }
-                    points = deduped;
+                    points = CropUtils.SampleClosedCurveBoundary(serviceTrans, capturedId);
+                    if (points == null)
+                        ed.WriteMessage("\n所选的边界曲线未闭合或无效，请选择闭合曲线。");
                 });
 
-                if (points.Count < 3)
+                if (points == null || points.Count < 3)
                 {
                     ed.WriteMessage("\n边界曲线顶点不足，请选择更大的闭合曲线。");
                     return null;

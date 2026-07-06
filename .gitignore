@@ -28,7 +28,12 @@ packages/
 # 临时文件
 *.tmp
 *.bak
-*.log 
+*.log
+
+# Code RAG MCP Server 生成目录
+tools/code-rag-server/.venv/
+tools/code-rag-server/.vector_db/
+tools/code-rag-server/.hf_cache/
 src/.vs/DDNCadAddins/CopilotIndices/17.14.535.60214/CodeChunks.db
 src/.vs/DDNCadAddins/CopilotIndices/17.14.535.60214/SemanticSymbols.db
 src/.vs/DDNCadAddins/CopilotIndices/17.14.535.60214/CodeChunks.db

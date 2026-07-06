@@ -1,17 +1,18 @@
 using System;
-using System.Collections.Generic;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
-using Autodesk.AutoCAD.Geometry;
 using Autodesk.AutoCAD.Runtime;
 using ServiceACAD;
-using DDNCadAddins.Core.Models;
 
 [assembly: CommandClass(typeof(AddinsACAD.Commands.GenerateHatchBoundaryCommand))]
 
 namespace AddinsACAD.Commands
 {
+    /// <summary>
+    ///     GENERATEHATCHBOUNDARY 命令 — 提取 Hatch 边界环并生成实体.
+    ///     UI 层委托给 <see cref="HatchBoundaryService.GenerateHatchBoundary"/> 实现.
+    /// </summary>
     public class GenerateHatchBoundaryCommand
     {
         [CommandMethod("GENERATEHATCHBOUNDARY")]
@@ -25,7 +26,7 @@ namespace AddinsACAD.Commands
                 var hatchId = this.SelectSingleHatch(ed);
                 if (hatchId.IsNull) return;
 
-                var result = GenerateHatchBoundary(hatchId);
+                var result = HatchBoundaryService.GenerateHatchBoundary(hatchId);
 
                 if (result.IsSuccess)
                 {
@@ -44,114 +45,6 @@ namespace AddinsACAD.Commands
                 doc.Editor.WriteMessage($"\nGENERATEHATCHBOUNDARY 失败: {ex.Message}");
                 Logger._.Error($"GENERATEHATCHBOUNDARY 失败: {ex.Message}", ex);
             }
-        }
-
-        /// <summary>
-        ///     生成 Hatch 边界结果.
-        /// </summary>
-        public sealed class GenerateHatchBoundaryResult
-        {
-            public bool IsSuccess { get; set; }
-            public string Message { get; set; }
-            public int LoopCount { get; set; }
-            public int EntityCount { get; set; }
-            public string TypeLog { get; set; }
-            public string Uid { get; set; }
-            /// <summary>生成的实体 ObjectId 列表.</summary>
-            public List<ObjectId> GeneratedEntityIds { get; set; } = new List<ObjectId>();
-        }
-
-        /// <summary>
-        ///     核心方法：根据 Hatch ObjectId 提取所有环的边界并生成实体.
-        ///     不包含 UI 交互，可被其他命令或服务调用.
-        /// </summary>
-        /// <param name="hatchId">Hatch 实体的 ObjectId.</param>
-        /// <returns>生成结果.</returns>
-        public static GenerateHatchBoundaryResult GenerateHatchBoundary(ObjectId hatchId)
-        {
-            var result = new GenerateHatchBoundaryResult();
-            try
-            {
-                if (hatchId.IsNull || hatchId.IsErased)
-                {
-                    result.Message = "Hatch 无效或已被删除。";
-                    return result;
-                }
-
-                int loopCount = 0;
-                int entityCount = 0;
-                string typeLog = "";
-                string uid = "";
-                TestRecorder.CaptureUcs(out var ucsO, out var ucsX, out var ucsY);
-
-                var generatedIds = new List<ObjectId>();
-
-                CadServiceManager._.ExecuteInTransactions("", ts =>
-                {
-                    var hatch = ts.GetObject<Hatch>(hatchId, OpenMode.ForRead);
-                    if (hatch == null) { result.Message = "无法打开 Hatch。"; return; }
-
-                    var plane = new Plane(
-                        Point3d.Origin + hatch.Normal * hatch.Elevation,
-                        hatch.Normal);
-                    loopCount = hatch.NumberOfLoops;
-
-                    // 生成所有环的边界实体（不论 HatchStyle），
-                    // 让裁剪后的 Hatch 重建时由 HatchStyle 自动判断内外环关系.
-                    // 之前按 HatchStyle.Outer 只取前 2 个环，但环顺序不保证外环在前，
-                    // 会导致生成的边界实体不包含实际的内环（孔洞）.
-                    int loopStart = 0;
-                    int loopEnd = loopCount;
-                    var style = hatch.HatchStyle;
-                    typeLog += $"Style={style}|";
-
-                    var generator = new CurveToPolygonConverter();
-
-                    for (int li = loopStart; li < loopEnd; li++)
-                    {
-                        var loop = hatch.GetLoopAt(li);
-                        if (loop == null) continue;
-
-                        bool isOuter = (li == 0);
-                        int color = isOuter ? 2 : 4;
-
-                        var objId = generator.CreateEntityFromLoop(loop, plane, color, hatch.Layer, ts);
-                        if (!objId.IsNull)
-                        {
-                            generatedIds.Add(objId);
-                            entityCount++;
-                            typeLog += $"Entity|";
-                        }
-                    }
-
-                    var record = new CropTestRecord
-                    {
-                        Command = "GENERATEHATCHBOUNDARY",
-                        IsSuccess = true,
-                        UcsOrigin = ucsO, UcsXAxis = ucsX, UcsYAxis = ucsY,
-                        TotalEntityCount = loopCount,
-                        DeletedCount = 0,
-                        KeptCount = entityCount,
-                        SkippedCount = 0,
-                        Entities = new List<CropEntitySnapshot>(),
-                    };
-                    uid = TestRecorder.Record(record);
-                });
-
-                result.IsSuccess = true;
-                result.Message = "生成完成";
-                result.LoopCount = loopCount;
-                result.EntityCount = entityCount;
-                result.TypeLog = typeLog;
-                result.Uid = uid;
-                result.GeneratedEntityIds = generatedIds;
-            }
-            catch (System.Exception ex)
-            {
-                Logger._.Error($"GENERATEHATCHBOUNDARY 失败: {ex.Message}", ex);
-                result.Message = $"GENERATEHATCHBOUNDARY 失败: {ex.Message}";
-            }
-            return result;
         }
 
         private ObjectId SelectSingleHatch(Editor ed)

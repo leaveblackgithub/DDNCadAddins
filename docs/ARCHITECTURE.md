@@ -162,14 +162,17 @@ ICropService（裁剪服务接口）
 ├── Crop3DPolylineService - 3D 多段线裁剪
 ├── CropMLineService     - 多线裁剪
 ├── CropLeaderService    - 引线裁剪
-├── CropHatchService     - 填充裁剪
+├── CropHatchService     - 填充裁剪（含 ProcessHatches 批量处理）
 ├── CropBlockService     - 块参照裁剪
 ├── CropTextService      - 文字裁剪
 ├── CropMTextService     - 多行文字裁剪
 ├── CropDimService       - 标注裁剪
 ├── CropPointService     - 点裁剪
 ├── CropSolidService     - 实体裁剪
-└── CropService          - 主裁剪服务（调度器）
+├── CropService          - 主裁剪服务（调度器）
+├── HatchBoundaryService  - Hatch 边界生成服务（从 GenerateHatchBoundaryCommand 提取）
+├── CropClosedCurveService - 闭合曲线裁剪服务（从 CropClosedCurveCommand 提取）
+└── HatchCloneService     - Hatch 克隆服务（从 CloneHatchCommand 提取）
 ```
 
 核心逻辑层 (`DDNCadAddins.Core`) 提供纯几何计算：

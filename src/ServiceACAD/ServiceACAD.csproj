@@ -91,6 +91,10 @@ Features:
     <Compile Include="TransactionServiceForStyle.cs" />
     <Compile Include="CurveToPolygonConverter.cs" />
     <Compile Include="CropBoundaryFactory.cs" />
+    <Compile Include="HatchBoundaryService.cs" />
+    <Compile Include="CropClosedCurveService.cs" />
+    <Compile Include="HatchCloneService.cs" />
+    <Compile Include="XClipBoundaryService.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

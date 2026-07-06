@@ -1,0 +1,14 @@
+# Code RAG MCP Server Dependencies
+# Python 3.11+ required
+
+# MCP SDK - Model Context Protocol server framework
+mcp>=1.0.0
+
+# Local embeddings - no API key needed, runs offline
+sentence-transformers>=2.7.0
+
+# Vector database - lightweight, file-based persistent storage
+chromadb>=0.5.0
+
+# Utilities
+pathlib2>=2.3.0

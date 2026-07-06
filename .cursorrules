@@ -30,6 +30,16 @@ SYSTEM_CONTEXT: |
    - 使用NUnit、NUnitLite和ExtentReports作为测试框架
    - 使用事务处理确保AutoCAD操作的安全性
 
+   ## ★ csproj 同步规则（不可违反）★★★
+   - **新增/删除/重命名 .cs 文件后，必须同步更新对应项目的 .csproj 文件**
+   - 未在 .csproj 中注册的 .cs 文件不会被 MSBuild 编译，导致运行时找不到命令/类型
+   - 修改步骤：
+     1. 新增 .cs 文件 → 在对应 .csproj 的 `<ItemGroup><Compile Include="..."/></ItemGroup>` 中添加条目
+     2. 删除 .cs 文件 → 从 .csproj 中移除对应 `<Compile Include="..."/>` 条目
+     3. 重命名 .cs 文件 → 更新 .csproj 中对应 `<Compile Include="..."/>` 的路径
+   - 检查方法：编译前确认新文件出现在 MSBuild 输出的文件列表中
+   - 此规则优先级高于 SOLID 原则和代码简洁性要求
+
    ## ★ 修改代码后验证流程（必须执行）★★★
    - **每次修改代码后**，必须依次执行以下两步验证，**全部通过**后才能提交：
    
