@@ -42,31 +42,34 @@ namespace ServiceACAD
             ICropGeometryService geometry)
         {
             var r = new NonCurveResult();
-            var ext = entity.GeometricExtents;
-            if (ext.MinPoint.DistanceTo(ext.MaxPoint) < 1e-9)
+            try
             {
+                var ext = entity.GeometricExtents;
+                if (ext.MinPoint.DistanceTo(ext.MaxPoint) < 1e-9)
+                {
+                    r.KeptCount = 1;
+                    return r;
+                }
+
+                var minPt = new CorePoint2D(ext.MinPoint.X, ext.MinPoint.Y);
+                var maxPt = new CorePoint2D(ext.MaxPoint.X, ext.MaxPoint.Y);
+                var containment = geometry.ClassifyBoundingBox(minPt, maxPt, boundaryPoints);
+
+                bool shouldDelete = keepInside
+                    ? containment == ContainmentResult.Outside
+                    : containment == ContainmentResult.Inside || containment == ContainmentResult.OnBoundary;
+
+                if (shouldDelete)
+                    r.DeletedCount = 1;
+                else
+                    r.KeptCount = 1;
+            }
+            catch (System.Exception ex)
+            {
+                // eInvalidExtents 等异常 — 无法获取几何范围，视为保留
+                Logger._.Warn($"ProcessNonCurve 获取几何范围失败: {ex.Message}");
                 r.KeptCount = 1;
-                return r;
             }
-
-            var minPt = new CorePoint2D(ext.MinPoint.X, ext.MinPoint.Y);
-            var maxPt = new CorePoint2D(ext.MaxPoint.X, ext.MaxPoint.Y);
-            var containment = geometry.ClassifyBoundingBox(minPt, maxPt, boundaryPoints);
-
-            bool shouldDelete = keepInside
-                ? containment == ContainmentResult.Outside
-                : containment == ContainmentResult.Inside || containment == ContainmentResult.OnBoundary;
-
-            // 相交=保留（不拆分非曲线实体）
-            if (shouldDelete)
-            {
-                r.DeletedCount = 1;
-            }
-            else
-            {
-                r.KeptCount = 1;
-            }
-
             return r;
         }
 
