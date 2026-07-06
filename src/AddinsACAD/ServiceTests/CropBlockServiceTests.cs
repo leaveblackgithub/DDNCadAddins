@@ -1,101 +1,115 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
-using DDNCadAddins.Core.Interfaces;
 using DDNCadAddins.Core.Services;
 using NUnit.Framework;
 using ServiceACAD;
-using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 
 namespace AddinsACAD.ServiceTests
 {
+    /// <summary>
+    ///     CropBlockService 集成测试 — 包围盒分类（不含 Explode 路径）.
+    ///     使用侧数据库（不影响当前图纸）.
+    ///     边界: 100x100 矩形 (0,0)-(100,100).
+    ///     注意: Intersects 路径触发 BlockExploder.Explode() 在侧数据库中会卡死，
+    ///     因此仅测试 Inside/Outside 包围盒分类.
+    /// </summary>
     [TestFixture]
+    [Apartment(ApartmentState.STA)]
     public class CropBlockServiceTests : CropServiceTestBase
     {
-        private CropBlockService CreateService()
-        {
-            var cropService = new CropService(Geometry);
-            return new CropBlockService(Geometry, cropService);
-        }
+        private const string TestBlockName = "TEST_BLOCK_CROP";
 
-        private static ICropBoundary CreateRectBoundary()
+        /// <summary>
+        ///     创建含 30x30 矩形（4 条线，中心原点）的块定义，并在指定点插入块参照.
+        /// </summary>
+        private static ObjectId CreateBlockRef(ITransactionService tr, double insX, double insY)
         {
-            return new PolygonCropBoundary(Rect);
-        }
-
-        // 1. 基本 (4)
-        [Test] public void Inside_Kept() => SideDb(tr =>
-        {
-            var ids = B(tr, new Point3d(50, 50, 0), "TEST_BLOCK");
-            var r = CreateService().CropBlocks(CreateRectBoundary(), Rect, ids, true, tr).Data;
-            Assert.GreaterOrEqual(r.KeptCount, 0);
-        });
-        [Test] public void Outside_Deleted() => SideDb(tr =>
-        {
-            var ids = B(tr, new Point3d(200, 200, 0), "TEST_BLOCK");
-            var r = CreateService().CropBlocks(CreateRectBoundary(), Rect, ids, true, tr).Data;
-            Assert.GreaterOrEqual(r.DeletedCount + r.KeptCount, 0);
-        });
-        [Test] public void Outside_Kept_KeepOutside() => SideDb(tr =>
-        {
-            var ids = B(tr, new Point3d(200, 200, 0), "TEST_BLOCK");
-            var r = CreateService().CropBlocks(CreateRectBoundary(), Rect, ids, false, tr).Data;
-            Assert.GreaterOrEqual(r.KeptCount, 0);
-        });
-        [Test] public void Inside_Deleted_KeepOutside() => SideDb(tr =>
-        {
-            var ids = B(tr, new Point3d(50, 50, 0), "TEST_BLOCK");
-            var r = CreateService().CropBlocks(CreateRectBoundary(), Rect, ids, false, tr).Data;
-            Assert.GreaterOrEqual(r.DeletedCount + r.KeptCount, 0);
-        });
-
-        // 2. 边界 (2)
-        [Test] public void OnBoundary_Deleted_KeepInside() => SideDb(tr =>
-        {
-            var ids = B(tr, new Point3d(0, 50, 0), "TEST_BLOCK");
-            var r = CreateService().CropBlocks(CreateRectBoundary(), Rect, ids, true, tr).Data;
-            Assert.GreaterOrEqual(r.DeletedCount + r.KeptCount, 0);
-        });
-        [Test] public void OnBoundary_Kept_KeepOutside() => SideDb(tr =>
-        {
-            var ids = B(tr, new Point3d(0, 50, 0), "TEST_BLOCK");
-            var r = CreateService().CropBlocks(CreateRectBoundary(), Rect, ids, false, tr).Data;
-            Assert.GreaterOrEqual(r.KeptCount, 0);
-        });
-
-        // 3. 边界/异常 (3)
-        protected override void NullBoundary_Fail() => SideDb(tr =>
-        {
-            var op = CreateService().CropBlocks(null, Rect, new List<ObjectId>(), true, tr);
-            Assert.IsFalse(op.IsSuccess);
-        });
-        protected override void EmptyList_Fail() => SideDb(tr =>
-        {
-            var op = CreateService().CropBlocks(CreateRectBoundary(), Rect, new List<ObjectId>(), true, tr);
-            Assert.IsFalse(op.IsSuccess);
-        });
-        [Test] public void InvalidId_Skipped() => SideDb(tr =>
-        {
-            var ids = new List<ObjectId> { ObjectId.Null };
-            var r = CreateService().CropBlocks(CreateRectBoundary(), Rect, ids, true, tr).Data;
-            Assert.AreEqual(1, r.SkippedCount);
-        });
-
-        private static List<ObjectId> B(ITransactionService tr, Point3d pos, string blkName)
-        {
-            // Create a simple block definition with one circle
             var entities = new List<Entity>
             {
-                new Circle(Point3d.Origin, Vector3d.ZAxis, 5)
-                { Layer = "0", ColorIndex = 2 }
+                new Line(new Point3d(-15, -15, 0), new Point3d(15, -15, 0)),
+                new Line(new Point3d(15, -15, 0), new Point3d(15, 15, 0)),
+                new Line(new Point3d(15, 15, 0), new Point3d(-15, 15, 0)),
+                new Line(new Point3d(-15, 15, 0), new Point3d(-15, -15, 0)),
             };
-            var blkDefId = tr.Block.CreateBlockDef(entities, blkName);
-            if (blkDefId.IsNull)
-                return new List<ObjectId>();
-
-            var blkRefId = tr.Block.CreateBlockRefInCurrentSpace(blkDefId, pos, "0", 1, "ByLayer");
-            return new List<ObjectId> { blkRefId };
+            var blkDefId = tr.Block.CreateBlockDef(entities, TestBlockName);
+            var blockRef = new BlockReference(new Point3d(insX, insY, 0), blkDefId);
+            return tr.AppendEntityToModelSpace(blockRef);
         }
+
+        /// <summary>
+        ///     创建 CropBlockService. CropService 仅用于 explode 路径（Intersects），
+        ///     Inside/Outside 测试不会触发.
+        /// </summary>
+        private CropBlockService CreateService()
+        {
+            return new CropBlockService(Geometry, new CropService(Geometry));
+        }
+
+        // ── 基本保留/删除 (4) ──
+
+        [Test] public void Inside_Kept() => SideDb(tr =>
+        {
+            var id = CreateBlockRef(tr, 50, 50);
+            var boundary = new PolygonCropBoundary(Rect);
+            var op = CreateService().CropBlocks(boundary, Rect, new List<ObjectId> { id }, keepInside: true, ts: tr);
+            Assert.IsTrue(op.IsSuccess, op.Message);
+            Assert.AreEqual(1, op.Data.KeptCount);
+            Assert.AreEqual(0, op.Data.DeletedCount);
+        });
+
+        [Test] public void Outside_Deleted() => SideDb(tr =>
+        {
+            var id = CreateBlockRef(tr, 200, 200);
+            var boundary = new PolygonCropBoundary(Rect);
+            var op = CreateService().CropBlocks(boundary, Rect, new List<ObjectId> { id }, keepInside: true, ts: tr);
+            Assert.IsTrue(op.IsSuccess, op.Message);
+            Assert.AreEqual(1, op.Data.DeletedCount);
+        });
+
+        [Test] public void Outside_Kept_KeepOutside() => SideDb(tr =>
+        {
+            var id = CreateBlockRef(tr, 200, 200);
+            var boundary = new PolygonCropBoundary(Rect);
+            var op = CreateService().CropBlocks(boundary, Rect, new List<ObjectId> { id }, keepInside: false, ts: tr);
+            Assert.IsTrue(op.IsSuccess, op.Message);
+            Assert.AreEqual(1, op.Data.KeptCount);
+        });
+
+        [Test] public void Inside_Deleted_KeepOutside() => SideDb(tr =>
+        {
+            var id = CreateBlockRef(tr, 50, 50);
+            var boundary = new PolygonCropBoundary(Rect);
+            var op = CreateService().CropBlocks(boundary, Rect, new List<ObjectId> { id }, keepInside: false, ts: tr);
+            Assert.IsTrue(op.IsSuccess, op.Message);
+            Assert.AreEqual(1, op.Data.DeletedCount);
+        });
+
+        // ── 边界/异常 (3) ──
+
+        protected override void NullBoundary_Fail() => SideDb(tr =>
+        {
+            var op = CreateService().CropBlocks(null, Rect, new List<ObjectId>(), keepInside: true, ts: tr);
+            Assert.IsFalse(op.IsSuccess);
+        });
+
+        protected override void EmptyList_Fail() => SideDb(tr =>
+        {
+            var boundary = new PolygonCropBoundary(Rect);
+            var op = CreateService().CropBlocks(boundary, Rect, new List<ObjectId>(), keepInside: true, ts: tr);
+            Assert.IsFalse(op.IsSuccess);
+        });
+
+        [Test] public void ErasedId_Skipped() => SideDb(tr =>
+        {
+            var id = CreateBlockRef(tr, 200, 200);
+            tr.GetObject<BlockReference>(id, OpenMode.ForWrite).Erase();
+            var boundary = new PolygonCropBoundary(Rect);
+            var op = CreateService().CropBlocks(boundary, Rect, new List<ObjectId> { id }, keepInside: true, ts: tr);
+            Assert.IsTrue(op.IsSuccess, op.Message);
+            Assert.AreEqual(1, op.Data.SkippedCount);
+        });
     }
 }

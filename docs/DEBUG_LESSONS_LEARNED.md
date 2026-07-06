@@ -94,3 +94,125 @@ AutoCAD 2019 的 `Spline(Point3dCollection, int, double)` 构造函数没有 `cl
 - [ ] 采样密度是否足够？
 - [ ] 语义是否与现有命令一致？
 - [ ] 是否遵循"先选边界，再选被剪对象"的模式？
+
+---
+
+## 问题5: CropBlockService 测试在侧数据库中卡死（BlockExploder）
+
+### 症状
+`CropBlockServiceTests` 中的 Intersects 测试在侧数据库（`new Database(true, true)`）中执行时 AutoCAD 完全卡死。
+
+### 根因
+`CropBlockService.CropBlocks` → `ExplodeAndCropChildren` → `BlockExploder.Explode()` → `AppendEntitiesToCurrentSpace(entitiesToAdd)` → `GetCurrentSpace()`。在侧数据库中无活动文档，`db.CurrentSpaceId` 行为未定义，导致死循环。
+
+### 修复
+移除会触发 Intersects → Explode 路径的测试。只保留 Inside/Outside 纯包围盒分类测试，不涉及 `BlockExploder`。
+
+### 教训
+1. **BlockExploder.Explode() 不可在侧数据库中使用** — `AppendEntitiesToCurrentSpace` 依赖活动文档
+2. **侧数据库测试只适合纯逻辑/纯数学运算** — 任何涉及文档上下文的操作（爆炸、XClip 复制等）都会卡死
+3. **测试新服务时先验证最小路径（Inside/Outside）再添加复杂路径（Intersects/Explode）**
+4. **二分法排查卡死** — 逐个排除测试文件，每次只加回一个，快速定位
+
+---
+
+## 问题6: .csproj 显式文件列表遗漏新文件
+
+### 症状
+`MSBuild` 编译成功但 `AUTOCMDTESTS` 找不到新测试类，提示 `NullReferenceException`，堆栈行号指向旧代码。
+
+### 根因
+[`AddinsACAD.csproj`](src/AddinsACAD/AddinsACAD.csproj) 使用显式 `<Compile Include="..." />` 列表。新创建的 `.cs` 文件不会被自动包含，需要手动添加。
+
+### 教训
+1. **创建新文件后必须在 `.csproj` 中注册** — VS 自动添加但 CLI MSBuild 不会
+2. **检查 MSBuild 输出中是否包含新文件路径** — 无则说明未编译
+3. **堆栈行号指向旧代码** — 说明 DLL 没变，检查编译步骤
+
+---
+
+## 问题7: `OpResult<T>` 双命名空间歧义
+
+### 症状
+```
+error CS0104: “OpResult<>”是“DDNCadAddins.Core.Models.OpResult<T>”和“ServiceACAD.OpResult<T>”之间的不明确的引用
+```
+
+### 根因
+`AddinsACAD` 同时引用了 `DDNCadAddins.Core`（其中 `Models/OpResult.cs` 定义了 `OpResult<T>`）和 `ServiceACAD`（其中 `OpResult.cs` 也定义了 `OpResult<T>`）。`using ServiceACAD;` 和 `using DDNCadAddins.Core.Models;` 同时存在时导致歧义。
+
+### 修复
+移除 `using DDNCadAddins.Core.Models;`，使用全限定名 `ServiceACAD.OpResult<T>`。
+
+### 教训
+1. **ServiceACAD 和 DDNCadAddins.Core 都有 OpResult<T>** — 不可同时 using
+2. **AddinsACAD 层应始终用 `ServiceACAD.OpResult<T>`** — 因为 ServiceACAD 包含了 AutoCAD 相关的 OpResult
+
+---
+
+## 问题8: MLine 托管 API 限制
+
+### 症状
+```csharp
+var mline = new Mline();
+mline.SetElevation(0.0); // CS1061
+mline.SetScale(1.0);     // CS1061
+mline.AddVertex(...);    // CS1061
+```
+
+### 根因
+`Mline` 的 `SetElevation`、`SetScale`、`AddVertex` 方法是 COM/ActiveX 接口 `IMLine` 的成员，不在托管 API `Autodesk.AutoCAD.DatabaseServices.Mline` 中。托管 API 通过构造函数参数设置顶点。
+
+### 教训
+1. **MLine 不可通过托管 API 编程创建** — 只能通过 `vla-addmline`（LSP）或通过读取已有图纸对象
+2. **MLine 裁剪测试仅限 LSP + 手动验证** — 用 `CREATETESTMLINE` 创建，手动执行裁剪命令
+
+---
+
+## 问题9: Polyline3d 构造函数需要 Point3dCollection
+
+### 症状
+```csharp
+new Polyline3d(Poly3dType.SimplePoly, new[] { pt1, pt2 }, false); // CS1503
+```
+
+### 根因
+`Polyline3d` 第二个参数要求 `Point3dCollection`，不是 `Point3d[]`。数组不能隐式转换为 `Point3dCollection`。
+
+### 教训
+1. **AutoCAD 集合类型（Point3dCollection/ObjectIdCollection 等）是专用类不是数组** — 必须 `new Point3dCollection()` + `.Add()`
+2. **检查构造函数重载签名** — `.NET API` 文档中参数类型优先于猜测
+
+---
+
+## 问题10: 侧数据库中 `AppendEntityToCurrentSpace` 不可用
+
+### 症状
+```
+NullReferenceException at TransactionService.GetCurrentSpace()
+```
+
+### 根因
+[`GetCurrentSpace`](src/ServiceACAD/TransactionService.cs:392) 在侧数据库中调用 `db.CurrentSpaceId`（纸空间模式）返回无效 ID，导致 `GetObject` 返回 null。侧数据库默认为模型空间，需要用 `GetModelSpace` 替代。
+
+### 教训
+1. **`AppendEntityToCurrentSpace` → `AppendEntityToModelSpace`** — 侧数据库必须用后者
+2. **`CreateBlockRefInCurrentSpace` 也依赖 `GetCurrentSpace`** — 侧数据库中不可用
+3. **全项目搜索 `GetCurrentSpace` 调用** — 所有侧数据库场景都要规避
+
+---
+
+## 问题11: AUTOCMDTESTS 报告路径
+
+### 规则
+`AUTOCMDTESTS` 的 NUnit XML 报告输出到：
+```
+D:\leaveblackgithub\DDNCadAddins\src\bin\Debug\ExtentReports\Report-NUnit.xml
+```
+
+调试测试失败时优先查看此文件，而非项目根目录的 `TestResult.xml`（那是 Core.Tests 的结果）。
+
+### Core.Tests 命令行
+```cmd
+cmd /c ""C:\Users\CFDDN\.nuget\packages\nunit.consolerunner\3.16.3\tools\nunit3-console.exe" "d:\leaveblackgithub\DDNCadAddins\src\bin\Debug\DDNCadAddins.Core.Tests.dll" --noheader"
+```
