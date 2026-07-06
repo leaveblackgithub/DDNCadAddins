@@ -73,6 +73,11 @@ namespace ServiceACAD
         public int SkippedCount { get; set; }
 
         /// <summary>
+        ///     被 ExplodeAsShown 炸开的块参照数量.
+        /// </summary>
+        public int ExplodedCount { get; set; }
+
+        /// <summary>
         ///     BlockReference 占位处理（完全在内侧=保留；完全在外侧=删除；相交=删除）.
         /// </summary>
         public int BlockRefHandledCount { get; set; }

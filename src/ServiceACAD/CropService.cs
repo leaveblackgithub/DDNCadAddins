@@ -52,7 +52,7 @@ namespace ServiceACAD
             this._mlineService = new CropMLineService(this._cropGeometry);
             this._leaderService = new CropLeaderService(this._cropGeometry);
             this._hatchService = new CropHatchService(this._cropGeometry);
-            this._blockService = new CropBlockService(this._cropGeometry, this);
+            this._blockService = new CropBlockService(this._cropGeometry);
             this._textService = new CropTextService(this._cropGeometry);
             this._mtextService = new CropMTextService(this._cropGeometry);
             this._dimService = new CropDimService(this._cropGeometry);
@@ -96,16 +96,13 @@ namespace ServiceACAD
                 {
                     var ids = new List<ObjectId> { e.ObjectId };
                     var polygon = boundary.GetApproximatePolygon();
-                    OpResult<CropBlockResult> result;
-                    if (ki)
-                        result = this._blockService.CropBlocksInside(boundary, polygon, ids, ts);
-                    else
-                        result = this._blockService.CropBlocksOutside(boundary, polygon, ids, ts);
+                    var result = this._blockService.CropBlocks(boundary, polygon, ids, ki, ts);
 
                     if (!result.IsSuccess)
                         return this.TryDeleteEntity(e, r);
 
                     r.DeletedCount += result.Data.DeletedCount;
+                    r.ExplodedCount += result.Data.ExplodedCount;
                     r.KeptCount += result.Data.KeptCount;
                     r.SkippedCount += result.Data.SkippedCount;
                     return true;
@@ -174,7 +171,14 @@ namespace ServiceACAD
                 }
 
                 if (result.DeletedCount == 0 && result.SplitCount == 0 && result.KeptCount == 0)
+                {
+                    if (result.SkippedCount > 0)
+                    {
+                        return OpResultOfCropResult.Fail(
+                            $"所有 {result.SkippedCount} 个实体被跳过，未成功处理任何实体");
+                    }
                     return OpResultOfCropResult.Fail("没有实体被处理");
+                }
 
                 return OpResultOfCropResult.Success(result);
             }
