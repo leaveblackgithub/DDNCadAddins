@@ -56,6 +56,7 @@ AddinsACAD.csproj - AutoCAD Commands and Tests Project File
     <Compile Include="ServiceTests\CropMTextServiceTests.cs" />
     <Compile Include="ServiceTests\CropPointServiceTests.cs" />
     <Compile Include="ServiceTests\CropDimServiceTests.cs" />
+    <Compile Include="ServiceTests\CropSolidServiceTests.cs" />
     <Compile Include="ServiceTests\TransactionServiceTest.cs" />
     <Compile Include="ServiceTests\TransactionServiceExtendedTests.cs" />
   </ItemGroup>

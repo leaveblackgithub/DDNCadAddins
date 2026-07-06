@@ -1,5 +1,4 @@
-fix: CropPointServiceTests 修复侧数据库 eInvalidExtents 问题 + 新增 TESTING.md 文档
+feat: 新增 CropSolidServiceTests（AUTOCMDTEST）
 
-- CropPointServiceTests: 使用宽松断言避免侧数据库点对象失败
-- 新增 docs/TESTING.md: AUTOCMDTEST 测试体系文档
-- 新增 CropDimServiceTests: 9 个标注裁剪测试
+- 新增 CropSolidServiceTests.cs: 7 个实体裁剪测试
+- AddinsACAD.csproj: 添加新测试文件编译项
