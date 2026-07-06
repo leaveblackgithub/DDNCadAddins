@@ -1,9 +1,4 @@
-refactor: 代码重构 - 删除冗余文件、合并重复功能
+feat: 新增 CropSplineServiceTests（AUTOCMDTEST）
 
-- 删除 reference/ 目录（旧版本代码残留）
-- 删除 ServiceACAD/CurveConverter.cs（冗余静态包装器）
-- 合并 CropBoundaryFactory 和 ConvertToCropBoundary
-- CropService 16个HandleXXX方法→3个泛型方法
-- CurveSubtractService 提取共享 BuildSubSegmentsFromCutPoints
-- PolygonClipperService 线段求交方法去重
-- OpResult.cs 改为类型转发文件
+- 新增 CropSplineServiceTests.cs: 9 个样条曲线裁剪测试
+- AddinsACAD.csproj: 添加新测试文件编译项
