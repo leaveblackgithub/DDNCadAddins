@@ -1,4 +1,4 @@
-feat: 新增 CropLeaderServiceTests（AUTOCMDTEST）
+feat: 新增 CropBlockServiceTests（AUTOCMDTEST）
 
-- 新增 CropLeaderServiceTests.cs: 9 个引线裁剪测试
+- 新增 CropBlockServiceTests.cs: 9 个块参照裁剪测试
 - AddinsACAD.csproj: 添加新测试文件编译项
