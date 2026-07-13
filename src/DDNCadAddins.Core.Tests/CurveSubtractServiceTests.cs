@@ -799,5 +799,180 @@ namespace DDNCadAddins.Core.Tests
             bool hasClip = allSegs.Any(s => s.Source == SegmentSource.Clip);
             Assert.IsTrue(hasClip, "A1包含B时应有Clip段");
         }
+
+        // ════════════════════════════════════════════════════════════════
+        // 外环+内环（孔洞）裁剪测试（CropRingWithHole）
+        // 覆盖：Clip 同时与外环内环相交的凹字形场景
+        // ════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        ///     计算多个闭合环的带符号面积之和（Shoelace 公式）.
+        ///     约定：外环（CCW）为正，内孔环（CW，反向后）为负，
+        ///     求和后即为净面积（外环面积 - 内孔面积）.
+        ///     仅适用于纯直线段组成的环（矩形测试场景）.
+        /// </summary>
+        private static double SignedLoopArea(List<List<ExactSegment>> loops)
+        {
+            double total = 0;
+            foreach (var loop in loops)
+            {
+                if (loop == null || loop.Count == 0) continue;
+                var pts = loop.Select(s => s.Start).ToList();
+                int n = pts.Count;
+                double area = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    var p1 = pts[i];
+                    var p2 = pts[(i + 1) % n];
+                    area += p1.X * p2.Y - p2.X * p1.Y;
+                }
+                total += area / 2.0;
+            }
+            return total;
+        }
+
+        [Test]
+        public void CropRingWithHole_ClipDisjoint_KeepOutside_ReturnsAnnulus()
+        {
+            // 外环 0~100，内孔 40~60，Clip 200~250（完全不相交）
+            var outerEdges = MakeRectEdges(0, 0, 100, 100);
+            var outerBnd = MakeRectBoundary(0, 0, 100, 100);
+            var holeEdges = MakeRectEdges(40, 40, 60, 60);
+            var holeBnd = MakeRectBoundary(40, 40, 60, 60);
+            var clipEdges = MakeRectEdges(200, 200, 250, 250);
+            var clipBnd = MakeRectBoundary(200, 200, 250, 250);
+
+            var result = _service.CropRingWithHole(
+                outerEdges, outerBnd, holeEdges, holeBnd, clipEdges, clipBnd, keepInside: false);
+
+            Assert.IsTrue(result.IsSuccess, "Clip 不相交时差集应成功");
+            Assert.AreEqual(2, result.Data.Loops.Count, "应返回外环+内孔两个环");
+
+            double netArea = SignedLoopArea(result.Data.Loops);
+            Assert.AreEqual(9600.0, netArea, 1e-6, "净面积应为 外环(10000)-内孔(400)=9600");
+        }
+
+        [Test]
+        public void CropRingWithHole_ClipDisjoint_KeepInside_ReturnsEmpty()
+        {
+            // Clip 与外环完全不相交 → 保留内部(交集)应为空
+            var outerEdges = MakeRectEdges(0, 0, 100, 100);
+            var outerBnd = MakeRectBoundary(0, 0, 100, 100);
+            var holeEdges = MakeRectEdges(40, 40, 60, 60);
+            var holeBnd = MakeRectBoundary(40, 40, 60, 60);
+            var clipEdges = MakeRectEdges(200, 200, 250, 250);
+            var clipBnd = MakeRectBoundary(200, 200, 250, 250);
+
+            var result = _service.CropRingWithHole(
+                outerEdges, outerBnd, holeEdges, holeBnd, clipEdges, clipBnd, keepInside: true);
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.IsTrue(result.Data.IsEmpty, "Clip 与外环不相交时交集应为空");
+        }
+
+        [Test]
+        public void CropRingWithHole_ClipIntersectsBothOuterAndHole_KeepOutside_ReturnsConcaveShape()
+        {
+            // ★ 核心场景：Clip 同时与外环、内环相交
+            // 外环 0~100，内孔 40~60，Clip 0~50（与外环、内孔均有重叠）
+            var outerEdges = MakeRectEdges(0, 0, 100, 100);
+            var outerBnd = MakeRectBoundary(0, 0, 100, 100);
+            var holeEdges = MakeRectEdges(40, 40, 60, 60);
+            var holeBnd = MakeRectBoundary(40, 40, 60, 60);
+            var clipEdges = MakeRectEdges(0, 0, 50, 50);
+            var clipBnd = MakeRectBoundary(0, 0, 50, 50);
+
+            var result = _service.CropRingWithHole(
+                outerEdges, outerBnd, holeEdges, holeBnd, clipEdges, clipBnd, keepInside: false);
+
+            Assert.IsTrue(result.IsSuccess, "凹字形差集应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "应至少返回1个环");
+
+            // 净面积 = 外环(10000) - [Clip(2500) + 内孔(400) - Clip∩内孔(100)] = 7200
+            double netArea = SignedLoopArea(result.Data.Loops);
+            Assert.AreEqual(7200.0, netArea, 1e-6,
+                "净面积应为 外环-（Clip∪内孔）与外环的交集 = 10000-2800=7200");
+
+            // 内孔区域中未被 Clip 覆盖的部分不应出现在 Subject 来源的外环段中
+            var outerSegs = result.Data.Loops.SelectMany(l => l)
+                .Where(s => s.Source == SegmentSource.Subject).ToList();
+            foreach (var seg in outerSegs)
+            {
+                foreach (var pt in seg.ToPolylinePoints())
+                {
+                    bool inHoleStrict = pt.X > 40 + 1e-6 && pt.X < 60 - 1e-6 &&
+                                        pt.Y > 40 + 1e-6 && pt.Y < 60 - 1e-6;
+                    Assert.IsFalse(inHoleStrict, $"外环段点 ({pt.X},{pt.Y}) 不应严格位于内孔内部");
+                }
+            }
+        }
+
+        [Test]
+        public void CropRingWithHole_ClipIntersectsBothOuterAndHole_KeepInside_ReturnsConcaveShape()
+        {
+            // 同一几何，保留内部(交集)：结果 = Clip \ 内孔（Clip 完全在外环内)
+            var outerEdges = MakeRectEdges(0, 0, 100, 100);
+            var outerBnd = MakeRectBoundary(0, 0, 100, 100);
+            var holeEdges = MakeRectEdges(40, 40, 60, 60);
+            var holeBnd = MakeRectBoundary(40, 40, 60, 60);
+            var clipEdges = MakeRectEdges(0, 0, 50, 50);
+            var clipBnd = MakeRectBoundary(0, 0, 50, 50);
+
+            var result = _service.CropRingWithHole(
+                outerEdges, outerBnd, holeEdges, holeBnd, clipEdges, clipBnd, keepInside: true);
+
+            Assert.IsTrue(result.IsSuccess, "凹字形交集应成功");
+            Assert.GreaterOrEqual(result.Data.Loops.Count, 1, "应至少返回1个环");
+
+            // 净面积 = Clip(2500) - Clip∩内孔(100) = 2400
+            double netArea = SignedLoopArea(result.Data.Loops);
+            Assert.AreEqual(2400.0, netArea, 1e-6,
+                "净面积应为 Clip 减去与内孔重叠部分 = 2500-100=2400");
+        }
+
+        [Test]
+        public void CropRingWithHole_NullOuterEdges_ReturnsFail()
+        {
+            var holeEdges = MakeRectEdges(40, 40, 60, 60);
+            var holeBnd = MakeRectBoundary(40, 40, 60, 60);
+            var clipEdges = MakeRectEdges(0, 0, 50, 50);
+            var clipBnd = MakeRectBoundary(0, 0, 50, 50);
+
+            var result = _service.CropRingWithHole(
+                null, MakeRectBoundary(0, 0, 100, 100),
+                holeEdges, holeBnd, clipEdges, clipBnd, keepInside: false);
+
+            Assert.IsFalse(result.IsSuccess);
+        }
+
+        [Test]
+        public void CropRingWithHole_NullHoleBoundary_ReturnsFail()
+        {
+            var outerEdges = MakeRectEdges(0, 0, 100, 100);
+            var outerBnd = MakeRectBoundary(0, 0, 100, 100);
+            var holeEdges = MakeRectEdges(40, 40, 60, 60);
+            var clipEdges = MakeRectEdges(0, 0, 50, 50);
+            var clipBnd = MakeRectBoundary(0, 0, 50, 50);
+
+            var result = _service.CropRingWithHole(
+                outerEdges, outerBnd, holeEdges, null, clipEdges, clipBnd, keepInside: false);
+
+            Assert.IsFalse(result.IsSuccess);
+        }
+
+        [Test]
+        public void CropRingWithHole_NullClipEdges_ReturnsFail()
+        {
+            var outerEdges = MakeRectEdges(0, 0, 100, 100);
+            var outerBnd = MakeRectBoundary(0, 0, 100, 100);
+            var holeEdges = MakeRectEdges(40, 40, 60, 60);
+            var holeBnd = MakeRectBoundary(40, 40, 60, 60);
+            var clipBnd = MakeRectBoundary(0, 0, 50, 50);
+
+            var result = _service.CropRingWithHole(
+                outerEdges, outerBnd, holeEdges, holeBnd, null, clipBnd, keepInside: false);
+
+            Assert.IsFalse(result.IsSuccess);
+        }
     }
 }

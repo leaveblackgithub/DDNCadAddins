@@ -316,6 +316,173 @@ namespace DDNCadAddins.Core.Services
             }
         }
 
+        /// <summary>
+        ///     计算"外环+内环（孔洞）"与一条 Clip 曲线的裁剪运算，正确处理
+        ///     Clip 同时与外环、内环相交的场景（凹字形结果）.
+        ///     <para>
+        ///         语义：内环（孔洞）区域始终不属于结果，无论裁剪方向如何；
+        ///         裁剪方向只影响外环与 Clip 的取舍：
+        ///         <list type="bullet">
+        ///             <item>keepInside=true（保留内部/交集）：结果 = 外环以内 ∩ Clip 以内 ∩ 内环以外.</item>
+        ///             <item>keepInside=false（保留外部/差集）：结果 = 外环以内 ∩ Clip 以外 ∩ 内环以外.</item>
+        ///         </list>
+        ///     </para>
+        ///     <para>
+        ///         算法：对外环边、Clip 边、内环边分别按另外两个边界级联切分，
+        ///         保留满足对应条件的子段（外环子段与 Clip 子段方向不变/按需反向，
+        ///         内环子段始终反向标记为 Clip，代表挖孔边界），最终统一连接成闭合环.
+        ///     </para>
+        /// </summary>
+        /// <param name="outerEdges">外环原子边列表.</param>
+        /// <param name="outerBoundary">外环精确裁剪边界.</param>
+        /// <param name="holeEdges">内环（孔洞）原子边列表.</param>
+        /// <param name="holeBoundary">内环（孔洞）精确裁剪边界.</param>
+        /// <param name="clipEdges">Clip 曲线原子边列表.</param>
+        /// <param name="clipBoundary">Clip 曲线精确裁剪边界.</param>
+        /// <param name="keepInside">true=保留内部（外环∩Clip\内环），false=保留外部（外环\(Clip∪内环)）.</param>
+        /// <returns>裁剪结果（0 个或多个闭合环）.</returns>
+        public OpResult<ExactSubtractResult> CropRingWithHole(
+            IReadOnlyList<ExactSegment> outerEdges,
+            ICropBoundary outerBoundary,
+            IReadOnlyList<ExactSegment> holeEdges,
+            ICropBoundary holeBoundary,
+            IReadOnlyList<ExactSegment> clipEdges,
+            ICropBoundary clipBoundary,
+            bool keepInside)
+        {
+            try
+            {
+                if (outerEdges == null || outerEdges.Count == 0)
+                    return OpResult<ExactSubtractResult>.Fail("外环边列表为空");
+                if (outerBoundary == null)
+                    return OpResult<ExactSubtractResult>.Fail("外环边界为空");
+                if (holeEdges == null || holeEdges.Count == 0)
+                    return OpResult<ExactSubtractResult>.Fail("内环边列表为空");
+                if (holeBoundary == null)
+                    return OpResult<ExactSubtractResult>.Fail("内环边界为空");
+                if (clipEdges == null || clipEdges.Count == 0)
+                    return OpResult<ExactSubtractResult>.Fail("Clip 边列表为空");
+                if (clipBoundary == null)
+                    return OpResult<ExactSubtractResult>.Fail("Clip 边界为空");
+
+                // ── 1. 外环边：按 Clip + 内环级联切分，保留满足条件的子段 ──────
+                var keptFromOuter = new List<ExactSegment>();
+                foreach (var edge in outerEdges)
+                {
+                    var subs = SplitEdgeByMultipleBoundaries(edge, clipBoundary, holeBoundary);
+                    foreach (var sub in subs)
+                    {
+                        bool insideClip = IsSegmentInsideBoundary(sub, clipBoundary);
+                        bool insideHole = IsSegmentInsideBoundary(sub, holeBoundary);
+                        bool keep = keepInside
+                            ? insideClip && !insideHole
+                            : !insideClip && !insideHole;
+                        if (keep)
+                            keptFromOuter.Add(sub);
+                    }
+                }
+
+                // ── 2. Clip 边：按外环 + 内环级联切分，保留在外环内、内环外的子段 ──
+                var keptFromClip = new List<ExactSegment>();
+                foreach (var edge in clipEdges)
+                {
+                    var subs = SplitEdgeByMultipleBoundaries(edge, outerBoundary, holeBoundary);
+                    foreach (var sub in subs)
+                    {
+                        bool insideOuter = IsSegmentInsideBoundary(sub, outerBoundary);
+                        bool insideHole = IsSegmentInsideBoundary(sub, holeBoundary);
+                        if (!insideOuter || insideHole)
+                            continue;
+                        if (IsSegmentOnBoundaryEdge(sub, outerEdges))
+                            continue;
+
+                        if (keepInside)
+                        {
+                            sub.Source = SegmentSource.Clip;
+                            keptFromClip.Add(sub);
+                        }
+                        else
+                        {
+                            var reversed = ReverseSegment(sub);
+                            reversed.Source = SegmentSource.Clip;
+                            keptFromClip.Add(reversed);
+                        }
+                    }
+                }
+
+                // ── 3. 内环边：按外环 + Clip 级联切分，始终反向标记为挖孔边界 ──
+                //    保留条件与外环自身条件一致（保证挖孔边界只出现在结果保留区域内）
+                var keptFromHole = new List<ExactSegment>();
+                foreach (var edge in holeEdges)
+                {
+                    var subs = SplitEdgeByMultipleBoundaries(edge, outerBoundary, clipBoundary);
+                    foreach (var sub in subs)
+                    {
+                        bool insideOuter = IsSegmentInsideBoundary(sub, outerBoundary);
+                        bool insideClip = IsSegmentInsideBoundary(sub, clipBoundary);
+                        bool keepCondition = keepInside ? insideClip : !insideClip;
+                        if (!insideOuter || !keepCondition)
+                            continue;
+                        if (IsSegmentOnBoundaryEdge(sub, outerEdges))
+                            continue;
+
+                        var reversed = ReverseSegment(sub);
+                        reversed.Source = SegmentSource.Clip;
+                        keptFromHole.Add(reversed);
+                    }
+                }
+
+                // ── 4. 合并并连接成闭合环 ──────────────────────────────
+                var allKept = new List<ExactSegment>(
+                    keptFromOuter.Count + keptFromClip.Count + keptFromHole.Count);
+                allKept.AddRange(keptFromOuter);
+                allKept.AddRange(keptFromClip);
+                allKept.AddRange(keptFromHole);
+
+                if (allKept.Count == 0)
+                    return OpResult<ExactSubtractResult>.Success(new ExactSubtractResult());
+
+                var loops = ChainSegmentsIntoLoops(allKept);
+
+                var finalResult = new ExactSubtractResult();
+                foreach (var loop in loops)
+                {
+                    if (loop.Count >= 1)
+                        finalResult.Loops.Add(loop);
+                }
+
+                return OpResult<ExactSubtractResult>.Success(finalResult);
+            }
+            catch (Exception ex)
+            {
+                return OpResult<ExactSubtractResult>.Fail(
+                    $"环形裁剪计算失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        ///     将一条原子边依次按多个裁剪边界级联切分（先按第一个边界切分，
+        ///     再对每个子段按第二个边界继续切分，以此类推）.
+        ///     用于 <see cref="CropRingWithHole"/> 中需要同时按两个独立边界
+        ///     （如外环+内环）切分同一条边的场景.
+        /// </summary>
+        /// <param name="edge">原始边.</param>
+        /// <param name="boundaries">依次应用的裁剪边界列表.</param>
+        /// <returns>级联切分后的最终子段列表.</returns>
+        private List<ExactSegment> SplitEdgeByMultipleBoundaries(
+            ExactSegment edge, params ICropBoundary[] boundaries)
+        {
+            var current = new List<ExactSegment> { edge };
+            foreach (var boundary in boundaries)
+            {
+                var next = new List<ExactSegment>();
+                foreach (var seg in current)
+                    next.AddRange(SplitEdgeByBoundary(seg, boundary));
+                current = next;
+            }
+            return current;
+        }
+
         // ──────────────────────────────────────────────────────────────
         //  逐边求交与切分
         // ──────────────────────────────────────────────────────────────
@@ -615,6 +782,12 @@ namespace DDNCadAddins.Core.Services
         ///     使用精确的端点坐标，确保不同边切割产生的子段
         ///     在连接点处坐标完全一致。
         /// </summary>
+        /// <summary>
+        ///     根据参数范围 [tStart, tEnd] 从原始边创建子线段。
+        ///     ★ 所有类型都使用 exactStart/exactEnd 作为端点坐标，
+        ///     确保共享同一交点的不同边切割产生的子段端点坐标完全一致，
+        ///     避免绘制的 Polyline 环之间出现浮点偏差缝隙导致 Hatch 泄漏。
+        /// </summary>
         private static ExactSegment CreateSubSegmentWithEndpoints(
             ExactSegment edge, double tStart, double tEnd,
             Point2D exactStart, Point2D exactEnd)
@@ -622,10 +795,17 @@ namespace DDNCadAddins.Core.Services
             switch (edge.SegmentType)
             {
                 case ExactSegmentType.Line:
-                    return CreateSubLine(edge, tStart, tEnd);
+                    return new ExactSegment
+                    {
+                        Source = edge.Source,
+                        SegmentType = ExactSegmentType.Line,
+                        Start = exactStart,
+                        End = exactEnd
+                    };
 
                 case ExactSegmentType.Arc:
-                    return CreateSubArc(edge, tStart, tEnd);
+                    return CreateSubArcWithEndpoints(
+                        edge, tStart, tEnd, exactStart, exactEnd);
 
                 case ExactSegmentType.Ellipse:
                     return CreateSubEllipseWithEndpoints(
@@ -634,6 +814,37 @@ namespace DDNCadAddins.Core.Services
                 default:
                     return null;
             }
+        }
+
+        /// <summary>
+        ///     创建圆弧子段（使用精确端点坐标）.
+        ///     保留圆弧几何属性（圆心、半径），但端点使用交点精确坐标.
+        /// </summary>
+        private static ExactSegment CreateSubArcWithEndpoints(
+            ExactSegment edge, double tStart, double tEnd,
+            Point2D exactStart, Point2D exactEnd)
+        {
+            double fullSpan = edge.ArcIsClockwise
+                ? edge.ArcStartAngle - edge.ArcEndAngle
+                : edge.ArcEndAngle - edge.ArcStartAngle;
+            if (fullSpan < 0) fullSpan += 2.0 * Math.PI;
+
+            double dir = edge.ArcIsClockwise ? -1.0 : 1.0;
+            double subStartAngle = edge.ArcStartAngle + dir * fullSpan * tStart;
+            double subEndAngle = edge.ArcStartAngle + dir * fullSpan * tEnd;
+
+            return new ExactSegment
+            {
+                Source = edge.Source,
+                SegmentType = ExactSegmentType.Arc,
+                Start = exactStart,
+                End = exactEnd,
+                ArcCenter = edge.ArcCenter,
+                ArcRadius = edge.ArcRadius,
+                ArcStartAngle = subStartAngle,
+                ArcEndAngle = subEndAngle,
+                ArcIsClockwise = edge.ArcIsClockwise
+            };
         }
 
         /// <summary>

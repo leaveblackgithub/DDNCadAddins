@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 // Project-specific information
@@ -10,3 +11,6 @@ using System.Runtime.InteropServices;
 
 // Guid for type library
 [assembly: Guid("f9a5342c-c55f-4220-aef4-14522860a63d")]
+
+// 允许 AddinsACAD 测试程序集访问 internal 成员
+[assembly: InternalsVisibleTo("AddinsACAD")]

@@ -55,13 +55,15 @@ namespace ServiceACAD
         /// <param name="blockRefIds">块参照 ObjectId 列表.</param>
         /// <param name="keepInside">true=保留内部，false=保留外部.</param>
         /// <param name="ts">事务服务.</param>
+        /// <param name="boundaryId">裁剪边界曲线 ObjectId（用于 Hatch 裁剪流程）.</param>
         /// <returns>裁剪结果（CropBlockResult）.</returns>
         public OpResult<CropBlockResult> CropBlocks(
             ICropBoundary boundary,
             IReadOnlyList<CorePoint2D> polygon,
             List<ObjectId> blockRefIds,
             bool keepInside,
-            ITransactionService ts)
+            ITransactionService ts,
+            ObjectId boundaryId = default(ObjectId))
         {
             try
             {
@@ -111,7 +113,7 @@ namespace ServiceACAD
                         {
                             // 与边界相交 → 爆炸 + 裁剪子实体（嵌套块保留原样）
                             var explodeCropResult = this.ExplodeAndCropChildren(
-                                blockRef, boundary, keepInside, ts);
+                                blockRef, boundary, polygon, boundaryId, keepInside, ts);
 
                             if (!explodeCropResult.IsSuccess)
                             {
@@ -145,15 +147,22 @@ namespace ServiceACAD
 
         /// <summary>
         ///     爆炸块参照并对非 BlockReference 子实体执行裁剪（嵌套块保留原样）.
+        ///     使用 <see cref="ICropService.CropInsideOutside"/> 确保 Hatch 实体走完整的
+        ///     GenerateHatchBoundary → CropClosedCurveMulti → CloneHatch 流程，
+        ///     与 CROPINSIDE/CROPOUTSIDE 命令行为一致.
         /// </summary>
         /// <param name="blockRef">块参照.</param>
         /// <param name="boundary">裁剪边界.</param>
+        /// <param name="boundaryPoints">边界的近似多边形顶点.</param>
+        /// <param name="boundaryId">裁剪边界曲线 ObjectId（用于 Hatch 裁剪流程）.</param>
         /// <param name="keepInside">裁剪方向.</param>
         /// <param name="ts">事务服务.</param>
         /// <returns>操作结果.</returns>
         private OpResult<object> ExplodeAndCropChildren(
             BlockReference blockRef,
             ICropBoundary boundary,
+            IReadOnlyList<CorePoint2D> boundaryPoints,
+            ObjectId boundaryId,
             bool keepInside,
             ITransactionService ts)
         {
@@ -186,19 +195,12 @@ namespace ServiceACAD
                     nonBlockIds.Add(childId);
                 }
 
-                // ── 3. 裁剪非块参照子实体 ──
+                // ── 3. 裁剪非块参照子实体（使用 CropInsideOutside 确保 Hatch 走完整流程） ──
                 if (nonBlockIds.Count > 0)
                 {
-                    var input = new CropInput
-                    {
-                        Boundary = boundary,
-                        EntityIds = nonBlockIds,
-                        TransactionService = ts,
-                    };
-
-                    var cropResult = keepInside
-                        ? this._cropService.CropInside(input)
-                        : this._cropService.CropOutside(input);
+                    var cropResult = this._cropService.CropInsideOutside(
+                        boundary, boundaryPoints, nonBlockIds,
+                        boundaryId, keepInside, ts);
 
                     if (!cropResult.IsSuccess)
                     {

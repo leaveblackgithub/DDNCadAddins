@@ -56,13 +56,14 @@ namespace AddinsACAD.Commands
         private static string AskSubCommand(Editor ed)
         {
             var kw = new PromptKeywordOptions(
-                "\n选择测试子命令 C=CROPTESTS K=CLONEHATCH G=GENERATEXCLIPBOUNDARY E=EXPLODEASSHOWN H=GENERATEHATCHBOUNDARY B=CROPCLOSEDCURVE [C/K/G/E/H/B]");
+                "\n选择测试子命令 C=CROPTESTS K=CLONEHATCH G=GENERATEXCLIPBOUNDARY E=EXPLODEASSHOWN H=GENERATEHATCHBOUNDARY B=CROPCLOSEDCURVE U=CROPTWOCLOSEDCURVE [C/K/G/E/H/B/U]");
             kw.Keywords.Add("C");
             kw.Keywords.Add("K");
             kw.Keywords.Add("G");
             kw.Keywords.Add("E");
             kw.Keywords.Add("H");
             kw.Keywords.Add("B");
+            kw.Keywords.Add("U");
             kw.Keywords.Default = "C";
             kw.AllowNone = true;
 
@@ -86,6 +87,7 @@ namespace AddinsACAD.Commands
                 case "E": return "EXPLODEASSHOWN";
                 case "H": return "GENERATEHATCHBOUNDARY";
                 case "B": return "CROPCLOSEDCURVE";
+                case "U": return "CROPTWOCLOSEDCURVE";
                 default:  return null;
             }
         }

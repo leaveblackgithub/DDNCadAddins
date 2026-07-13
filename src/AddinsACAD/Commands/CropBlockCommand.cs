@@ -108,7 +108,7 @@ namespace AddinsACAD.Commands
                         var blockService = new CropBlockService(geoService, cropService);
 
                         blockCropResult = blockService.CropBlocks(
-                            boundary, boundaryPoints.AsReadOnly(), blockRefIds, capturedKeepInside, serviceTrans);
+                            boundary, boundaryPoints.AsReadOnly(), blockRefIds, capturedKeepInside, serviceTrans, boundaryId);
 
                         if (blockCropResult == null || !blockCropResult.IsSuccess)
                         {

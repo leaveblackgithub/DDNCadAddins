@@ -32,6 +32,9 @@ namespace ServiceACAD
         private readonly CropPointService _pointService;
         private readonly CropSolidService _solidService;
 
+        // 当前裁剪边界的 ObjectId（用于 BlockReference 爆炸后 Hatch 裁剪流程）
+        private ObjectId _currentBoundaryId;
+
         // ── 注册表：用字典消除 if-else 分派链 ──
         private delegate bool EntityHandler(Entity entity, ICropBoundary boundary,
             bool keepInside, ITransactionService ts, CropResult result);
@@ -96,7 +99,7 @@ namespace ServiceACAD
                 {
                     var ids = new List<ObjectId> { e.ObjectId };
                     var polygon = boundary.GetApproximatePolygon();
-                    var result = this._blockService.CropBlocks(boundary, polygon, ids, ki, ts);
+                    var result = this._blockService.CropBlocks(boundary, polygon, ids, ki, ts, this._currentBoundaryId);
 
                     if (!result.IsSuccess)
                         return this.TryDeleteEntity(e, r);
@@ -128,6 +131,119 @@ namespace ServiceACAD
         public OpResultOfCropResult CropInside(CropInput input) => this.Crop(input, keepInside: true);
         public OpResultOfCropResult CropOutside(CropInput input) => this.Crop(input, keepInside: false);
 
+        /// <summary>
+        ///     统一裁剪操作：自动分离 Hatch 和非 Hatch 实体，分别调用对应的裁剪逻辑，
+        ///     合并结果到统一的 CropResult 中.
+        ///     <para>非 Hatch 实体走 CropService 的包围盒分类+精确裁剪流程（CROPLINE/ARC/.../BLOCK）.</para>
+        ///     <para>Hatch 实体走 CropHatchService.ProcessHatches 流程（GenerateHatchBoundary → CropClosedCurveMulti → CloneHatch）.</para>
+        /// </summary>
+        /// <param name="boundary">精确裁剪边界（ICropBoundary）.</param>
+        /// <param name="boundaryPoints">边界的近似多边形顶点.</param>
+        /// <param name="entityIds">待裁剪的所有实体 ObjectId 列表.</param>
+        /// <param name="boundaryId">裁剪边界曲线 ObjectId（用于 Hatch 裁剪）.</param>
+        /// <param name="keepInside">true=保留内部(CROPOUTSIDE)，false=保留外部(CROPINSIDE).</param>
+        /// <param name="ts">事务服务.</param>
+        /// <returns>统一裁剪结果.</returns>
+        public OpResultOfCropResult CropInsideOutside(
+            ICropBoundary boundary,
+            IReadOnlyList<CorePoint2D> boundaryPoints,
+            List<ObjectId> entityIds,
+            ObjectId boundaryId,
+            bool keepInside,
+            ITransactionService ts)
+        {
+            try
+            {
+                if (entityIds == null || entityIds.Count == 0)
+                    return OpResultOfCropResult.Fail("待裁剪的实体列表为空");
+                if (boundary == null)
+                    return OpResultOfCropResult.Fail("裁剪边界为空");
+                if (ts == null)
+                    return OpResultOfCropResult.Fail("事务服务引用为空");
+
+                // ── 1. 分离 Hatch 和非 Hatch 实体 ──
+                var nonHatchIds = new List<ObjectId>();
+                var hatchIds = new List<ObjectId>();
+                foreach (var id in entityIds)
+                {
+                    if (!id.IsValid || id.IsErased) continue;
+                    var ent = ts.GetObject<Entity>(id, OpenMode.ForRead);
+                    if (ent is Hatch)
+                        hatchIds.Add(id);
+                    else
+                        nonHatchIds.Add(id);
+                }
+
+                var result = new CropResult();
+
+                // ── 2. 处理非 Hatch 实体（走 CropService 标准流程） ──
+                if (nonHatchIds.Count > 0)
+                {
+                    var input = new CropInput
+                    {
+                        Boundary = boundary,
+                        BoundaryPoints = boundaryPoints,
+                        EntityIds = nonHatchIds,
+                        TransactionService = ts,
+                        BoundaryId = boundaryId, // ★ 传递 boundaryId，确保 BlockReference 爆炸后 Hatch 裁剪走完整流程
+                    };
+
+                    var nonHatchResult = keepInside
+                        ? this.Crop(input, keepInside: true)
+                        : this.Crop(input, keepInside: false);
+
+                    if (nonHatchResult.IsSuccess && nonHatchResult.Data != null)
+                    {
+                        result.DeletedCount = nonHatchResult.Data.DeletedCount;
+                        result.SplitCount = nonHatchResult.Data.SplitCount;
+                        result.KeptCount = nonHatchResult.Data.KeptCount;
+                        result.SkippedCount = nonHatchResult.Data.SkippedCount;
+                        result.ExplodedCount = nonHatchResult.Data.ExplodedCount;
+                    }
+                }
+
+                // ── 3. 处理 Hatch 实体（走 CropHatchService.ProcessHatches 流程） ──
+                if (hatchIds.Count > 0)
+                {
+                    var hatchService = new CropHatchService(this._cropGeometry);
+                    var hatchResult = hatchService.ProcessHatches(
+                        hatchIds, boundaryId, boundary, keepInside);
+
+                    if (hatchResult.IsSuccess)
+                    {
+                        result.NewHatchesCreated = hatchResult.NewHatchesCreated;
+                        // Hatch 裁剪会删除原始 Hatch，计入 DeletedCount
+                        result.DeletedCount += hatchIds.Count;
+                        result.KeptCount += hatchResult.NewHatchesCreated;
+                    }
+                    else
+                    {
+                        result.SkippedCount += hatchIds.Count;
+                        Logger._.Warn($"Hatch 裁剪处理失败: 跳过 {hatchIds.Count} 个 Hatch");
+                    }
+                }
+
+                // ── 4. 结果验证 ──
+                if (result.DeletedCount == 0 && result.SplitCount == 0
+                    && result.KeptCount == 0 && result.NewHatchesCreated == 0)
+                {
+                    if (result.SkippedCount > 0)
+                    {
+                        return OpResultOfCropResult.Fail(
+                            $"所有 {result.SkippedCount} 个实体被跳过，未成功处理任何实体");
+                    }
+                    return OpResultOfCropResult.Fail("没有实体被处理");
+                }
+
+                return OpResultOfCropResult.Success(result);
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"CropInsideOutside 操作失败: {ex.Message}", ex);
+                return OpResultOfCropResult.Fail($"统一裁剪操作失败: {ex.Message}");
+            }
+        }
+
         private OpResultOfCropResult Crop(CropInput input, bool keepInside)
         {
             try
@@ -143,6 +259,9 @@ namespace ServiceACAD
                 var boundary = input.GetEffectiveBoundary();
                 if (boundary == null)
                     return OpResultOfCropResult.Fail("裁剪边界无效（Boundary 和 BoundaryPoints 均未设置）");
+
+                // 保存 boundaryId 供 BlockReference 爆炸后 Hatch 裁剪使用
+                this._currentBoundaryId = input.BoundaryId;
 
                 var result = new CropResult();
                 foreach (var entityId in input.EntityIds)

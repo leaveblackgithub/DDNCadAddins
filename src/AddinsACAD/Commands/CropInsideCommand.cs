@@ -62,22 +62,6 @@ namespace AddinsACAD.Commands
                 // 排除边界自身
                 entityIds.RemoveAll(id => id == boundaryId);
 
-                // ── 分离 Hatch 和非 Hatch 实体 ──
-                var nonHatchIds = new List<ObjectId>();
-                var hatchIds = new List<ObjectId>();
-                foreach (var id in entityIds)
-                {
-                    if (!id.IsValid || id.IsErased) continue;
-                    CadServiceManager._.ExecuteInTransactions(null, ts =>
-                    {
-                        var ent = ts.GetObject<Entity>(id, OpenMode.ForRead);
-                        if (ent is Hatch)
-                            hatchIds.Add(id);
-                        else
-                            nonHatchIds.Add(id);
-                    });
-                }
-
                 // ── 采集 UCS 和边界顶点 ──
                 ServiceACAD.TestRecorder.CaptureUcs(out var ucsOrigin, out var ucsX, out var ucsY);
                 var capturedUcsOrigin = ucsOrigin;
@@ -90,48 +74,23 @@ namespace AddinsACAD.Commands
                 {
                     try
                     {
-                        // ── 处理非 Hatch 实体（使用 CropService） ──
-                        CropResult cropResult = null;
-                        if (nonHatchIds.Count > 0)
+                        // ── 统一裁剪：CropService.CropInsideOutside 自动分离 Hatch/非 Hatch ──
+                        var geoService = new CropGeometryService();
+                        var cropService = new CropService(geoService);
+
+                        var result = cropService.CropInsideOutside(
+                            boundary, boundaryPoints.AsReadOnly(), entityIds,
+                            boundaryId, keepInside, serviceTrans);
+
+                        if (!result.IsSuccess)
                         {
-                            var geoService = new CropGeometryService();
-                            var snapshots = ServiceACAD.TestRecorder.CollectSnapshots(
-                                serviceTrans, nonHatchIds, boundaryPoints, geoService);
-
-                            var cropService = new CropService(geoService);
-                            var input = new CropInput
-                            {
-                                Boundary = boundary,
-                                BoundaryPoints = boundaryPoints.AsReadOnly(),
-                                EntityIds = nonHatchIds,
-                                TransactionService = serviceTrans,
-                            };
-
-                            var result = keepInside
-                                ? cropService.CropInside(input)
-                                : cropService.CropOutside(input);
-
-                            if (!result.IsSuccess)
-                            {
-                                ed.WriteMessage($"\n裁剪失败: {result.Message}");
-                                return ServiceACAD.OpResult.Fail(result.Message);
-                            }
-
-                            cropResult = result.Data;
-                            ed.WriteMessage(
-                                $"\n{commandName} 非 Hatch 裁剪: 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个");
+                            ed.WriteMessage($"\n裁剪失败: {result.Message}");
+                            return ServiceACAD.OpResult.Fail(result.Message);
                         }
 
-                        // ── 处理 Hatch 实体（委托给 CropHatchService.ProcessHatches） ──
-                        int newHatchesCreated = 0;
-                        if (hatchIds.Count > 0)
-                        {
-                            var hatchGeoService = new CropGeometryService();
-                            var cropHatchService = new CropHatchService(hatchGeoService);
-                            var hatchResult = cropHatchService.ProcessHatches(
-                                hatchIds, boundaryId, boundary, keepInside);
-                            newHatchesCreated = hatchResult.NewHatchesCreated;
-                        }
+                        var cropResult = result.Data;
+                        ed.WriteMessage(
+                            $"\n{commandName} 裁剪: 删除 {cropResult.DeletedCount} 个, 拆分 {cropResult.SplitCount} 个, 保留 {cropResult.KeptCount} 个, 跳过 {cropResult.SkippedCount} 个, 新 Hatch {cropResult.NewHatchesCreated} 个");
 
                         // ── TestRecorder 记录 ──
                         try
@@ -147,10 +106,10 @@ namespace AddinsACAD.Commands
                                 BoundaryVertices = capturedBoundaryVerts,
                                 BoundaryVertexCount = capturedBoundaryVerts.Count,
                                 TotalEntityCount = entityIds.Count,
-                                DeletedCount = cropResult?.DeletedCount ?? 0,
-                                SplitCount = cropResult?.SplitCount ?? 0,
-                                KeptCount = (cropResult?.KeptCount ?? 0) + newHatchesCreated,
-                                SkippedCount = cropResult?.SkippedCount ?? 0,
+                                DeletedCount = cropResult.DeletedCount,
+                                SplitCount = cropResult.SplitCount,
+                                KeptCount = cropResult.KeptCount,
+                                SkippedCount = cropResult.SkippedCount,
                             };
                             var uid = ServiceACAD.TestRecorder.Record(record);
                             ed.WriteMessage($"\n[TestRecorder] UID: {uid}");

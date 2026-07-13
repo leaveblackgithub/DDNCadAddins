@@ -53,6 +53,18 @@ namespace ServiceACAD
             ///     顺序由 CurveSubtractService 保证，可安全用于 Hatch 边界重建.
             /// </summary>
             public List<ObjectId> CreatedEntityIds { get; set; } = new List<ObjectId>();
+
+            /// <summary>
+            ///     裁剪后每个实体的面积（与 CreatedEntityIds 索引对齐）.
+            ///     在裁剪过程中自动计算，无需调用方额外开事务.
+            /// </summary>
+            public double[] CreatedEntityAreas { get; set; } = Array.Empty<double>();
+
+            /// <summary>
+            ///     完整方法调用标志 — 用于 CropHatch 验证 CropClosedCurveMulti 打包方法被调用.
+            ///     只有此标志为 true 的结果才能被 ProcessHatches 安全使用.
+            /// </summary>
+            public bool CalledFromCompleteMethod { get; set; }
         }
 
         /// <summary>
@@ -176,6 +188,7 @@ namespace ServiceACAD
 
                 if (!noResult)
                 {
+                    var areas = new List<double>();
                     CadServiceManager._.ExecuteInTransactions("", ts =>
                     {
                         foreach (var loop in subtractResult.Loops)
@@ -185,21 +198,28 @@ namespace ServiceACAD
                             if (!polyId.IsNull)
                             {
                                 resultPolyCount++;
-                                // 读取顶点数用于统计
+                                // 读取顶点数和面积用于统计
                                 var pline = ts.GetObject<Polyline>(polyId);
                                 if (pline != null)
                                 {
                                     totalVertices += pline.NumberOfVertices;
+                                    areas.Add(Math.Abs(pline.Area));
+                                }
+                                else
+                                {
+                                    areas.Add(0);
                                 }
                                 result.CreatedEntityIds.Add(polyId);
                             }
                         }
                     });
+                    result.CreatedEntityAreas = areas.ToArray();
                 }
 
                 result.IsSuccess = resultPolyCount > 0;
                 result.PolyCount = resultPolyCount;
                 result.TotalVertices = totalVertices;
+                result.CalledFromCompleteMethod = true;
                 string directionLabel = keepInside ? "减掉外部-保留内部" : "减掉内部-保留外部";
                 result.Message = resultPolyCount > 0
                     ? $"{directionLabel}: {resultPolyCount} 个封闭环，共 {totalVertices} 个顶点"
@@ -220,6 +240,112 @@ namespace ServiceACAD
         public static CropResult CropClosedCurve(CurveSelection curveA, CurveSelection curveB, bool keepInside)
         {
             return CropClosedCurveMulti(new[] { curveA }, curveB, keepInside);
+        }
+
+        /// <summary>
+        ///     执行"外环+内环（孔洞）"与一条裁剪曲线的精确裁剪运算，正确处理
+        ///     裁剪边界同时与外环、内环相交的场景（凹字形结果）.
+        ///     <para>
+        ///         与 <see cref="CropClosedCurveMulti"/> 的区别：后者将外环、内环视为
+        ///         互相独立的 Subject，各自与 Clip 求交/差集后再合并，当 Clip 跨越
+        ///         内外环边界时会产生错误结果（内环孔洞区域被错误地并入结果，或外环
+        ///         与内环的裁剪结果未正确挖孔）。此方法将内环视为外环的孔洞，
+        ///         内环区域始终不属于结果，无论裁剪方向如何.
+        ///     </para>
+        ///     <para>
+        ///         语义：
+        ///         <list type="bullet">
+        ///             <item>keepInside=true：结果 = 外环以内 ∩ Clip 以内 ∩ 内环以外.</item>
+        ///             <item>keepInside=false：结果 = 外环以内 ∩ Clip 以外 ∩ 内环以外.</item>
+        ///         </list>
+        ///     </para>
+        /// </summary>
+        /// <param name="outerRing">外环曲线选择结果.</param>
+        /// <param name="holeRing">内环（孔洞）曲线选择结果.</param>
+        /// <param name="clipCurve">裁剪曲线 B.</param>
+        /// <param name="keepInside">true=保留内部（交集语义），false=保留外部（差集语义）.</param>
+        /// <returns>裁剪计算结果.</returns>
+        public static CropResult CropRingWithHole(
+            CurveSelection outerRing, CurveSelection holeRing, CurveSelection clipCurve,
+            bool keepInside)
+        {
+            var result = new CropResult();
+            try
+            {
+                if (outerRing == null)
+                {
+                    result.Message = "未选择外环曲线。";
+                    return result;
+                }
+                if (holeRing == null)
+                {
+                    result.Message = "未选择内环曲线。";
+                    return result;
+                }
+                if (clipCurve == null)
+                {
+                    result.Message = "未选择 Clip 曲线。";
+                    return result;
+                }
+
+                var subtractService = new CurveSubtractService();
+                var serviceResult = subtractService.CropRingWithHole(
+                    outerRing.ExactSegments, outerRing.Boundary,
+                    holeRing.ExactSegments, holeRing.Boundary,
+                    clipCurve.ExactSegments, clipCurve.Boundary,
+                    keepInside);
+
+                var subtractResult = serviceResult.IsSuccess ? serviceResult.Data : null;
+                bool noResult = subtractResult == null || subtractResult.IsEmpty;
+                int resultPolyCount = 0;
+                int totalVertices = 0;
+
+                if (!noResult)
+                {
+                    var areas = new List<double>();
+                    CadServiceManager._.ExecuteInTransactions("", ts =>
+                    {
+                        foreach (var loop in subtractResult.Loops)
+                        {
+                            if (loop == null || loop.Count == 0) continue;
+                            var polyId = CurveToExactSegmentConverter.DrawExactSegments(ts, loop, 3);
+                            if (!polyId.IsNull)
+                            {
+                                resultPolyCount++;
+                                var pline = ts.GetObject<Polyline>(polyId);
+                                if (pline != null)
+                                {
+                                    totalVertices += pline.NumberOfVertices;
+                                    areas.Add(Math.Abs(pline.Area));
+                                }
+                                else
+                                {
+                                    areas.Add(0);
+                                }
+                                result.CreatedEntityIds.Add(polyId);
+                            }
+                        }
+                    });
+                    result.CreatedEntityAreas = areas.ToArray();
+                }
+
+                result.IsSuccess = resultPolyCount > 0;
+                result.PolyCount = resultPolyCount;
+                result.TotalVertices = totalVertices;
+                result.CalledFromCompleteMethod = true;
+                string directionLabel = keepInside ? "保留内部(交集,挖孔)" : "保留外部(差集,挖孔)";
+                result.Message = resultPolyCount > 0
+                    ? $"{directionLabel}: {resultPolyCount} 个封闭环，共 {totalVertices} 个顶点"
+                    : !serviceResult.IsSuccess ? serviceResult.Message
+                                : noResult ? "无结果"
+                                           : "裁剪绘制失败";
+            }
+            catch (Exception ex)
+            {
+                Logger._.Error($"CropRingWithHole 失败: {ex.Message}", ex);
+                result.Message = $"CropRingWithHole 失败: {ex.Message}";
+            }
+            return result;
         }
     }
 }

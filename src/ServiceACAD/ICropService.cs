@@ -3,6 +3,7 @@ using Autodesk.AutoCAD.DatabaseServices;
 using DDNCadAddins.Core.Interfaces;
 using DDNCadAddins.Core.Models;
 using DDNCadAddins.Core.Services;
+using CorePoint2D = DDNCadAddins.Core.Models.Point2D;
 
 namespace ServiceACAD
 {
@@ -32,6 +33,11 @@ namespace ServiceACAD
         ///     事务服务引用.
         /// </summary>
         public ITransactionService TransactionService { get; set; }
+
+        /// <summary>
+        ///     裁剪边界曲线 ObjectId（用于 Hatch 裁剪流程）.
+        /// </summary>
+        public ObjectId BoundaryId { get; set; }
 
         /// <summary>
         ///     获取有效的裁剪边界：优先返回 <see cref="Boundary"/>，
@@ -81,6 +87,11 @@ namespace ServiceACAD
         ///     BlockReference 占位处理（完全在内侧=保留；完全在外侧=删除；相交=删除）.
         /// </summary>
         public int BlockRefHandledCount { get; set; }
+
+        /// <summary>
+        ///     通过 Hatch 裁剪流程新创建的 Hatch 数量.
+        /// </summary>
+        public int NewHatchesCreated { get; set; }
     }
 
     /// <summary>
@@ -101,5 +112,26 @@ namespace ServiceACAD
         /// <param name="input">裁剪输入参数.</param>
         /// <returns>裁剪结果.</returns>
         OpResult<CropResult> CropOutside(CropInput input);
+
+        /// <summary>
+        ///     统一裁剪操作：自动分离 Hatch 和非 Hatch 实体，分别调用对应的裁剪逻辑，
+        ///     合并结果到统一的 CropResult 中.
+        ///     <para>非 Hatch 实体走 CropService 的包围盒分类+精确裁剪流程（CROPLINE/ARC/.../BLOCK）.</para>
+        ///     <para>Hatch 实体走 CropHatchService.ProcessHatches 流程（GenerateHatchBoundary → CropClosedCurveMulti → CloneHatch）.</para>
+        /// </summary>
+        /// <param name="boundary">精确裁剪边界（ICropBoundary）.</param>
+        /// <param name="boundaryPoints">边界的近似多边形顶点.</param>
+        /// <param name="entityIds">待裁剪的所有实体 ObjectId 列表.</param>
+        /// <param name="boundaryId">裁剪边界曲线 ObjectId（用于 Hatch 裁剪）.</param>
+        /// <param name="keepInside">true=保留内部(CROPOUTSIDE)，false=保留外部(CROPINSIDE).</param>
+        /// <param name="ts">事务服务.</param>
+        /// <returns>统一裁剪结果.</returns>
+        OpResult<CropResult> CropInsideOutside(
+            ICropBoundary boundary,
+            IReadOnlyList<CorePoint2D> boundaryPoints,
+            List<ObjectId> entityIds,
+            ObjectId boundaryId,
+            bool keepInside,
+            ITransactionService ts);
     }
 }

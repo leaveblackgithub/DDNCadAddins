@@ -514,6 +514,8 @@ namespace ServiceACAD
                 }
 
                 poly2d.CurveFit();
+                // CurveFit() 会重置 Closed 为 false，需重新设置以确保 CropClosedCurve 能识别
+                poly2d.Closed = true;
                 return poly2d.ObjectId;
             }
             catch (Exception ex)

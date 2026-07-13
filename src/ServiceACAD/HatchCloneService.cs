@@ -82,10 +82,17 @@ namespace ServiceACAD
         /// <summary>
         ///     重新生成 Hatch（不深克隆），应用源 Hatch 的填充参数 + 新边界.
         ///     核心方法，不包含 UI 交互，可被其他命令或服务调用.
+        ///     <para>
+        ///         使用源 Hatch 的 HatchStyle（Outer/Ignore/Normal）直接进行 EvaluateHatch，
+        ///         AutoCAD 会根据 HatchStyle 自动处理环的填充规则：
+        ///         Normal — 交替填充（fill→skip→fill→skip）；
+        ///         Outer — 填充最外层后遇到内环停止；
+        ///         Ignore — 填充所有环，忽略内环边界。
+        ///     </para>
         /// </summary>
         /// <param name="ts">事务服务.</param>
         /// <param name="p">源 Hatch 提取的填充参数.</param>
-        /// <param name="boundaryIds">新边界对象的 ObjectId 数组.</param>
+        /// <param name="boundaryIds">新边界对象的 ObjectId 数组（已按 depth 升序排列）.</param>
         /// <param name="newHatchId">[out] 新创建的 Hatch 的 ObjectId.</param>
         /// <returns>是否成功创建填充.</returns>
         public static bool CloneHatchWithNewBoundaries(
@@ -97,11 +104,11 @@ namespace ServiceACAD
             try
             {
                 // 1. 创建新 Hatch，应用源 Hatch 的填充参数（图案名称/比例/角度/原点等）
-                //    注意：HatchStyle 统一使用 Normal，而非源 Hatch 的原始 Style。
-                //    原因：Outer/Ignore 样式会导致 AutoCAD 在 EvaluateHatch 时
-                //    重新自行判断环的内外关系，覆盖我们手动设置的 HatchLoopTypes。
-                //    使用 Normal 后，AutoCAD 尊重我们设置的 Outermost/Default 环类型，
-                //    按 depth 交替填充，效果与原始 Outer/Ignore 等价.
+                //    先用 HatchStyle.Normal 评估，让 AutoCAD 尊重手动设置的
+                //    Outermost/Default 环类型。SortByContainmentHierarchy 已按源
+                //    HatchStyle 过滤环数量（Ignore→1环, Outer→depth≤1, Normal→全部），
+                //    Normal 的交替填充规则恰好等价于各 HatchStyle 的预期效果。
+                //    评估后再设回源 HatchStyle，保留属性值供后续检查。
                 var hatch = new Hatch();
                 hatch.SetHatchPattern(p.PatternType, p.PatternName);
                 hatch.PatternScale  = p.PatternScale;
@@ -109,7 +116,7 @@ namespace ServiceACAD
                 hatch.PatternDouble = p.PatternDouble;
                 hatch.PatternSpace  = p.PatternSpace;
                 hatch.Origin        = p.Origin;
-                hatch.HatchStyle    = HatchStyle.Normal;
+                hatch.HatchStyle    = HatchStyle.Normal; // ★ 先用 Normal 评估
                 hatch.Normal        = p.Normal;
                 hatch.Elevation     = p.Elevation;
 
@@ -161,8 +168,16 @@ namespace ServiceACAD
                     return false;
                 }
 
-                // 4. 评估填充
+                // 4. 评估填充（Normal 样式下 AutoCAD 尊重我们设置的 Outermost/Default 环类型）
                 hatch.EvaluateHatch(true);
+
+                // ★ 5. 评估后设回源 HatchStyle，保留属性值（不重新 Evaluate，填充已固化）
+                if (p.Style != HatchStyle.Normal)
+                {
+                    hatch.UpgradeOpen();
+                    hatch.HatchStyle = p.Style;
+                }
+
                 return true;
             }
             catch (Exception ex)
