@@ -107,8 +107,8 @@ AutoCAD 服务层（CropPolylineService : ICropService）
 | 命令名 | 文件 | 功能 | 类别 |
 |--------|------|------|------|
 | [`BlockCleanup`](src/AddinsACAD/Commands/BlockCleanupCommand.cs:22) | [`BlockCleanupCommand.cs`](src/AddinsACAD/Commands/BlockCleanupCommand.cs) | 块清理 | 块操作 |
-| [`CROPINSIDE`](src/AddinsACAD/Commands/CropInsideCommand.cs:24) | [`CropInsideCommand.cs`](src/AddinsACAD/Commands/CropInsideCommand.cs) | 边界内裁剪 | 裁剪 |
-| [`CROPOUTSIDE`](src/AddinsACAD/Commands/CropInsideCommand.cs:33) | [`CropInsideCommand.cs`](src/AddinsACAD/Commands/CropInsideCommand.cs) | 边界外裁剪 | 裁剪 |
+| [`CROPINSIDE`](src/AddinsACAD/Commands/CropInsideCommand.cs:24) | [`CropInsideCommand.cs`](src/AddinsACAD/Commands/CropInsideCommand.cs) | 减掉内部，保留外部 | 裁剪 |
+| [`CROPOUTSIDE`](src/AddinsACAD/Commands/CropInsideCommand.cs:33) | [`CropInsideCommand.cs`](src/AddinsACAD/Commands/CropInsideCommand.cs) | 减掉外部，保留内部 | 裁剪 |
 | [`CROPARC`](src/AddinsACAD/Commands/CropArcCommand.cs:23) | [`CropArcCommand.cs`](src/AddinsACAD/Commands/CropArcCommand.cs) | 裁剪弧 | 裁剪 |
 | [`CROPALLARCS`](src/AddinsACAD/Commands/CropArcCommand.cs:29) | [`CropArcCommand.cs`](src/AddinsACAD/Commands/CropArcCommand.cs) | 裁剪全部弧 | 裁剪 |
 | [`CROPCIRCLE`](src/AddinsACAD/Commands/CropCircleCommand.cs:22) | [`CropCircleCommand.cs`](src/AddinsACAD/Commands/CropCircleCommand.cs) | 裁剪圆 | 裁剪 |

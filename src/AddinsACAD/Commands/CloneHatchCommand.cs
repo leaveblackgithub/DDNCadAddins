@@ -35,6 +35,14 @@ namespace AddinsACAD.Commands
             public HatchStyle Style;
             public Vector3d Normal;
             public double Elevation;
+            /// <summary>源 Hatch 的图层名.</summary>
+            public string Layer;
+            /// <summary>源 Hatch 的颜色索引.</summary>
+            public int ColorIndex;
+            /// <summary>源 Hatch 的线型名.</summary>
+            public string Linetype;
+            /// <summary>源 Hatch 的线宽枚举.</summary>
+            public LineWeight LineWeight;
         }
 
         /// <summary>
@@ -62,6 +70,10 @@ namespace AddinsACAD.Commands
                 result.Style         = src.HatchStyle;
                 result.Normal        = src.Normal;
                 result.Elevation     = src.Elevation;
+                result.Layer         = src.Layer;
+                result.ColorIndex    = src.ColorIndex;
+                result.Linetype      = src.Linetype;
+                result.LineWeight    = src.LineWeight;
                 gotParams            = true;
             });
 
@@ -242,6 +254,10 @@ namespace AddinsACAD.Commands
                 hatch.HatchStyle    = HatchStyle.Normal;
                 hatch.Normal        = p.Normal;
                 hatch.Elevation     = p.Elevation;
+                if (!string.IsNullOrEmpty(p.Layer)) hatch.Layer = p.Layer;
+                hatch.ColorIndex = p.ColorIndex;
+                if (!string.IsNullOrEmpty(p.Linetype)) hatch.Linetype = p.Linetype;
+                hatch.LineWeight = p.LineWeight;
 
                 // 2. 加入数据库
                 if (ts.AppendEntityToCurrentSpace(hatch).IsNull)

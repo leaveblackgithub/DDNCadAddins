@@ -269,6 +269,10 @@ namespace ServiceACAD
         ///     将 ExactSegment 列表绘制为 AutoCAD 实体并添加到当前空间.
         ///     直线段 → Polyline 直线顶点；圆弧段 → Polyline 带凸度顶点；
         ///     椭圆弧段 → 采样为多段直线.
+        ///     <para>
+        ///         闭合环只添加 seg[0].Start 到 seg[n-1].Start 的顶点，
+        ///         最后一个段终点通过 Closed=true 自动闭合，不产生重复顶点.
+        ///     </para>
         /// </summary>
         /// <param name="ts">事务服务.</param>
         /// <param name="loop">精确段组成的闭合环.</param>
@@ -322,11 +326,9 @@ namespace ServiceACAD
                     }
                 }
 
-                var lastSeg = loop[loop.Count - 1];
-                pline.AddVertexAt(vertexIdx,
-                    new Point2d(lastSeg.End.X, lastSeg.End.Y),
-                    0.0, 0.0, 0.0);
-
+                // ★ Closed=true 自动闭合：Polyline 自动从最后一个顶点连接到第一个顶点。
+                //    不再显式添加 lastSeg.End，避免产生重复顶点和零长度段，
+                //    这种零长度段会导致 Hatch 边界评估失败（Hatch 不可见）.
                 pline.Closed = true;
 
                 try

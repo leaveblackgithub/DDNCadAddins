@@ -128,8 +128,8 @@ namespace ServiceACAD
             };
         }
 
-        public OpResultOfCropResult CropInside(CropInput input) => this.Crop(input, keepInside: true);
-        public OpResultOfCropResult CropOutside(CropInput input) => this.Crop(input, keepInside: false);
+        public OpResultOfCropResult CropInside(CropInput input) => this.Crop(input, keepInside: false);
+        public OpResultOfCropResult CropOutside(CropInput input) => this.Crop(input, keepInside: true);
 
         /// <summary>
         ///     统一裁剪操作：自动分离 Hatch 和非 Hatch 实体，分别调用对应的裁剪逻辑，

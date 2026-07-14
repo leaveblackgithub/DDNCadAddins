@@ -202,55 +202,36 @@ namespace AddinsACAD.Commands
                 int totalHatchesProcessed = 0;
                 int totalBoundaryEntities = 0;
                 var allGeneratedIds = new List<ObjectId>();
+                var clippedCurveIds = new List<ObjectId>();
 
-                // ★ 第一步：调用 GENERATEHATCHBOUNDARY 生成所有 Hatch 的边界实体
+                // ★ 第一步+第二步：逐 Hatch 生成边界并裁剪.
+                //    外环+单内环(2环)且非 Ignore 样式 → 用 CROPTWOCLOSEDCURVE(CropRingWithHole)
+                //    正确处理裁剪边界同时与外环、内环相交的凹字形场景（内环孔洞区域始终不属于结果）；
+                //    Ignore 样式忽略所有内环，只用外环裁剪；
+                //    其余环结构（单环 / 3 环以上）沿用 CROPCLOSEDCURVE(CropClosedCurveMulti) 逐环独立裁剪.
                 foreach (var hatchId in hatchIds)
                 {
                     if (!hatchId.IsValid || hatchId.IsErased)
                         continue;
 
                     var genResult = HatchBoundaryService.GenerateHatchBoundary(hatchId);
-                    if (genResult.IsSuccess)
-                    {
-                        totalBoundaryEntities += genResult.EntityCount;
-                        totalHatchesProcessed++;
-                        allGeneratedIds.AddRange(genResult.GeneratedEntityIds);
-                        ed.WriteMessage($"\n  Hatch {hatchId}: 生成 {genResult.EntityCount} 个边界实体 [{genResult.TypeLog}]");
-                    }
-                    else
+                    if (!genResult.IsSuccess)
                     {
                         ed.WriteMessage($"\n  Hatch {hatchId}: 边界生成失败 — {genResult.Message}");
+                        continue;
                     }
+
+                    totalBoundaryEntities += genResult.EntityCount;
+                    totalHatchesProcessed++;
+                    allGeneratedIds.AddRange(genResult.GeneratedEntityIds);
+                    ed.WriteMessage($"\n  Hatch {hatchId}: 生成 {genResult.EntityCount} 个边界实体 [{genResult.TypeLog}]");
+
+                    var hatchStyle = GetHatchStyle(hatchId);
+                    var thisHatchClipped = CropSingleHatchBoundary(genResult, boundaryId, hatchStyle, keepInside, ed);
+                    clippedCurveIds.AddRange(thisHatchClipped);
                 }
 
-                ed.WriteMessage($"\n  共生成 {allGeneratedIds.Count} 条边界曲线，准备用裁剪边界进行裁剪...");
-
-                // ★ 第二步：调用 CROPCLOSEDCURVE 执行裁剪
-                //    使用 CropResult.CreatedEntityIds 获取外环→内环顺序的结果曲线，
-                //    而非依赖不可靠的 before/after diff（BlockTableRecord 迭代顺序不确定）.
-                List<ObjectId> clippedCurveIds = new List<ObjectId>();
-                if (allGeneratedIds.Count > 0)
-                {
-                    var cropResult = CropClosedCurveService.CropClosedCurveMulti(
-                        allGeneratedIds, boundaryId, keepInside);
-
-                    if (cropResult.IsSuccess)
-                    {
-                        ed.WriteMessage($"\n  CROPCLOSEDCURVE 裁剪完成: {cropResult.Message}");
-                        if (cropResult.CreatedEntityIds != null)
-                            clippedCurveIds = cropResult.CreatedEntityIds;
-                    }
-                    else
-                    {
-                        ed.WriteMessage($"\n  CROPCLOSEDCURVE 裁剪: {cropResult.Message}");
-                    }
-                }
-                else
-                {
-                    ed.WriteMessage("\n  没有有效的边界曲线可供裁剪。");
-                }
-
-                ed.WriteMessage($"\n  裁剪后新生成 {clippedCurveIds.Count} 条曲线，准备用源 Hatch 参数填充...");
+                ed.WriteMessage($"\n  共生成 {allGeneratedIds.Count} 条边界曲线，裁剪后得到 {clippedCurveIds.Count} 条曲线，准备用源 Hatch 参数填充...");
 
                 // ★ 第四步：统一环有效性 + clipDepth 逻辑
                 //    1. 计算原始环面积 → 确定 clipDepth（裁剪边界对应的原始环深度）
@@ -488,6 +469,296 @@ namespace AddinsACAD.Commands
                 result.IsSuccess = false;
             }
             return result;
+        }
+
+        /// <summary>
+        ///     裁剪单个 Hatch 生成的边界环集合.
+        ///     <para>
+        ///         IGNORE 样式：忽略所有内环，只裁剪面积最大的外环（<see cref="CropClosedCurveService.CropClosedCurveMulti"/>
+        ///         单曲线裁剪），内环孔洞完全不参与运算.
+        ///     </para>
+        ///     <para>
+        ///         OUTER 样式：填充外环直到第一层内环即止，depth≥2 的岛在
+        ///         <see cref="SortByContainmentHierarchy"/> 中必被过滤，故委托 <see cref="CropOuterStyleBoundary"/>
+        ///         只处理外环(depth0)+直接内环(depth1)，忽略更深的岛，
+        ///         并对外环+单内环使用 CROPTWOCLOSEDCURVE(<see cref="CropClosedCurveService.CropRingWithHole"/>)
+        ///         正确处理裁剪边界同时与外环、内环相交的凹字形场景.
+        ///     </para>
+        ///     <para>
+        ///         NORMAL 样式恰好 2 环（外环+单内环）：同样使用 CROPTWOCLOSEDCURVE，
+        ///         内环孔洞区域始终不属于结果，无论裁剪方向如何，避免外环、内环各自独立裁剪
+        ///         （CROPCLOSEDCURVE）时因共边未对齐产生的错误结果.
+        ///     </para>
+        ///     <para>
+        ///         单环 / NORMAL 3 环以上（多层嵌套）：沿用
+        ///         <see cref="CropClosedCurveService.CropClosedCurveMulti"/> 逐环独立裁剪（不变行为）.
+        ///     </para>
+        /// </summary>
+        /// <param name="genResult">GenerateHatchBoundary 生成的边界结果（含环面积、环深度）.</param>
+        /// <param name="boundaryId">裁剪边界曲线 ObjectId.</param>
+        /// <param name="hatchStyle">源 Hatch 的 HatchStyle.</param>
+        /// <param name="keepInside">true=保留内部，false=保留外部.</param>
+        /// <param name="ed">编辑器（用于输出日志）.</param>
+        /// <returns>裁剪后新生成的曲线 ObjectId 列表.</returns>
+        private static List<ObjectId> CropSingleHatchBoundary(
+            HatchBoundaryService.GenerateHatchBoundaryResult genResult,
+            ObjectId boundaryId, HatchStyle hatchStyle, bool keepInside, Editor ed)
+        {
+            try
+            {
+                var ids = genResult.GeneratedEntityIds;
+                if (ids == null || ids.Count == 0)
+                    return new List<ObjectId>();
+
+                // ── IGNORE 样式：忽略所有内环，只裁剪外环 ──
+                if (hatchStyle == HatchStyle.Ignore)
+                {
+                    int outerIdx = IndexOfMaxArea(genResult.LoopAreas);
+                    return ClipSingleRing(ids[outerIdx], boundaryId, keepInside, ed, "IGNORE 仅外环");
+                }
+
+                // ── OUTER 样式：只处理外环(depth0)+直接内环(depth1)，忽略更深的岛 ──
+                if (hatchStyle == HatchStyle.Outer)
+                    return CropOuterStyleBoundary(genResult, boundaryId, keepInside, ed);
+
+                // ── NORMAL 且恰好 2 环（外环+单内环）：CROPTWOCLOSEDCURVE 处理凹字形重叠 ──
+                if (ids.Count == 2)
+                {
+                    int outerIdx = IndexOfMaxArea(genResult.LoopAreas);
+                    int holeIdx = outerIdx == 0 ? 1 : 0;
+                    var ringIds = CropTwoRings(ids[outerIdx], ids[holeIdx], boundaryId, keepInside, ed, "NORMAL");
+                    // CROPTWOCLOSEDCURVE 成功且有结果 → 直接返回；
+                    // 返回空结果（非 null 但 Count==0）或曲线转换失败（null）→ 回退到逐环裁剪
+                    if (ringIds != null && ringIds.Count > 0)
+                        return ringIds;
+                    if (ringIds != null && ringIds.Count == 0)
+                        ed.WriteMessage($"\n  NORMAL CROPTWOCLOSEDCURVE 返回空结果，回退到 CROPCLOSEDCURVE 逐环裁剪。");
+                }
+
+                // ── 默认（单环 / NORMAL 3+ 环 / CROPTWOCLOSEDCURVE 失败回退）：逐环独立裁剪 ──
+                return ClipMultipleRings(ids, boundaryId, keepInside, ed);
+            }
+            catch (System.Exception ex)
+            {
+                Logger._.Error($"CropSingleHatchBoundary 失败: {ex.Message}", ex);
+                return new List<ObjectId>();
+            }
+        }
+
+        /// <summary>
+        ///     裁剪 OUTER 样式 Hatch 的边界环集合.
+        ///     <para>
+        ///         OUTER 语义：填充最外层，遇到第一层内环即停止填充。
+        ///         depth≥2 的岛在 <see cref="SortByContainmentHierarchy"/> 中始终被过滤（保留 depth≤1），
+        ///         因此这里只需正确处理 depth0(外环)+depth1(直接内环)，更深的岛直接忽略，
+        ///         不参与裁剪运算（省去无谓且可能出错的计算）.
+        ///     </para>
+        ///     <para>
+        ///         外环+单个直接内环：使用 CROPTWOCLOSEDCURVE（<see cref="CropClosedCurveService.CropRingWithHole"/>）
+        ///         正确处理裁剪边界同时与外环、内环相交的凹字形场景.
+        ///     </para>
+        ///     <para>
+        ///         外环无内环，或存在多个并列直接内环（siblings）：分别回退到单环裁剪或
+        ///         <see cref="CropClosedCurveService.CropClosedCurveMulti"/> 逐环独立裁剪.
+        ///     </para>
+        /// </summary>
+        /// <param name="genResult">GenerateHatchBoundary 生成的边界结果（含环深度）.</param>
+        /// <param name="boundaryId">裁剪边界曲线 ObjectId.</param>
+        /// <param name="keepInside">true=保留内部，false=保留外部.</param>
+        /// <param name="ed">编辑器（用于输出日志）.</param>
+        /// <returns>裁剪后新生成的曲线 ObjectId 列表.</returns>
+        /// <summary>
+        ///     裁剪 OUTER 样式 Hatch 的边界环集合.
+        ///     <para>
+        ///         不依赖 <see cref="HatchBoundaryService.GenerateHatchBoundaryResult.LoopDepths"/>
+        ///         （其底层 <c>IsEntityInsideAnother</c> 仅处理 Polyline，遇到 Circle/Ellipse 会
+        ///         静默失败导致所有环 depth=0），改用面积排序确定外环/内环：
+        ///         面积最大=外环，面积次大=第一层内环（孔洞），其余更深的岛在后续
+        ///         <see cref="SortByContainmentHierarchy"/> 中按 OUTER 规则自然过滤.
+        ///     </para>
+        ///     <para>
+        ///         外环+第一层内环使用 CROPTWOCLOSEDCURVE（<see cref="CropClosedCurveService.CropRingWithHole"/>）
+        ///         正确处理裁剪边界同时与外环、内环相交的凹字形场景.
+        ///     </para>
+        /// </summary>
+        private static List<ObjectId> CropOuterStyleBoundary(
+            HatchBoundaryService.GenerateHatchBoundaryResult genResult,
+            ObjectId boundaryId, bool keepInside, Editor ed)
+        {
+            var ids = genResult.GeneratedEntityIds;
+            var areas = genResult.LoopAreas;
+
+            if (ids == null || ids.Count == 0)
+                return new List<ObjectId>();
+
+            if (ids.Count == 1)
+                return ClipSingleRing(ids[0], boundaryId, keepInside, ed, "OUTER 单环");
+
+            // 按面积降序排列索引：面积最大=外环，次大=第一层内环.
+            var sortedIndices = new List<int>(ids.Count);
+            for (int i = 0; i < ids.Count; i++) sortedIndices.Add(i);
+            sortedIndices.Sort((a, b) =>
+            {
+                double areaA = areas != null && a < areas.Length ? areas[a] : 0;
+                double areaB = areas != null && b < areas.Length ? areas[b] : 0;
+                return areaB.CompareTo(areaA);
+            });
+
+            int outerIdx = sortedIndices[0];
+            int holeIdx = sortedIndices[1];
+
+            ed.WriteMessage(
+                $"\n  OUTER 面积排序: outer[{outerIdx}] A={GetArea(areas, outerIdx):F2}, hole[{holeIdx}] A={GetArea(areas, holeIdx):F2}");
+
+            var ringIds = CropTwoRings(ids[outerIdx], ids[holeIdx], boundaryId, keepInside, ed, "OUTER");
+            // CROPTWOCLOSEDCURVE 成功且有结果 → 直接返回
+            if (ringIds != null && ringIds.Count > 0)
+                return ringIds;
+
+            // CROPTWOCLOSEDCURVE 返回空结果（ringIds 非 null 但 Count==0）或
+            // 曲线转换失败（ringIds==null）：回退到逐环独立裁剪，
+            // 确保第 3+ 个环（如 depth≥2 的岛）也能被处理，而非被静默忽略
+            if (ringIds != null && ringIds.Count == 0)
+                ed.WriteMessage($"\n  OUTER CROPTWOCLOSEDCURVE 返回空结果，回退到 CROPCLOSEDCURVE 逐环裁剪。");
+            return ClipMultipleRings(ids, boundaryId, keepInside, ed);
+        }
+
+        private static double GetArea(double[] areas, int idx)
+        {
+            if (areas == null || idx < 0 || idx >= areas.Length) return 0;
+            return areas[idx];
+        }
+
+        /// <summary>
+        ///     使用 CROPTWOCLOSEDCURVE（<see cref="CropClosedCurveService.CropRingWithHole"/>）
+        ///     裁剪一个外环+一个内环（孔洞），正确处理裁剪边界同时与外环、内环相交的凹字形场景.
+        ///     <para>
+        ///         只要三条曲线均成功转换为 <c>CurveSelection</c>（即算法能够执行），
+        ///         就直接采用 CropRingWithHole 的返回结果 —— 即使结果为空环（0 个封闭环）
+        ///         也是权威且正确的答案（例如裁剪边界恰好完全落在孔洞内部时，
+        ///         外环∩Clip\内环 本应为空，Hatch 在该区域确实无填充）。
+        ///         绝不能因为"无结果"而回退到 <see cref="CropClosedCurveService.CropClosedCurveMulti"/>，
+        ///         后者把内环当作独立 Subject 与 Clip 求交，交集会被当成新增填充环
+        ///         （本应是孔洞挖空区域），导致填充区域反转、环结构错乱.
+        ///         只有当曲线转换本身失败（如不支持的曲线类型）时，才返回 null 交由调用方回退.
+        ///     </para>
+        /// </summary>
+        /// <param name="outerId">外环曲线 ObjectId.</param>
+        /// <param name="holeId">内环（孔洞）曲线 ObjectId.</param>
+        /// <param name="boundaryId">裁剪边界曲线 ObjectId.</param>
+        /// <param name="keepInside">true=保留内部，false=保留外部.</param>
+        /// <param name="ed">编辑器（用于输出日志）.</param>
+        /// <param name="styleLabel">用于日志标注的样式标签.</param>
+        /// <returns>裁剪后新生成的曲线 ObjectId 列表（可能为空列表，代表该区域无填充）；曲线转换失败时返回 null（供调用方回退）.</returns>
+        private static List<ObjectId> CropTwoRings(
+            ObjectId outerId, ObjectId holeId, ObjectId boundaryId, bool keepInside,
+            Editor ed, string styleLabel)
+        {
+            try
+            {
+                var outerSel = CropClosedCurveService.CreateCurveSelection(outerId);
+                var holeSel = CropClosedCurveService.CreateCurveSelection(holeId);
+                var clipSel = CropClosedCurveService.CreateCurveSelection(boundaryId);
+                if (outerSel == null || holeSel == null || clipSel == null)
+                {
+                    ed.WriteMessage($"\n  CROPTWOCLOSEDCURVE({styleLabel}) 曲线转换失败，回退到 CROPCLOSEDCURVE。");
+                    return null;
+                }
+
+                var ringResult = CropClosedCurveService.CropRingWithHole(outerSel, holeSel, clipSel, keepInside);
+
+                // ★ CropRingWithHole 已成功执行（无论结果是否为空环），结果即为权威答案，
+                //   不回退到会产生错误语义的 CropClosedCurveMulti。
+                ed.WriteMessage($"\n  CROPTWOCLOSEDCURVE 裁剪完成({styleLabel}): {ringResult.Message}");
+                return ringResult.CreatedEntityIds ?? new List<ObjectId>();
+            }
+            catch (System.Exception ex)
+            {
+                Logger._.Error($"CropTwoRings 失败: {ex.Message}", ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        ///     使用 CROPCLOSEDCURVE（<see cref="CropClosedCurveService.CropClosedCurveMulti"/>）裁剪单条曲线.
+        /// </summary>
+        /// <param name="id">待裁剪曲线 ObjectId.</param>
+        /// <param name="boundaryId">裁剪边界曲线 ObjectId.</param>
+        /// <param name="keepInside">true=保留内部，false=保留外部.</param>
+        /// <param name="ed">编辑器（用于输出日志）.</param>
+        /// <param name="label">用于日志标注的场景标签.</param>
+        /// <returns>裁剪后新生成的曲线 ObjectId 列表.</returns>
+        private static List<ObjectId> ClipSingleRing(
+            ObjectId id, ObjectId boundaryId, bool keepInside, Editor ed, string label)
+        {
+            var result = CropClosedCurveService.CropClosedCurveMulti(
+                new List<ObjectId> { id }, boundaryId, keepInside);
+            ed.WriteMessage(result.IsSuccess
+                ? $"\n  CROPCLOSEDCURVE 裁剪完成({label}): {result.Message}"
+                : $"\n  CROPCLOSEDCURVE 裁剪({label}): {result.Message}");
+            return result.CreatedEntityIds ?? new List<ObjectId>();
+        }
+
+        /// <summary>
+        ///     使用 CROPCLOSEDCURVE（<see cref="CropClosedCurveService.CropClosedCurveMulti"/>）逐环独立裁剪多条曲线.
+        /// </summary>
+        /// <param name="ids">待裁剪曲线 ObjectId 列表.</param>
+        /// <param name="boundaryId">裁剪边界曲线 ObjectId.</param>
+        /// <param name="keepInside">true=保留内部，false=保留外部.</param>
+        /// <param name="ed">编辑器（用于输出日志）.</param>
+        /// <returns>裁剪后新生成的曲线 ObjectId 列表.</returns>
+        private static List<ObjectId> ClipMultipleRings(
+            List<ObjectId> ids, ObjectId boundaryId, bool keepInside, Editor ed)
+        {
+            var result = CropClosedCurveService.CropClosedCurveMulti(ids, boundaryId, keepInside);
+            ed.WriteMessage(result.IsSuccess
+                ? $"\n  CROPCLOSEDCURVE 裁剪完成: {result.Message}"
+                : $"\n  CROPCLOSEDCURVE 裁剪: {result.Message}");
+            return result.CreatedEntityIds ?? new List<ObjectId>();
+        }
+
+        /// <summary>
+        ///     读取指定 Hatch 的 HatchStyle.
+        /// </summary>
+        /// <param name="hatchId">Hatch 的 ObjectId.</param>
+        /// <returns>HatchStyle；读取失败时返回 <see cref="HatchStyle.Normal"/>.</returns>
+        private static HatchStyle GetHatchStyle(ObjectId hatchId)
+        {
+            var style = HatchStyle.Normal;
+            try
+            {
+                if (!hatchId.IsValid || hatchId.IsErased)
+                    return style;
+
+                CadServiceManager._.ExecuteInTransactions(null, ts =>
+                {
+                    var hatch = ts.GetObject<Hatch>(hatchId, OpenMode.ForRead);
+                    if (hatch != null) style = hatch.HatchStyle;
+                });
+            }
+            catch (System.Exception ex)
+            {
+                Logger._.Error($"GetHatchStyle 失败: {ex.Message}", ex);
+            }
+            return style;
+        }
+
+        /// <summary>
+        ///     返回面积数组中最大值的索引（用于确定外环）.
+        /// </summary>
+        /// <param name="areas">环面积数组.</param>
+        /// <returns>最大面积对应的索引；数组为空时返回 0.</returns>
+        private static int IndexOfMaxArea(double[] areas)
+        {
+            if (areas == null || areas.Length == 0)
+                return 0;
+            int maxIdx = 0;
+            for (int i = 1; i < areas.Length; i++)
+            {
+                if (areas[i] > areas[maxIdx])
+                    maxIdx = i;
+            }
+            return maxIdx;
         }
 
         /// <summary>
